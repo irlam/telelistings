@@ -117,6 +117,43 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ---------- TV channel helpers ----------
+
+/**
+ * Look up a TV channel for a fixture based on channel's tvChannelOverrides config.
+ *
+ * @param {Object} fixture - Fixture object with at least `summary` and optionally `tvChannel`
+ * @param {Object} channel - Channel config object with optional `tvChannelOverrides`
+ * @returns {string|null} The TV channel name if matched, or null if no match
+ */
+function getTvChannelForFixture(fixture, channel) {
+  // If fixture already has a tvChannel (e.g. from ICS source), return it
+  if (fixture.tvChannel) {
+    return fixture.tvChannel;
+  }
+
+  // Check channel's tvChannelOverrides
+  const overrides = channel && channel.tvChannelOverrides;
+  if (!overrides || typeof overrides !== 'object') {
+    return null;
+  }
+
+  const summary = (fixture.summary || '').toLowerCase();
+  if (!summary) {
+    return null;
+  }
+
+  // Iterate over override keys and check for case-insensitive match in summary
+  for (const key of Object.keys(overrides)) {
+    const needle = key.toLowerCase();
+    if (summary.includes(needle)) {
+      return overrides[key];
+    }
+  }
+
+  return null;
+}
+
 // ---------- build message for a channel ----------
 
 async function buildChannelMessage(cfg, channel) {
@@ -258,6 +295,10 @@ async function buildChannelMessage(cfg, channel) {
       if (f.location) line += ` @ ${f.location}`;
       if (f.teamLabel) line += ` [${f.teamLabel}]`;
 
+      // Add TV channel if available
+      const tvChannel = getTvChannelForFixture(f, channel);
+      if (tvChannel) line += ` (TV: ${tvChannel})`;
+
       return line;
     });
 
@@ -310,6 +351,11 @@ async function buildChannelMessage(cfg, channel) {
 
     let line = `${when} – ${f.summary}`;
     if (f.location) line += ` @ ${f.location}`;
+
+    // Add TV channel if available
+    const tvChannel = getTvChannelForFixture(f, channel);
+    if (tvChannel) line += ` (TV: ${tvChannel})`;
+
     return line;
   });
 
@@ -406,6 +452,7 @@ if (require.main === module) {
 
 module.exports = {
   runOnce,
+  getTvChannelForFixture,
   CONFIG_PATH,
   LOG_PATH
 };
