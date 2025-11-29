@@ -4,6 +4,9 @@ node_modules/
 # Cache directory
 cache/
 
+# Temporary files (generated posters, etc.)
+tmp/
+
 # Logs (optional - keep if you want to track logs)
 # autopost.log
 
