@@ -157,7 +157,7 @@ async function fetchIcsWithCache(icsUrl) {
  * @param {string[]} teamNames     - Team names to match in event summary (case-insensitive).
  *                                   If empty or null, returns all events.
  * @param {number} daysAhead       - How many days ahead from now to include (default 1)
- * @returns {Promise<Array<{start: Date, summary: string, location: string, description: string}>>}
+ * @returns {Promise<Array<{start: Date, summary: string, location: string, description: string, tvChannel: string|null}>>}
  */
 async function getFixturesFromIcs(
   icsUrl,
@@ -216,7 +216,7 @@ async function getFixturesFromIcs(
  * Hook function to enrich a fixture with TV channel information.
  * This can be called after fetching fixtures to attach tvChannel metadata.
  *
- * @param {Object} fixture - Fixture object with start, summary, location, description
+ * @param {Object} fixture - Fixture object with start, summary, location, description, and optionally tvChannel
  * @param {string|null} tvChannel - The TV channel name to attach (or null)
  * @returns {Object} The same fixture object with tvChannel property set
  */
