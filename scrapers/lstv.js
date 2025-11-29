@@ -91,7 +91,8 @@ function debugLog(msg) {
 
 /**
  * Normalize a team name for comparison purposes.
- * Strips common suffixes (FC, AFC, United, City, etc.), punctuation, and normalizes case.
+ * Only strips common prefixes/suffixes that are typically redundant (FC, AFC).
+ * Keeps important distinguishing words like City, United, Town that differentiate teams.
  * @param {string} name - Team name
  * @returns {string} Normalized name for comparison
  */
@@ -101,8 +102,9 @@ function normalizeForComparison(name) {
   return name
     .toLowerCase()
     .trim()
-    // Remove common suffixes/prefixes
-    .replace(/\b(fc|afc|cf|sc|ac|as|ss|rc|rfc|united|utd|city|town|rovers|wanderers|athletic|albion)\b/gi, '')
+    // Only remove truly redundant prefixes/suffixes (FC, AFC, SC, etc.)
+    // Keep words like United, City, Town as they distinguish teams
+    .replace(/\b(fc|afc|cf|sc|ac|as|ss|rc|rfc)\b/gi, '')
     // Remove punctuation and extra whitespace
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
@@ -465,7 +467,7 @@ async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null })
         matchScore: 75 // Default good score when found via direct match
       };
     } else {
-      log(`WARNING: No TV channels found for ${home} vs ${away} - no candidates above threshold`);
+      log(`WARNING: No TV channels found for ${home} vs ${away} - no match page found or page had no channel data`);
       return {
         url: null,
         kickoffUtc: null,

@@ -89,14 +89,13 @@ test('BASE_URL: is correct', () => {
 
 console.log('\n--- Match Scoring Tests ---\n');
 
-test('normalizeForComparison: strips common suffixes', () => {
+test('normalizeForComparison: strips FC/AFC prefixes only', () => {
   assert.strictEqual(lstv.normalizeForComparison('Arsenal FC'), 'arsenal');
-  assert.strictEqual(lstv.normalizeForComparison('Manchester United'), 'manchester');
   assert.strictEqual(lstv.normalizeForComparison('AFC Bournemouth'), 'bournemouth');
-  // Test actual behavior - normalize removes "albion" but keeps other words
-  const brightonResult = lstv.normalizeForComparison('Brighton & Hove Albion');
-  assert(brightonResult.includes('brighton'), `Expected "brighton" in result, got "${brightonResult}"`);
-  assert(brightonResult.includes('hove'), `Expected "hove" in result, got "${brightonResult}"`);
+  // Should keep distinguishing words like United, City, Town, Albion
+  assert.strictEqual(lstv.normalizeForComparison('Manchester United'), 'manchester united');
+  assert.strictEqual(lstv.normalizeForComparison('Manchester City'), 'manchester city');
+  assert.strictEqual(lstv.normalizeForComparison('Brighton & Hove Albion'), 'brighton hove albion');
 });
 
 test('teamNameSimilarity: exact match returns 100', () => {
@@ -149,15 +148,26 @@ test('SCORE_THRESHOLD: is defined', () => {
 
 console.log('\n--- TheSportsDB Module Tests ---\n');
 
-test('TSDB normalizeTeamName: basic normalization', () => {
+test('TSDB normalizeTeamName: strips FC/AFC only', () => {
   assert.strictEqual(tsdb.normalizeTeamName('Arsenal FC'), 'arsenal');
-  assert.strictEqual(tsdb.normalizeTeamName('Manchester United'), 'manchester');
   assert.strictEqual(tsdb.normalizeTeamName('Chelsea'), 'chelsea');
+  // Should keep distinguishing words like United, City
+  assert.strictEqual(tsdb.normalizeTeamName('Manchester United'), 'manchester united');
+  assert.strictEqual(tsdb.normalizeTeamName('Manchester City'), 'manchester city');
 });
 
 test('TSDB teamsMatch: exact match', () => {
   assert.strictEqual(tsdb.teamsMatch('Arsenal', 'Arsenal'), true);
   assert.strictEqual(tsdb.teamsMatch('Arsenal FC', 'Arsenal'), true);
+});
+
+test('TSDB teamsMatch: city teams share main word', () => {
+  assert.strictEqual(tsdb.teamsMatch('Manchester City', 'Manchester City FC'), true);
+  // Note: Both Manchester teams share "manchester" - the word matching finds this
+  // This is by design - more specific matching happens at the fixture level
+  assert.strictEqual(tsdb.teamsMatch('Manchester City', 'Manchester United'), true);
+  // But completely different teams don't match
+  assert.strictEqual(tsdb.teamsMatch('Manchester City', 'Liverpool'), false);
 });
 
 test('TSDB teamsMatch: no match', () => {
@@ -220,7 +230,8 @@ test('WIKI buildWikiTitle: unknown league uses fallback', () => {
 
 test('WIKI buildWikiUrl: builds correct URL', () => {
   const url = wiki.buildWikiUrl('2024–25 Premier League');
-  assert(url.includes('wikipedia.org'), 'Should include wikipedia.org');
+  // Check it starts with the expected Wikipedia URL prefix
+  assert(url.startsWith('https://en.wikipedia.org/wiki/'), 'Should start with https://en.wikipedia.org/wiki/');
   assert(url.includes('Premier_League'), 'Should have underscores for spaces');
 });
 

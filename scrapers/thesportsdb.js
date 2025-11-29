@@ -76,6 +76,8 @@ function log(msg) {
 
 /**
  * Normalize a team name for comparison/matching.
+ * Only strips truly redundant prefixes like FC, AFC.
+ * Keeps distinguishing words like City, United, Town.
  * @param {string} name - Team name
  * @returns {string} Normalized name
  */
@@ -84,8 +86,9 @@ function normalizeTeamName(name) {
   return name
     .toLowerCase()
     .trim()
-    // Remove common suffixes/prefixes that might differ between sources
-    .replace(/\b(fc|afc|cf|sc|ac|as|ss|rc|rfc|united|utd|city|town|rovers|wanderers|athletic|albion)\b/gi, '')
+    // Only remove truly redundant prefixes/suffixes (FC, AFC, SC, etc.)
+    // Keep words like United, City, Town as they distinguish teams
+    .replace(/\b(fc|afc|cf|sc|ac|as|ss|rc|rfc)\b/gi, '')
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
