@@ -179,6 +179,7 @@ function renderLayout(title, bodyHtml) {
     <a href="/admin/settings">Settings</a>
     <a href="/admin/logs">Logs</a>
     <a href="/admin/test-lstv">Test LSTV</a>
+    <a href="/admin/test-fixture">Test Fixture</a>
     <a href="/admin/help">Help</a>
   </p>
   ${bodyHtml}
@@ -895,8 +896,10 @@ app.get('/cron/run', async (req, res) => {
 
 // --------- LSTV Test Page (Admin) ---------
 
-// Import LSTV scraper
+// Import scrapers
 const lstv = require('./scrapers/lstv');
+const tsdb = require('./scrapers/thesportsdb');
+const wiki = require('./scrapers/wiki_broadcasters');
 
 app.get('/admin/test-lstv', async (req, res) => {
   const { home, away, date } = req.query;
@@ -939,6 +942,7 @@ app.get('/admin/test-lstv', async (req, res) => {
       <table>
         <tr><th>URL Scraped</th><td>${result.url ? `<a href="${escapeHtml(result.url)}" target="_blank">${escapeHtml(result.url)}</a>` : '<em>None</em>'}</td></tr>
         <tr><th>Kickoff UTC</th><td>${escapeHtml(result.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Match Score</th><td>${result.matchScore !== null ? result.matchScore : 'N/A'}</td></tr>
         <tr><th>Channels Found</th><td>${(result.regionChannels || []).length}</td></tr>
       </table>
       
@@ -960,6 +964,7 @@ app.get('/admin/test-lstv', async (req, res) => {
   <div class="card">
     <h2>Test LiveSoccerTV Scraper</h2>
     <p>Test the LSTV Puppeteer scraper by entering team names and optionally a date.</p>
+    <p class="muted">For comprehensive testing with all data sources, use <a href="/admin/test-fixture">Test Fixture (All Sources)</a>.</p>
     
     <form method="get" action="/admin/test-lstv">
       <p>
@@ -996,11 +1001,227 @@ app.get('/admin/test-lstv', async (req, res) => {
   res.send(renderLayout('Test LSTV Scraper - Telegram Sports TV Bot', body));
 });
 
+// --------- Test Fixture Page (All Sources) ---------
+
+app.get('/admin/test-fixture', async (req, res) => {
+  const { home, away, date, league } = req.query;
+  
+  let tsdbResult = null;
+  let lstvResult = null;
+  let wikiResult = null;
+  let errors = [];
+  
+  // Only run if params provided
+  if (home && away) {
+    const matchDate = date ? new Date(date) : new Date();
+    
+    // Run TSDB lookup
+    try {
+      tsdbResult = await tsdb.fetchTSDBFixture({
+        home: home.trim(),
+        away: away.trim(),
+        date: matchDate
+      });
+    } catch (err) {
+      errors.push({ source: 'TSDB', error: err.message });
+    }
+    
+    // Run LSTV scraper
+    try {
+      lstvResult = await lstv.fetchLSTV({
+        home: home.trim(),
+        away: away.trim(),
+        date: matchDate,
+        kickoffUtc: tsdbResult?.kickoffUtc || null,
+        league: tsdbResult?.league || league || null
+      });
+    } catch (err) {
+      errors.push({ source: 'LSTV', error: err.message });
+    }
+    
+    // Run Wikipedia lookup if we have league info
+    const leagueName = tsdbResult?.league || league || null;
+    if (leagueName) {
+      try {
+        wikiResult = await wiki.fetchWikiBroadcasters({
+          leagueName,
+          season: null,
+          country: 'UK'
+        });
+      } catch (err) {
+        errors.push({ source: 'Wikipedia', error: err.message });
+      }
+    }
+  }
+  
+  // Build result HTML
+  let resultsHtml = '';
+  
+  if (errors.length > 0) {
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>Errors</h3>
+      <ul>
+        ${errors.map(e => `<li><strong>${escapeHtml(e.source)}:</strong> ${escapeHtml(e.error)}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+  
+  // TSDB Results
+  if (tsdbResult) {
+    const matched = tsdbResult.matched;
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid ${matched ? '#00b894' : '#f39c12'};">
+      <h3>TheSportsDB (TSDB)</h3>
+      <table>
+        <tr><th>Matched</th><td>${matched ? '✅ Yes' : '❌ No'}</td></tr>
+        ${matched ? `
+        <tr><th>League</th><td>${escapeHtml(tsdbResult.league || 'N/A')}</td></tr>
+        <tr><th>Venue</th><td>${escapeHtml(tsdbResult.venue || 'N/A')}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(tsdbResult.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Event ID</th><td>${escapeHtml(tsdbResult.eventId || 'N/A')}</td></tr>
+        <tr><th>TV Stations</th><td>${tsdbResult.tvStations?.length ? tsdbResult.tvStations.join(', ') : '<em>None</em>'}</td></tr>
+        ` : ''}
+      </table>
+    </div>`;
+  }
+  
+  // LSTV Results
+  if (lstvResult) {
+    const hasChannels = (lstvResult.regionChannels || []).length > 0;
+    const channelRows = (lstvResult.regionChannels || [])
+      .map(rc => `<tr><td>${escapeHtml(rc.region || '')}</td><td>${escapeHtml(rc.channel || '')}</td></tr>`)
+      .join('');
+    
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid ${hasChannels ? '#00b894' : '#f39c12'};">
+      <h3>LiveSoccerTV (LSTV)</h3>
+      <table>
+        <tr><th>URL Scraped</th><td>${lstvResult.url ? `<a href="${escapeHtml(lstvResult.url)}" target="_blank">${escapeHtml(lstvResult.url)}</a>` : '<em>None</em>'}</td></tr>
+        <tr><th>Match Score</th><td>${lstvResult.matchScore !== null ? lstvResult.matchScore : 'N/A'}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(lstvResult.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Channels Found</th><td>${(lstvResult.regionChannels || []).length}</td></tr>
+      </table>
+      ${hasChannels ? `
+      <h4>TV Channels by Region</h4>
+      <table>
+        <thead><tr><th>Region</th><th>Channel</th></tr></thead>
+        <tbody>${channelRows}</tbody>
+      </table>
+      ` : '<p><em>No TV channels found.</em></p>'}
+    </div>`;
+  }
+  
+  // Wikipedia Results
+  if (wikiResult) {
+    const hasBroadcasters = (wikiResult.broadcasters || []).length > 0;
+    const broadcasterRows = (wikiResult.broadcasters || []).slice(0, 20)
+      .map(b => `<tr><td>${escapeHtml(b.region || '')}</td><td>${escapeHtml(b.channel || '')}</td></tr>`)
+      .join('');
+    
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid ${hasBroadcasters ? '#00b894' : '#f39c12'};">
+      <h3>Wikipedia Broadcasters</h3>
+      <table>
+        <tr><th>Source URL</th><td>${wikiResult.sourceUrl ? `<a href="${escapeHtml(wikiResult.sourceUrl)}" target="_blank">${escapeHtml(wikiResult.sourceUrl)}</a>` : '<em>None</em>'}</td></tr>
+        <tr><th>Broadcasters Found</th><td>${(wikiResult.broadcasters || []).length}</td></tr>
+      </table>
+      ${hasBroadcasters ? `
+      <h4>Broadcasters (first 20)</h4>
+      <table>
+        <thead><tr><th>Region</th><th>Channel</th></tr></thead>
+        <tbody>${broadcasterRows}</tbody>
+      </table>
+      ${wikiResult.broadcasters.length > 20 ? `<p class="muted">... and ${wikiResult.broadcasters.length - 20} more</p>` : ''}
+      ` : '<p><em>No broadcasters found for this league.</em></p>'}
+    </div>`;
+  }
+  
+  // Summary card when we have results
+  if (home && away && (tsdbResult || lstvResult || wikiResult)) {
+    const tsdbStatus = tsdbResult?.matched ? '✅' : '❌';
+    const lstvStatus = lstvResult?.regionChannels?.length > 0 ? '✅' : '❌';
+    const wikiStatus = wikiResult?.broadcasters?.length > 0 ? '✅' : '❌';
+    
+    resultsHtml = `
+    <div class="card" style="background: #1a2634;">
+      <h3>Summary: ${escapeHtml(home)} vs ${escapeHtml(away)}</h3>
+      <table>
+        <tr><th>TheSportsDB</th><td>${tsdbStatus} ${tsdbResult?.matched ? `(${tsdbResult.league || 'league found'})` : '(not matched)'}</td></tr>
+        <tr><th>LiveSoccerTV</th><td>${lstvStatus} (${lstvResult?.regionChannels?.length || 0} channels)</td></tr>
+        <tr><th>Wikipedia</th><td>${wikiStatus} (${wikiResult?.broadcasters?.length || 0} broadcasters)</td></tr>
+      </table>
+    </div>
+    ${resultsHtml}`;
+  }
+  
+  const body = `
+  <div class="card">
+    <h2>Test Fixture (All Data Sources)</h2>
+    <p>Test TV data lookup across all three sources: TheSportsDB, LiveSoccerTV, and Wikipedia.</p>
+    
+    <form method="get" action="/admin/test-fixture">
+      <p>
+        <label>Home Team<br>
+        <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required></label>
+      </p>
+      <p>
+        <label>Away Team<br>
+        <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required></label>
+      </p>
+      <p>
+        <label>Date (optional)<br>
+        <input type="date" name="date" value="${escapeHtml(date || '')}"></label>
+        <span class="muted">Leave blank for today's date.</span>
+      </p>
+      <p>
+        <label>League (optional, for Wikipedia)<br>
+        <input type="text" name="league" value="${escapeHtml(league || '')}" placeholder="e.g. Premier League"></label>
+        <span class="muted">Auto-detected from TSDB if found.</span>
+      </p>
+      <p><button type="submit">Search All Sources</button></p>
+    </form>
+  </div>
+  
+  ${resultsHtml}
+  
+  <div class="card">
+    <h3>Data Sources</h3>
+    <ul>
+      <li><strong>TheSportsDB (TSDB):</strong> Provides fixture info (league, venue, kickoff) and sometimes TV stations.</li>
+      <li><strong>LiveSoccerTV (LSTV):</strong> Scrapes per-match TV channels by region using Puppeteer.</li>
+      <li><strong>Wikipedia:</strong> Parses league broadcasting rights tables for UK/global broadcasters.</li>
+    </ul>
+    <p>
+      <a href="/health/lstv" target="_blank">LSTV Health Status →</a> |
+      <a href="/health/tsdb" target="_blank">TSDB Health Status →</a>
+    </p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Test Fixture - Telegram Sports TV Bot', body));
+});
+
 // --------- LSTV Health Check (Public) ---------
 
 app.get('/health/lstv', async (req, res) => {
   try {
     const result = await lstv.healthCheck();
+    res.json(result);
+  } catch (err) {
+    res.json({
+      ok: false,
+      latencyMs: 0,
+      error: err.message || String(err)
+    });
+  }
+});
+
+// --------- TSDB Health Check (Public) ---------
+
+app.get('/health/tsdb', async (req, res) => {
+  try {
+    const result = await tsdb.healthCheck();
     res.json(result);
   } catch (err) {
     res.json({

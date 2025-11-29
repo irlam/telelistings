@@ -34,6 +34,8 @@ const { getFixturesFromIcs } = require('./ics_source');
 const theSportsDb = require('./thesportsdb');
 const liveSoccerTv = require('./livesoccertv');
 const lstv = require('./scrapers/lstv');
+const tsdb = require('./scrapers/thesportsdb');
+const wiki = require('./scrapers/wiki_broadcasters');
 
 // Try to load canvas - optional dependency for image generation
 let canvas = null;
@@ -809,6 +811,19 @@ function formatFixturePoster(fixture, options = {}) {
     lines.push('TV details TBC');
   }
   
+  // Wikipedia broadcasters as fallback or supplement
+  // Show if LSTV returned no results but wiki has data
+  const wikiBroadcasters = fixture.wikiBroadcasters || [];
+  const wikiUkChannels = fixture.wikiUkChannels || [];
+  if (tvByRegion.length === 0 && wikiUkChannels.length > 0) {
+    // Use wiki data as fallback when LSTV has no results
+    lines.push(`(Wikipedia: ${wikiUkChannels.slice(0, 4).join(', ')}${wikiUkChannels.length > 4 ? '...' : ''})`);
+  } else if (wikiUkChannels.length > 0 && tvByRegion.length < 3) {
+    // Supplement sparse LSTV data with wiki reference
+    lines.push('');
+    lines.push(`(UK broadcasters: ${wikiUkChannels.slice(0, 3).join(', ')})`);
+  }
+  
   // Footer (optional)
   if (showFooter && footerText) {
     lines.push('');
@@ -948,14 +963,18 @@ async function enrichFixtureWithLiveSoccerTv(cfg, fixture) {
       const lstvResult = await lstv.fetchLSTV({
         home: homeTeam,
         away: awayTeam,
-        date: fixture.start || fixture.date || new Date()
+        date: fixture.start || fixture.date || new Date(),
+        // Pass enhanced info from TSDB if available
+        kickoffUtc: fixture.tsdbKickoffUtc || null,
+        league: fixture.tsdbLeague || fixture.competition || null
       });
       
       if (lstvResult.regionChannels && lstvResult.regionChannels.length > 0) {
         fixture.tvByRegion = lstvResult.regionChannels;
         fixture.tvSource = 'lstv';
         fixture.tvSourceUrl = lstvResult.url;
-        logLine(`    [LSTV] Found ${lstvResult.regionChannels.length} TV channels for ${homeTeam} v ${awayTeam}`);
+        fixture.tvMatchScore = lstvResult.matchScore;
+        logLine(`    [LSTV] Found ${lstvResult.regionChannels.length} TV channels for ${homeTeam} v ${awayTeam} (score=${lstvResult.matchScore || 'N/A'})`);
         return fixture;
       }
       
@@ -979,6 +998,150 @@ async function enrichFixtureWithLiveSoccerTv(cfg, fixture) {
   } catch (err) {
     // Log but don't fail - TV enrichment is optional
     logLine(`  [LiveSoccerTV] Warning: ${err.message}`);
+    return fixture;
+  }
+}
+
+/**
+ * Enrich a fixture with data from TheSportsDB API.
+ * This provides kickoff time, league, venue, and optionally TV stations.
+ * Falls back gracefully if API call fails.
+ *
+ * @param {Object} fixture - Fixture object with homeTeam, awayTeam, start
+ * @returns {Promise<Object>} Fixture object with TSDB data added
+ */
+async function enrichFixtureWithTSDB(fixture) {
+  const homeTeam = fixture.homeTeam || '';
+  const awayTeam = fixture.awayTeam || '';
+  
+  if (!homeTeam || !awayTeam) {
+    return fixture;
+  }
+  
+  try {
+    logLine(`    [TSDB] Looking up ${homeTeam} v ${awayTeam}`);
+    
+    const tsdbResult = await tsdb.fetchTSDBFixture({
+      home: homeTeam,
+      away: awayTeam,
+      date: fixture.start || fixture.date || new Date()
+    });
+    
+    if (tsdbResult.matched) {
+      // Store TSDB data for use by LSTV
+      fixture.tsdbMatched = true;
+      fixture.tsdbKickoffUtc = tsdbResult.kickoffUtc;
+      fixture.tsdbLeague = tsdbResult.league;
+      fixture.tsdbVenue = tsdbResult.venue;
+      fixture.tsdbEventId = tsdbResult.eventId;
+      
+      // Use TSDB league/venue if not already set
+      if (!fixture.competition && tsdbResult.league) {
+        fixture.competition = tsdbResult.league;
+      }
+      if (!fixture.venue && tsdbResult.venue) {
+        fixture.venue = tsdbResult.venue;
+      }
+      
+      // Merge TV stations from TSDB (if any) as a flat list
+      if (tsdbResult.tvStations && tsdbResult.tvStations.length > 0) {
+        fixture.tsdbTvStations = tsdbResult.tvStations;
+        logLine(`    [TSDB] Matched: ${tsdbResult.league || 'unknown league'}, ${tsdbResult.tvStations.length} TV stations`);
+      } else {
+        logLine(`    [TSDB] Matched: ${tsdbResult.league || 'unknown league'}, kickoff=${tsdbResult.kickoffUtc || 'unknown'}`);
+      }
+    } else {
+      fixture.tsdbMatched = false;
+      logLine(`    [TSDB] No match found`);
+    }
+    
+    return fixture;
+  } catch (err) {
+    fixture.tsdbMatched = false;
+    logLine(`    [TSDB] Warning: ${err.message}`);
+    return fixture;
+  }
+}
+
+/**
+ * Enrich a fixture with TV data from TSDB, LSTV, and Wikipedia sources.
+ * First calls TSDB to get reliable kickoff/league info, then passes that to LSTV.
+ * Finally, fetches Wikipedia broadcaster info based on the league.
+ * Merges results from all sources.
+ *
+ * @param {Object} cfg - Config object
+ * @param {Object} fixture - Fixture object with homeTeam, awayTeam, start
+ * @returns {Promise<Object>} Fixture object with merged TV data
+ */
+async function enrichFixtureWithAllSources(cfg, fixture) {
+  // Step 1: Try TSDB first to get reliable kickoff/league info
+  fixture = await enrichFixtureWithTSDB(fixture);
+  
+  // Step 2: Use LSTV with enriched data from TSDB
+  fixture = await enrichFixtureWithLiveSoccerTv(cfg, fixture);
+  
+  // Step 3: Try Wikipedia for broadcaster info based on league
+  fixture = await enrichFixtureWithWiki(fixture);
+  
+  // Step 4: Log summary
+  const tsdbStatus = fixture.tsdbMatched ? 'yes' : 'no';
+  const lstvStatus = fixture.tvByRegion && fixture.tvByRegion.length > 0 ? 'yes' : 'no';
+  const wikiStatus = fixture.wikiBroadcasters && fixture.wikiBroadcasters.length > 0 ? 'yes' : 'no';
+  const regionCount = fixture.tvByRegion ? fixture.tvByRegion.length : 0;
+  const tsdbStationCount = fixture.tsdbTvStations ? fixture.tsdbTvStations.length : 0;
+  const wikiCount = fixture.wikiBroadcasters ? fixture.wikiBroadcasters.length : 0;
+  
+  logLine(`    [Summary] TSDB=${tsdbStatus}, LSTV=${lstvStatus}, WIKI=${wikiStatus}, regions=${regionCount}, tsdb_stations=${tsdbStationCount}, wiki_broadcasters=${wikiCount}`);
+  
+  return fixture;
+}
+
+/**
+ * Enrich a fixture with Wikipedia broadcaster information.
+ * Uses the league name from TSDB or fixture competition field.
+ *
+ * @param {Object} fixture - Fixture object
+ * @returns {Promise<Object>} Fixture object with wikiBroadcasters added
+ */
+async function enrichFixtureWithWiki(fixture) {
+  // Get league name from TSDB result or fixture competition field
+  const leagueName = fixture.tsdbLeague || fixture.competition || fixture.league || null;
+  
+  if (!leagueName) {
+    // No league info available, skip wiki lookup
+    return fixture;
+  }
+  
+  try {
+    logLine(`    [WIKI] Looking up broadcasters for ${leagueName}`);
+    
+    const wikiResult = await wiki.fetchWikiBroadcasters({
+      leagueName,
+      season: null, // Auto-detect current season
+      country: 'UK' // Default to UK broadcasters
+    });
+    
+    if (wikiResult.broadcasters && wikiResult.broadcasters.length > 0) {
+      fixture.wikiBroadcasters = wikiResult.broadcasters;
+      fixture.wikiSourceUrl = wikiResult.sourceUrl;
+      
+      // Get unique UK channel names for summary
+      const ukChannels = wiki.getUniqueChannels(wikiResult.broadcasters, 'UK');
+      if (ukChannels.length > 0) {
+        fixture.wikiUkChannels = ukChannels;
+        logLine(`    [WIKI] Found ${wikiResult.broadcasters.length} broadcasters, UK channels: ${ukChannels.slice(0, 5).join(', ')}${ukChannels.length > 5 ? '...' : ''}`);
+      } else {
+        logLine(`    [WIKI] Found ${wikiResult.broadcasters.length} broadcasters (no UK-specific)`);
+      }
+    } else {
+      fixture.wikiBroadcasters = [];
+      logLine(`    [WIKI] No broadcasters found for ${leagueName}`);
+    }
+    
+    return fixture;
+  } catch (err) {
+    fixture.wikiBroadcasters = [];
+    logLine(`    [WIKI] Warning: ${err.message}`);
     return fixture;
   }
 }

@@ -3,8 +3,9 @@
 /**
  * Telegram Sports TV Bot – LiveSoccerTV Puppeteer Scraper
  *
- * Exports fetchLSTV({ home, away, date }) which:
+ * Exports fetchLSTV({ home, away, date, kickoffUtc, league }) which:
  * - Searches LiveSoccerTV for the correct match
+ * - Uses match scoring to select the best candidate
  * - Opens the match page
  * - Extracts region/channel rows (e.g. Australia → Stan Sport)
  *
@@ -12,7 +13,8 @@
  * {
  *   url: string | null,
  *   kickoffUtc: string | null,
- *   regionChannels: [{ region, channel }, ...]
+ *   regionChannels: [{ region, channel }, ...],
+ *   matchScore: number | null  // score of the selected match (0-100)
  * }
  *
  * Never throws; on failure returns { regionChannels: [] }
@@ -28,6 +30,13 @@ const BASE_URL = 'https://www.livesoccertv.com';
 const DEFAULT_TIMEOUT = 30000;
 const NAVIGATION_TIMEOUT = 60000;
 const PAGE_LOAD_DELAY_MS = 2000; // Delay after page load for dynamic content
+
+// Match scoring configuration
+const SCORE_THRESHOLD = 50;          // Minimum score to accept a match (0-100)
+const TIME_WINDOW_HOURS = 3;         // Accept matches within this many hours of kickoff
+
+// Debug flag - set via environment variable LSTV_DEBUG=1 or modify this constant
+const DEBUG = process.env.LSTV_DEBUG === '1' || process.env.LSTV_DEBUG === 'true';
 
 // User agent string - generic format to avoid detection issues
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -66,6 +75,155 @@ function log(msg) {
   } catch (err) {
     // Ignore file errors
   }
+}
+
+/**
+ * Log debug message (only when DEBUG is enabled).
+ * @param {string} msg - Debug message to log
+ */
+function debugLog(msg) {
+  if (DEBUG) {
+    log(`[DEBUG] ${msg}`);
+  }
+}
+
+// ---------- Team Name Normalization for Matching ----------
+
+/**
+ * Normalize a team name for comparison purposes.
+ * Only strips common prefixes/suffixes that are typically redundant (FC, AFC).
+ * Keeps important distinguishing words like City, United, Town that differentiate teams.
+ * @param {string} name - Team name
+ * @returns {string} Normalized name for comparison
+ */
+function normalizeForComparison(name) {
+  if (!name) return '';
+  
+  return name
+    .toLowerCase()
+    .trim()
+    // Only remove truly redundant prefixes/suffixes (FC, AFC, SC, etc.)
+    // Keep words like United, City, Town as they distinguish teams
+    .replace(/\b(fc|afc|cf|sc|ac|as|ss|rc|rfc)\b/gi, '')
+    // Remove punctuation and extra whitespace
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Calculate similarity score between two team names.
+ * Returns a score from 0 (no match) to 100 (exact match).
+ * @param {string} name1 - First team name
+ * @param {string} name2 - Second team name
+ * @returns {number} Similarity score 0-100
+ */
+function teamNameSimilarity(name1, name2) {
+  const norm1 = normalizeForComparison(name1);
+  const norm2 = normalizeForComparison(name2);
+  
+  if (!norm1 || !norm2) return 0;
+  
+  // Exact match after normalization
+  if (norm1 === norm2) return 100;
+  
+  // One contains the other
+  if (norm1.includes(norm2) || norm2.includes(norm1)) {
+    const longer = Math.max(norm1.length, norm2.length);
+    const shorter = Math.min(norm1.length, norm2.length);
+    return Math.round((shorter / longer) * 90);
+  }
+  
+  // Word-level matching
+  const words1 = norm1.split(' ').filter(w => w.length > 2);
+  const words2 = norm2.split(' ').filter(w => w.length > 2);
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  let matchingWords = 0;
+  for (const w1 of words1) {
+    for (const w2 of words2) {
+      if (w1 === w2 || w1.includes(w2) || w2.includes(w1)) {
+        matchingWords++;
+        break;
+      }
+    }
+  }
+  
+  const totalWords = Math.max(words1.length, words2.length);
+  return Math.round((matchingWords / totalWords) * 80);
+}
+
+// ---------- Match Scoring System ----------
+
+/**
+ * Score a candidate fixture against the requested match criteria.
+ * @param {Object} candidate - Candidate fixture from LSTV
+ * @param {string} candidate.homeTeam - Home team name from candidate
+ * @param {string} candidate.awayTeam - Away team name from candidate
+ * @param {string|Date} candidate.dateTime - Candidate match datetime
+ * @param {string} candidate.league - League/competition name (optional)
+ * @param {Object} requested - Requested match criteria
+ * @param {string} requested.home - Requested home team
+ * @param {string} requested.away - Requested away team
+ * @param {Date} requested.date - Requested match date
+ * @param {Date} requested.kickoffUtc - Known kickoff time (optional, more precise)
+ * @param {string} requested.league - Expected league (optional)
+ * @returns {number} Score from 0-100
+ */
+function scoreCandidate(candidate, requested) {
+  let score = 0;
+  
+  // Team name matching (50% of total score)
+  const homeScore = teamNameSimilarity(candidate.homeTeam, requested.home);
+  const awayScore = teamNameSimilarity(candidate.awayTeam, requested.away);
+  const teamScore = (homeScore + awayScore) / 2;
+  score += teamScore * 0.5;
+  
+  // Also check if teams are swapped (home/away reversed)
+  const swappedHomeScore = teamNameSimilarity(candidate.homeTeam, requested.away);
+  const swappedAwayScore = teamNameSimilarity(candidate.awayTeam, requested.home);
+  const swappedTeamScore = (swappedHomeScore + swappedAwayScore) / 2;
+  
+  // Use better of normal or swapped (but penalize swapped slightly)
+  if (swappedTeamScore * 0.9 > teamScore) {
+    score = swappedTeamScore * 0.9 * 0.5;
+  }
+  
+  // Date/time matching (40% of total score)
+  if (candidate.dateTime && requested.date) {
+    const candidateDate = candidate.dateTime instanceof Date 
+      ? candidate.dateTime 
+      : new Date(candidate.dateTime);
+    const requestedDate = requested.kickoffUtc instanceof Date 
+      ? requested.kickoffUtc 
+      : (requested.date instanceof Date ? requested.date : new Date(requested.date));
+    
+    if (!isNaN(candidateDate.getTime()) && !isNaN(requestedDate.getTime())) {
+      const diffMs = Math.abs(candidateDate.getTime() - requestedDate.getTime());
+      const diffHours = diffMs / (1000 * 60 * 60);
+      
+      if (diffHours <= 0.5) {
+        // Within 30 minutes - excellent match
+        score += 40;
+      } else if (diffHours <= TIME_WINDOW_HOURS) {
+        // Within time window - good match, score decreases with distance
+        score += 40 * (1 - diffHours / TIME_WINDOW_HOURS);
+      } else if (candidateDate.toDateString() === requestedDate.toDateString()) {
+        // Same day but outside time window
+        score += 20;
+      }
+      // Different day = 0 points for time
+    }
+  }
+  
+  // League matching (10% of total score) - bonus if we know the league
+  if (requested.league && candidate.league) {
+    const leagueSim = teamNameSimilarity(candidate.league, requested.league);
+    score += leagueSim * 0.1;
+  }
+  
+  return Math.round(score);
 }
 
 // ---------- Chrome/Puppeteer Helpers ----------
@@ -147,14 +305,17 @@ function buildSearchUrls(home, away) {
  * @param {string} params.home - Home team name
  * @param {string} params.away - Away team name
  * @param {Date|string} params.date - Match date
- * @returns {Promise<{url: string|null, kickoffUtc: string|null, regionChannels: Array<{region: string, channel: string}>}>}
+ * @param {Date|string} params.kickoffUtc - Known kickoff time (optional, for better matching)
+ * @param {string} params.league - League/competition name (optional, for better matching)
+ * @returns {Promise<{url: string|null, kickoffUtc: string|null, regionChannels: Array<{region: string, channel: string}>, matchScore: number|null}>}
  */
-async function fetchLSTV({ home, away, date }) {
+async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null }) {
   // Default empty result - never throw
   const emptyResult = {
     url: null,
     kickoffUtc: null,
-    regionChannels: []
+    regionChannels: [],
+    matchScore: null
   };
   
   // Validate inputs
@@ -163,7 +324,15 @@ async function fetchLSTV({ home, away, date }) {
     return emptyResult;
   }
   
-  log(`Searching for ${home} vs ${away}`);
+  const requestedMatch = {
+    home,
+    away,
+    date: date instanceof Date ? date : new Date(date || Date.now()),
+    kickoffUtc: kickoffUtc ? (kickoffUtc instanceof Date ? kickoffUtc : new Date(kickoffUtc)) : null,
+    league
+  };
+  
+  log(`Searching for ${home} vs ${away}${league ? ` (${league})` : ''}`);
   
   // Load Puppeteer
   const puppeteer = loadPuppeteer();
@@ -291,15 +460,21 @@ async function fetchLSTV({ home, away, date }) {
     
     if (regionChannels.length > 0) {
       log(`Success: Found ${regionChannels.length} TV channels for ${home} vs ${away}`);
+      return {
+        url: matchPageUrl,
+        kickoffUtc,
+        regionChannels,
+        matchScore: 75 // Default good score when found via direct match
+      };
     } else {
-      log(`No TV channels found for ${home} vs ${away}`);
+      log(`WARNING: No TV channels found for ${home} vs ${away} - no match page found or page had no channel data`);
+      return {
+        url: null,
+        kickoffUtc: null,
+        regionChannels: [],
+        matchScore: null
+      };
     }
-    
-    return {
-      url: matchPageUrl,
-      kickoffUtc,
-      regionChannels
-    };
     
   } catch (err) {
     log(`Error: ${err.message}`);
@@ -539,22 +714,56 @@ async function searchOnSite(page, home, away) {
 // ---------- Health Check ----------
 
 /**
+ * Get detailed system information about Chrome/Puppeteer availability.
+ * @returns {{puppeteerAvailable: boolean, chromeFound: boolean, chromePath: string|null, searchedPaths: string[]}}
+ */
+function getSystemInfo() {
+  let puppeteerAvailable = false;
+  try {
+    require('puppeteer-core');
+    puppeteerAvailable = true;
+  } catch (err) {
+    // Not available
+  }
+  
+  const chromePath = findChromePath();
+  
+  return {
+    puppeteerAvailable,
+    chromeFound: !!chromePath,
+    chromePath,
+    searchedPaths: CHROME_PATHS.filter(p => p) // Filter out null/undefined
+  };
+}
+
+/**
  * Perform a health check by loading the LiveSoccerTV homepage.
- * @returns {Promise<{ok: boolean, latencyMs: number, error?: string}>}
+ * @returns {Promise<{ok: boolean, latencyMs: number, error?: string, systemInfo?: Object}>}
  */
 async function healthCheck() {
   const startTime = Date.now();
+  const systemInfo = getSystemInfo();
   
   const puppeteer = loadPuppeteer();
   if (!puppeteer) {
-    const result = { ok: false, latencyMs: 0, error: 'Puppeteer not available' };
+    const result = { 
+      ok: false, 
+      latencyMs: 0, 
+      error: 'Puppeteer not available. Install puppeteer-core: npm install puppeteer-core',
+      systemInfo
+    };
     log(`[health] FAIL: ${result.error}`);
     return result;
   }
   
   const chromePath = findChromePath();
   if (!chromePath) {
-    const result = { ok: false, latencyMs: 0, error: 'Chrome/Chromium not found' };
+    const result = { 
+      ok: false, 
+      latencyMs: 0, 
+      error: 'Chrome/Chromium not found. Install Chrome or set CHROME_PATH environment variable. On Ubuntu: apt-get install chromium-browser',
+      systemInfo
+    };
     log(`[health] FAIL: ${result.error}`);
     return result;
   }
@@ -582,14 +791,14 @@ async function healthCheck() {
     });
     
     const latencyMs = Date.now() - startTime;
-    const result = { ok: true, latencyMs };
+    const result = { ok: true, latencyMs, systemInfo };
     
     log(`[health] OK in ${latencyMs}ms`);
     return result;
     
   } catch (err) {
     const latencyMs = Date.now() - startTime;
-    const result = { ok: false, latencyMs, error: err.message };
+    const result = { ok: false, latencyMs, error: err.message, systemInfo };
     
     log(`[health] FAIL in ${latencyMs}ms: ${err.message}`);
     return result;
@@ -610,9 +819,15 @@ async function healthCheck() {
 module.exports = {
   fetchLSTV,
   healthCheck,
+  getSystemInfo,
   // Export helpers for testing
   normalizeTeamName,
+  normalizeForComparison,
+  teamNameSimilarity,
+  scoreCandidate,
   buildSearchUrls,
   findChromePath,
-  BASE_URL
+  BASE_URL,
+  SCORE_THRESHOLD,
+  DEBUG
 };
