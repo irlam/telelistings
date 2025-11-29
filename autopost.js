@@ -963,7 +963,10 @@ async function enrichFixtureWithLiveSoccerTv(cfg, fixture) {
       logLine(`    [LSTV] No results from Puppeteer, trying HTTP fallback`);
     }
     
-    // Use HTTP-based scraper (original livesoccertv module)
+    // Use HTTP-based scraper (original livesoccertv module) as fallback
+    // Note: Always disable Puppeteer here since we either:
+    // 1. Already tried Puppeteer above (if liveSoccerTvUsePuppeteer was true)
+    // 2. Or the user explicitly wants HTTP-only mode (if liveSoccerTvUsePuppeteer was false)
     const enriched = await liveSoccerTv.enrichFixtureWithTvInfo(fixture, {
       usePuppeteer: false
     });

@@ -67,3 +67,33 @@
 [2025-11-29T14:17:46.537Z] [LSTV] Search error: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/search?q=Test%20Team%20A%20Test%20Team%20B
 [2025-11-29T14:17:46.537Z] [LSTV] No TV channels found for Test Team A vs Test Team B
 [2025-11-29T14:17:47.024Z] [LSTV] [health] FAIL in 319ms: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com
+[2025-11-29T14:20:43.431Z] [LSTV] Missing team names: home="", away=""
+[2025-11-29T14:20:43.432Z] [LSTV] Searching for Test Team A vs Test Team B
+[2025-11-29T14:20:43.538Z] [LSTV] Launching Chrome from /usr/bin/chromium-browser
+[2025-11-29T14:20:43.851Z] [LSTV] Trying URL: https://www.livesoccertv.com/match/test-team-a-vs-test-team-b/
+[2025-11-29T14:20:43.865Z] [LSTV] Error with URL https://www.livesoccertv.com/match/test-team-a-vs-test-team-b/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/match/test-team-a-vs-test-team-b/
+[2025-11-29T14:20:43.866Z] [LSTV] Trying URL: https://www.livesoccertv.com/match/test-team-a-v-test-team-b/
+[2025-11-29T14:20:43.899Z] [LSTV] Error with URL https://www.livesoccertv.com/match/test-team-a-v-test-team-b/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/match/test-team-a-v-test-team-b/
+[2025-11-29T14:20:43.899Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/england/test-team-a/
+[2025-11-29T14:20:43.921Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/england/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/england/test-team-a/
+[2025-11-29T14:20:43.922Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/spain/test-team-a/
+[2025-11-29T14:20:43.935Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/spain/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/spain/test-team-a/
+[2025-11-29T14:20:43.936Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/germany/test-team-a/
+[2025-11-29T14:20:43.961Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/germany/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/germany/test-team-a/
+[2025-11-29T14:20:43.961Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/italy/test-team-a/
+[2025-11-29T14:20:43.983Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/italy/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/italy/test-team-a/
+[2025-11-29T14:20:43.984Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/france/test-team-a/
+[2025-11-29T14:20:44.008Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/france/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/france/test-team-a/
+[2025-11-29T14:20:44.008Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/scotland/test-team-a/
+[2025-11-29T14:20:44.026Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/scotland/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/scotland/test-team-a/
+[2025-11-29T14:20:44.027Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/wales/test-team-a/
+[2025-11-29T14:20:44.056Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/wales/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/wales/test-team-a/
+[2025-11-29T14:20:44.056Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/netherlands/test-team-a/
+[2025-11-29T14:20:44.075Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/netherlands/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/netherlands/test-team-a/
+[2025-11-29T14:20:44.076Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/portugal/test-team-a/
+[2025-11-29T14:20:44.096Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/portugal/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/portugal/test-team-a/
+[2025-11-29T14:20:44.096Z] [LSTV] Trying site search...
+[2025-11-29T14:20:44.096Z] [LSTV] Searching: https://www.livesoccertv.com/search?q=Test%20Team%20A%20Test%20Team%20B
+[2025-11-29T14:20:44.119Z] [LSTV] Search error: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/search?q=Test%20Team%20A%20Test%20Team%20B
+[2025-11-29T14:20:44.119Z] [LSTV] No TV channels found for Test Team A vs Test Team B
+[2025-11-29T14:20:44.482Z] [LSTV] [health] FAIL in 286ms: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com

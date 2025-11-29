@@ -27,8 +27,13 @@ const path = require('path');
 const BASE_URL = 'https://www.livesoccertv.com';
 const DEFAULT_TIMEOUT = 30000;
 const NAVIGATION_TIMEOUT = 60000;
+const PAGE_LOAD_DELAY_MS = 2000; // Delay after page load for dynamic content
 
-// Chrome executable paths to try
+// User agent string - generic format to avoid detection issues
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// Chrome executable paths to try (environment variables take precedence)
+// This covers common installation paths across Linux, macOS, and Windows
 const CHROME_PATHS = [
   process.env.CHROME_PATH,
   process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -204,9 +209,7 @@ async function fetchLSTV({ home, away, date }) {
     });
     
     // Set user agent
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
+    await page.setUserAgent(USER_AGENT);
     
     // Set navigation timeout
     page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT);
@@ -229,8 +232,8 @@ async function fetchLSTV({ home, away, date }) {
           timeout: NAVIGATION_TIMEOUT
         });
         
-        // Wait a bit for dynamic content
-        await page.waitForTimeout(2000);
+        // Wait for dynamic content to load
+        await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
         
         // Check if this is a match page or team schedule
         const isMatchPage = url.includes('/match/');
@@ -257,7 +260,7 @@ async function fetchLSTV({ home, away, date }) {
               timeout: NAVIGATION_TIMEOUT
             });
             
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
             
             const result = await extractTvChannelsFromPage(page);
             if (result.regionChannels.length > 0) {
@@ -486,7 +489,7 @@ async function searchOnSite(page, home, away) {
       timeout: NAVIGATION_TIMEOUT
     });
     
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
     
     // Look for match links in search results
     const matchLink = await page.evaluate((homeLower, awayLower) => {
@@ -513,7 +516,7 @@ async function searchOnSite(page, home, away) {
         timeout: NAVIGATION_TIMEOUT
       });
       
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
       
       const result = await extractTvChannelsFromPage(page);
       if (result.regionChannels.length > 0) {
