@@ -1,0 +1,3522 @@
+{
+  "botToken": "8447191679:AAEDM12qtpkOkSQCr1rf544Fpdfu9YtnlRM",
+  "timezone": "Europe/London",
+  "icsUrl": "https://thefishy.co.uk/calendar/Man+Utd",
+  "icsDaysAhead": 7,
+  "channels": [
+    {
+      "id": "@FootballOnTvUK",
+      "label": "UK Football",
+      "useTheFishyMulti": true,
+      "multiMaxTeams": 8,
+      "multiIcsDelayMs": 2000,
+      "teams": [
+        {
+          "label": "Arsenal",
+          "country": "england",
+          "slug": "arsenal"
+        },
+        {
+          "label": "Aston Villa",
+          "country": "england",
+          "slug": "aston-villa"
+        },
+        {
+          "label": "Bournemouth",
+          "country": "england",
+          "slug": "bournemouth"
+        },
+        {
+          "label": "Brentford",
+          "country": "england",
+          "slug": "brentford"
+        },
+        {
+          "label": "Brighton",
+          "country": "england",
+          "slug": "brighton"
+        },
+        {
+          "label": "Burnley",
+          "country": "england",
+          "slug": "burnley"
+        },
+        {
+          "label": "Chelsea",
+          "country": "england",
+          "slug": "chelsea"
+        },
+        {
+          "label": "Crystal Palace",
+          "country": "england",
+          "slug": "crystal-palace"
+        },
+        {
+          "label": "Everton",
+          "country": "england",
+          "slug": "everton"
+        },
+        {
+          "label": "Fulham",
+          "country": "england",
+          "slug": "fulham"
+        },
+        {
+          "label": "Leeds",
+          "country": "england",
+          "slug": "leeds"
+        },
+        {
+          "label": "Liverpool",
+          "country": "england",
+          "slug": "liverpool"
+        },
+        {
+          "label": "Man City",
+          "country": "england",
+          "slug": "man-city"
+        },
+        {
+          "label": "Man Utd",
+          "country": "england",
+          "slug": "man-utd"
+        },
+        {
+          "label": "Newcastle",
+          "country": "england",
+          "slug": "newcastle"
+        },
+        {
+          "label": "Nottingham Forest",
+          "country": "england",
+          "slug": "nottingham-forest"
+        },
+        {
+          "label": "Sunderland",
+          "country": "england",
+          "slug": "sunderland"
+        },
+        {
+          "label": "Tottenham",
+          "country": "england",
+          "slug": "tottenham"
+        },
+        {
+          "label": "West Ham",
+          "country": "england",
+          "slug": "west-ham"
+        },
+        {
+          "label": "Wolverhampton",
+          "country": "england",
+          "slug": "wolverhampton"
+        },
+        {
+          "label": "Birmingham",
+          "country": "england",
+          "slug": "birmingham"
+        },
+        {
+          "label": "Blackburn",
+          "country": "england",
+          "slug": "blackburn"
+        },
+        {
+          "label": "Bristol City",
+          "country": "england",
+          "slug": "bristol-city"
+        },
+        {
+          "label": "Charlton",
+          "country": "england",
+          "slug": "charlton"
+        },
+        {
+          "label": "Coventry",
+          "country": "england",
+          "slug": "coventry"
+        },
+        {
+          "label": "Derby",
+          "country": "england",
+          "slug": "derby"
+        },
+        {
+          "label": "Hull",
+          "country": "england",
+          "slug": "hull"
+        },
+        {
+          "label": "Ipswich",
+          "country": "england",
+          "slug": "ipswich"
+        },
+        {
+          "label": "Leicester",
+          "country": "england",
+          "slug": "leicester"
+        },
+        {
+          "label": "Middlesbrough",
+          "country": "england",
+          "slug": "middlesbrough"
+        },
+        {
+          "label": "Millwall",
+          "country": "england",
+          "slug": "millwall"
+        },
+        {
+          "label": "Norwich",
+          "country": "england",
+          "slug": "norwich"
+        },
+        {
+          "label": "Oxford Utd",
+          "country": "england",
+          "slug": "oxford-utd"
+        },
+        {
+          "label": "Portsmouth",
+          "country": "england",
+          "slug": "portsmouth"
+        },
+        {
+          "label": "Preston",
+          "country": "england",
+          "slug": "preston"
+        },
+        {
+          "label": "QPR",
+          "country": "england",
+          "slug": "qpr"
+        },
+        {
+          "label": "Sheff Wed",
+          "country": "england",
+          "slug": "sheff-wed"
+        },
+        {
+          "label": "Sheffield Utd",
+          "country": "england",
+          "slug": "sheffield-utd"
+        },
+        {
+          "label": "Southampton",
+          "country": "england",
+          "slug": "southampton"
+        },
+        {
+          "label": "Stoke",
+          "country": "england",
+          "slug": "stoke"
+        },
+        {
+          "label": "Swansea",
+          "country": "england",
+          "slug": "swansea"
+        },
+        {
+          "label": "Watford",
+          "country": "england",
+          "slug": "watford"
+        },
+        {
+          "label": "West Brom",
+          "country": "england",
+          "slug": "west-brom"
+        },
+        {
+          "label": "Wrexham",
+          "country": "england",
+          "slug": "wrexham"
+        },
+        {
+          "label": "AFC Wimbledon",
+          "country": "england",
+          "slug": "afc-wimbledon"
+        },
+        {
+          "label": "Barnsley",
+          "country": "england",
+          "slug": "barnsley"
+        },
+        {
+          "label": "Blackpool",
+          "country": "england",
+          "slug": "blackpool"
+        },
+        {
+          "label": "Bolton",
+          "country": "england",
+          "slug": "bolton"
+        },
+        {
+          "label": "Bradford",
+          "country": "england",
+          "slug": "bradford"
+        },
+        {
+          "label": "Burton Albion",
+          "country": "england",
+          "slug": "burton-albion"
+        },
+        {
+          "label": "Cardiff",
+          "country": "england",
+          "slug": "cardiff"
+        },
+        {
+          "label": "Doncaster",
+          "country": "england",
+          "slug": "doncaster"
+        },
+        {
+          "label": "Exeter",
+          "country": "england",
+          "slug": "exeter"
+        },
+        {
+          "label": "Huddersfield",
+          "country": "england",
+          "slug": "huddersfield"
+        },
+        {
+          "label": "Leyton Orient",
+          "country": "england",
+          "slug": "leyton-orient"
+        },
+        {
+          "label": "Lincoln City",
+          "country": "england",
+          "slug": "lincoln-city"
+        },
+        {
+          "label": "Luton",
+          "country": "england",
+          "slug": "luton"
+        },
+        {
+          "label": "Mansfield",
+          "country": "england",
+          "slug": "mansfield"
+        },
+        {
+          "label": "Northampton",
+          "country": "england",
+          "slug": "northampton"
+        },
+        {
+          "label": "Peterborough",
+          "country": "england",
+          "slug": "peterborough"
+        },
+        {
+          "label": "Plymouth",
+          "country": "england",
+          "slug": "plymouth"
+        },
+        {
+          "label": "Port Vale",
+          "country": "england",
+          "slug": "port-vale"
+        },
+        {
+          "label": "Reading",
+          "country": "england",
+          "slug": "reading"
+        },
+        {
+          "label": "Rotherham",
+          "country": "england",
+          "slug": "rotherham"
+        },
+        {
+          "label": "Stevenage",
+          "country": "england",
+          "slug": "stevenage"
+        },
+        {
+          "label": "Stockport",
+          "country": "england",
+          "slug": "stockport"
+        },
+        {
+          "label": "Wigan",
+          "country": "england",
+          "slug": "wigan"
+        },
+        {
+          "label": "Wycombe",
+          "country": "england",
+          "slug": "wycombe"
+        },
+        {
+          "label": "Accrington Stanley",
+          "country": "england",
+          "slug": "accrington-stanley"
+        },
+        {
+          "label": "Barnet",
+          "country": "england",
+          "slug": "barnet"
+        },
+        {
+          "label": "Barrow",
+          "country": "england",
+          "slug": "barrow"
+        },
+        {
+          "label": "Bristol Rovers",
+          "country": "england",
+          "slug": "bristol-rovers"
+        },
+        {
+          "label": "Bromley",
+          "country": "england",
+          "slug": "bromley"
+        },
+        {
+          "label": "Cambridge Utd",
+          "country": "england",
+          "slug": "cambridge-utd"
+        },
+        {
+          "label": "Cheltenham",
+          "country": "england",
+          "slug": "cheltenham"
+        },
+        {
+          "label": "Chesterfield",
+          "country": "england",
+          "slug": "chesterfield"
+        },
+        {
+          "label": "Colchester",
+          "country": "england",
+          "slug": "colchester"
+        },
+        {
+          "label": "Crawley Town",
+          "country": "england",
+          "slug": "crawley-town"
+        },
+        {
+          "label": "Crewe",
+          "country": "england",
+          "slug": "crewe"
+        },
+        {
+          "label": "Fleetwood Town",
+          "country": "england",
+          "slug": "fleetwood-town"
+        },
+        {
+          "label": "Gillingham",
+          "country": "england",
+          "slug": "gillingham"
+        },
+        {
+          "label": "Grimsby",
+          "country": "england",
+          "slug": "grimsby"
+        },
+        {
+          "label": "Harrogate Town",
+          "country": "england",
+          "slug": "harrogate-town"
+        },
+        {
+          "label": "MK Dons",
+          "country": "england",
+          "slug": "mk-dons"
+        },
+        {
+          "label": "Newport County",
+          "country": "england",
+          "slug": "newport-county"
+        },
+        {
+          "label": "Notts County",
+          "country": "england",
+          "slug": "notts-county"
+        },
+        {
+          "label": "Oldham",
+          "country": "england",
+          "slug": "oldham"
+        },
+        {
+          "label": "Salford",
+          "country": "england",
+          "slug": "salford"
+        },
+        {
+          "label": "Shrewsbury",
+          "country": "england",
+          "slug": "shrewsbury"
+        },
+        {
+          "label": "Swindon",
+          "country": "england",
+          "slug": "swindon"
+        },
+        {
+          "label": "Tranmere",
+          "country": "england",
+          "slug": "tranmere"
+        },
+        {
+          "label": "Walsall",
+          "country": "england",
+          "slug": "walsall"
+        },
+        {
+          "label": "Aldershot",
+          "country": "england",
+          "slug": "aldershot"
+        },
+        {
+          "label": "Altrincham",
+          "country": "england",
+          "slug": "altrincham"
+        },
+        {
+          "label": "Boreham Wood",
+          "country": "england",
+          "slug": "boreham-wood"
+        },
+        {
+          "label": "Boston Utd",
+          "country": "england",
+          "slug": "boston-utd"
+        },
+        {
+          "label": "Brackley",
+          "country": "england",
+          "slug": "brackley"
+        },
+        {
+          "label": "Braintree Town",
+          "country": "england",
+          "slug": "braintree-town"
+        },
+        {
+          "label": "Carlisle",
+          "country": "england",
+          "slug": "carlisle"
+        },
+        {
+          "label": "Eastleigh",
+          "country": "england",
+          "slug": "eastleigh"
+        },
+        {
+          "label": "FC Halifax",
+          "country": "england",
+          "slug": "fc-halifax"
+        },
+        {
+          "label": "Forest Green",
+          "country": "england",
+          "slug": "forest-green"
+        },
+        {
+          "label": "Gateshead",
+          "country": "england",
+          "slug": "gateshead"
+        },
+        {
+          "label": "Hartlepool",
+          "country": "england",
+          "slug": "hartlepool"
+        },
+        {
+          "label": "Morecambe",
+          "country": "england",
+          "slug": "morecambe"
+        },
+        {
+          "label": "Rochdale",
+          "country": "england",
+          "slug": "rochdale"
+        },
+        {
+          "label": "Scunthorpe",
+          "country": "england",
+          "slug": "scunthorpe"
+        },
+        {
+          "label": "Solihull Moors",
+          "country": "england",
+          "slug": "solihull-moors"
+        },
+        {
+          "label": "Southend",
+          "country": "england",
+          "slug": "southend"
+        },
+        {
+          "label": "Sutton Utd",
+          "country": "england",
+          "slug": "sutton-utd"
+        },
+        {
+          "label": "Tamworth",
+          "country": "england",
+          "slug": "tamworth"
+        },
+        {
+          "label": "Truro City",
+          "country": "england",
+          "slug": "truro-city"
+        },
+        {
+          "label": "Wealdstone",
+          "country": "england",
+          "slug": "wealdstone"
+        },
+        {
+          "label": "Woking",
+          "country": "england",
+          "slug": "woking"
+        },
+        {
+          "label": "Yeovil",
+          "country": "england",
+          "slug": "yeovil"
+        },
+        {
+          "label": "York",
+          "country": "england",
+          "slug": "york"
+        },
+        {
+          "label": "AFC Hornchurch",
+          "country": "england",
+          "slug": "afc-hornchurch"
+        },
+        {
+          "label": "AFC Totton",
+          "country": "england",
+          "slug": "afc-totton"
+        },
+        {
+          "label": "Bath City",
+          "country": "england",
+          "slug": "bath-city"
+        },
+        {
+          "label": "Chelmsford",
+          "country": "england",
+          "slug": "chelmsford"
+        },
+        {
+          "label": "Chesham Utd",
+          "country": "england",
+          "slug": "chesham-utd"
+        },
+        {
+          "label": "Chippenham",
+          "country": "england",
+          "slug": "chippenham"
+        },
+        {
+          "label": "Dagenham",
+          "country": "england",
+          "slug": "dagenham"
+        },
+        {
+          "label": "Dorking Wanderers",
+          "country": "england",
+          "slug": "dorking-wanderers"
+        },
+        {
+          "label": "Dover",
+          "country": "england",
+          "slug": "dover"
+        },
+        {
+          "label": "Eastbourne Boro",
+          "country": "england",
+          "slug": "eastbourne-boro"
+        },
+        {
+          "label": "Ebbsfleet",
+          "country": "england",
+          "slug": "ebbsfleet"
+        },
+        {
+          "label": "Enfield Town",
+          "country": "england",
+          "slug": "enfield-town"
+        },
+        {
+          "label": "Farnborough",
+          "country": "england",
+          "slug": "farnborough"
+        },
+        {
+          "label": "Hampton and Richmond",
+          "country": "england",
+          "slug": "hampton-and-richmond"
+        },
+        {
+          "label": "Hemel",
+          "country": "england",
+          "slug": "hemel"
+        },
+        {
+          "label": "Horsham",
+          "country": "england",
+          "slug": "horsham"
+        },
+        {
+          "label": "Maidenhead Utd",
+          "country": "england",
+          "slug": "maidenhead-utd"
+        },
+        {
+          "label": "Maidstone United",
+          "country": "england",
+          "slug": "maidstone-united"
+        },
+        {
+          "label": "Salisbury",
+          "country": "england",
+          "slug": "salisbury"
+        },
+        {
+          "label": "Slough Town",
+          "country": "england",
+          "slug": "slough-town"
+        },
+        {
+          "label": "Tonbridge Angels",
+          "country": "england",
+          "slug": "tonbridge-angels"
+        },
+        {
+          "label": "Torquay",
+          "country": "england",
+          "slug": "torquay"
+        },
+        {
+          "label": "Weston-S-Mare",
+          "country": "england",
+          "slug": "weston-s-mare"
+        },
+        {
+          "label": "Worthing",
+          "country": "england",
+          "slug": "worthing"
+        },
+        {
+          "label": "AFC Fylde",
+          "country": "england",
+          "slug": "afc-fylde"
+        },
+        {
+          "label": "AFC Telford",
+          "country": "england",
+          "slug": "afc-telford"
+        },
+        {
+          "label": "Alfreton Town",
+          "country": "england",
+          "slug": "alfreton-town"
+        },
+        {
+          "label": "Bedford Town",
+          "country": "england",
+          "slug": "bedford-town"
+        },
+        {
+          "label": "Buxton",
+          "country": "england",
+          "slug": "buxton"
+        },
+        {
+          "label": "Chester",
+          "country": "england",
+          "slug": "chester"
+        },
+        {
+          "label": "Chorley",
+          "country": "england",
+          "slug": "chorley"
+        },
+        {
+          "label": "Curzon Ashton",
+          "country": "england",
+          "slug": "curzon-ashton"
+        },
+        {
+          "label": "Darlington",
+          "country": "england",
+          "slug": "darlington"
+        },
+        {
+          "label": "Hereford",
+          "country": "england",
+          "slug": "hereford"
+        },
+        {
+          "label": "Kidderminster",
+          "country": "england",
+          "slug": "kidderminster"
+        },
+        {
+          "label": "Kings Lynn Town",
+          "country": "england",
+          "slug": "kings-lynn-town"
+        },
+        {
+          "label": "Leamington",
+          "country": "england",
+          "slug": "leamington"
+        },
+        {
+          "label": "Macclesfield",
+          "country": "england",
+          "slug": "macclesfield"
+        },
+        {
+          "label": "Marine",
+          "country": "england",
+          "slug": "marine"
+        },
+        {
+          "label": "Merthyr Town",
+          "country": "england",
+          "slug": "merthyr-town"
+        },
+        {
+          "label": "Oxford City",
+          "country": "england",
+          "slug": "oxford-city"
+        },
+        {
+          "label": "Peterborough Sports",
+          "country": "england",
+          "slug": "peterborough-sports"
+        },
+        {
+          "label": "Radcliffe Borough",
+          "country": "england",
+          "slug": "radcliffe-borough"
+        },
+        {
+          "label": "Scarborough Athletic",
+          "country": "england",
+          "slug": "scarborough-athletic"
+        },
+        {
+          "label": "South Shields",
+          "country": "england",
+          "slug": "south-shields"
+        },
+        {
+          "label": "Southport",
+          "country": "england",
+          "slug": "southport"
+        },
+        {
+          "label": "Spennymoor Town",
+          "country": "england",
+          "slug": "spennymoor-town"
+        },
+        {
+          "label": "Worksop",
+          "country": "england",
+          "slug": "worksop"
+        },
+        {
+          "label": "Belgium W",
+          "country": "england",
+          "slug": "belgium-w"
+        },
+        {
+          "label": "Blackburn U21",
+          "country": "england",
+          "slug": "blackburn-u21"
+        },
+        {
+          "label": "Brighton U21",
+          "country": "england",
+          "slug": "brighton-u21"
+        },
+        {
+          "label": "Burnley U21",
+          "country": "england",
+          "slug": "burnley-u21"
+        },
+        {
+          "label": "Denmark W",
+          "country": "england",
+          "slug": "denmark-w"
+        },
+        {
+          "label": "England W",
+          "country": "england",
+          "slug": "england-w"
+        },
+        {
+          "label": "Everton U21",
+          "country": "england",
+          "slug": "everton-u21"
+        },
+        {
+          "label": "Finland W",
+          "country": "england",
+          "slug": "finland-w"
+        },
+        {
+          "label": "France W",
+          "country": "england",
+          "slug": "france-w"
+        },
+        {
+          "label": "Fulham U21",
+          "country": "england",
+          "slug": "fulham-u21"
+        },
+        {
+          "label": "Germany W",
+          "country": "england",
+          "slug": "germany-w"
+        },
+        {
+          "label": "Iceland W",
+          "country": "england",
+          "slug": "iceland-w"
+        },
+        {
+          "label": "Italy W",
+          "country": "england",
+          "slug": "italy-w"
+        },
+        {
+          "label": "Leeds United U21",
+          "country": "england",
+          "slug": "leeds-united-u21"
+        },
+        {
+          "label": "Leicester U21",
+          "country": "england",
+          "slug": "leicester-u21"
+        },
+        {
+          "label": "Man Utd U21",
+          "country": "england",
+          "slug": "man-utd-u21"
+        },
+        {
+          "label": "Middlesbrough U21",
+          "country": "england",
+          "slug": "middlesbrough-u21"
+        },
+        {
+          "label": "Netherlands W",
+          "country": "england",
+          "slug": "netherlands-w"
+        },
+        {
+          "label": "Newcastle U21",
+          "country": "england",
+          "slug": "newcastle-u21"
+        },
+        {
+          "label": "Norway W",
+          "country": "england",
+          "slug": "norway-w"
+        },
+        {
+          "label": "Nott'm Forest U21",
+          "country": "england",
+          "slug": "nottm-forest-u21"
+        },
+        {
+          "label": "Poland W",
+          "country": "england",
+          "slug": "poland-w"
+        },
+        {
+          "label": "Portugal W",
+          "country": "england",
+          "slug": "portugal-w"
+        },
+        {
+          "label": "Southampton U21",
+          "country": "england",
+          "slug": "southampton-u21"
+        },
+        {
+          "label": "Spain W",
+          "country": "england",
+          "slug": "spain-w"
+        },
+        {
+          "label": "Sunderland U21",
+          "country": "england",
+          "slug": "sunderland-u21"
+        },
+        {
+          "label": "Sweden W",
+          "country": "england",
+          "slug": "sweden-w"
+        },
+        {
+          "label": "Switzerland W",
+          "country": "england",
+          "slug": "switzerland-w"
+        },
+        {
+          "label": "Wales W",
+          "country": "england",
+          "slug": "wales-w"
+        },
+        {
+          "label": "West Brom U21",
+          "country": "england",
+          "slug": "west-brom-u21"
+        },
+        {
+          "label": "West Ham U21",
+          "country": "england",
+          "slug": "west-ham-u21"
+        },
+        {
+          "label": "Wolves U21",
+          "country": "england",
+          "slug": "wolves-u21"
+        },
+        {
+          "label": "Aveley",
+          "country": "england",
+          "slug": "aveley"
+        },
+        {
+          "label": "Billericay",
+          "country": "england",
+          "slug": "billericay"
+        },
+        {
+          "label": "Brentwood",
+          "country": "england",
+          "slug": "brentwood"
+        },
+        {
+          "label": "Burgess Hill Town",
+          "country": "england",
+          "slug": "burgess-hill-town"
+        },
+        {
+          "label": "Canvey Island",
+          "country": "england",
+          "slug": "canvey-island"
+        },
+        {
+          "label": "Carshalton",
+          "country": "england",
+          "slug": "carshalton"
+        },
+        {
+          "label": "Chatham Town",
+          "country": "england",
+          "slug": "chatham-town"
+        },
+        {
+          "label": "Cheshunt",
+          "country": "england",
+          "slug": "cheshunt"
+        },
+        {
+          "label": "Chichester City",
+          "country": "england",
+          "slug": "chichester-city"
+        },
+        {
+          "label": "Cray Valley",
+          "country": "england",
+          "slug": "cray-valley"
+        },
+        {
+          "label": "Cray Wanderers",
+          "country": "england",
+          "slug": "cray-wanderers"
+        },
+        {
+          "label": "Dartford",
+          "country": "england",
+          "slug": "dartford"
+        },
+        {
+          "label": "Dulwich Hamlet",
+          "country": "england",
+          "slug": "dulwich-hamlet"
+        },
+        {
+          "label": "Folkestone Invicta",
+          "country": "england",
+          "slug": "folkestone-invicta"
+        },
+        {
+          "label": "Hashtag United",
+          "country": "england",
+          "slug": "hashtag-united"
+        },
+        {
+          "label": "Lewes",
+          "country": "england",
+          "slug": "lewes"
+        },
+        {
+          "label": "Potters Bar",
+          "country": "england",
+          "slug": "potters-bar"
+        },
+        {
+          "label": "Ramsgate",
+          "country": "england",
+          "slug": "ramsgate"
+        },
+        {
+          "label": "St Albans",
+          "country": "england",
+          "slug": "st-albans"
+        },
+        {
+          "label": "Welling",
+          "country": "england",
+          "slug": "welling"
+        },
+        {
+          "label": "Whitehawk",
+          "country": "england",
+          "slug": "whitehawk"
+        },
+        {
+          "label": "Wingate & Finchley",
+          "country": "england",
+          "slug": "wingate-finchley"
+        },
+        {
+          "label": "Bowers & Pitsea",
+          "country": "england",
+          "slug": "bowers-pitsea"
+        },
+        {
+          "label": "Brantham Athletic",
+          "country": "england",
+          "slug": "brantham-athletic"
+        },
+        {
+          "label": "Brightlingsea Regent",
+          "country": "england",
+          "slug": "brightlingsea-regent"
+        },
+        {
+          "label": "Cambridge City",
+          "country": "england",
+          "slug": "cambridge-city"
+        },
+        {
+          "label": "Concord Rangers",
+          "country": "england",
+          "slug": "concord-rangers"
+        },
+        {
+          "label": "Downham Town",
+          "country": "england",
+          "slug": "downham-town"
+        },
+        {
+          "label": "Felixstowe & Walton",
+          "country": "england",
+          "slug": "felixstowe-walton"
+        },
+        {
+          "label": "Gorleston",
+          "country": "england",
+          "slug": "gorleston"
+        },
+        {
+          "label": "Grays",
+          "country": "england",
+          "slug": "grays"
+        },
+        {
+          "label": "Heybridge Swifts",
+          "country": "england",
+          "slug": "heybridge-swifts"
+        },
+        {
+          "label": "Lowestoft Town",
+          "country": "england",
+          "slug": "lowestoft-town"
+        },
+        {
+          "label": "Maldon & Tiptree",
+          "country": "england",
+          "slug": "maldon-tiptree"
+        },
+        {
+          "label": "Mildenhall Town",
+          "country": "england",
+          "slug": "mildenhall-town"
+        },
+        {
+          "label": "Newmarket Town",
+          "country": "england",
+          "slug": "newmarket-town"
+        },
+        {
+          "label": "Redbridge",
+          "country": "england",
+          "slug": "redbridge"
+        },
+        {
+          "label": "Stanway Rovers",
+          "country": "england",
+          "slug": "stanway-rovers"
+        },
+        {
+          "label": "Takeley",
+          "country": "england",
+          "slug": "takeley"
+        },
+        {
+          "label": "Tilbury",
+          "country": "england",
+          "slug": "tilbury"
+        },
+        {
+          "label": "Waltham Abbey",
+          "country": "england",
+          "slug": "waltham-abbey"
+        },
+        {
+          "label": "Walthamstow",
+          "country": "england",
+          "slug": "walthamstow"
+        },
+        {
+          "label": "Witham Town",
+          "country": "england",
+          "slug": "witham-town"
+        },
+        {
+          "label": "Wroxham",
+          "country": "england",
+          "slug": "wroxham"
+        },
+        {
+          "label": "AFC Portchester",
+          "country": "england",
+          "slug": "afc-portchester"
+        },
+        {
+          "label": "Ascot United",
+          "country": "england",
+          "slug": "ascot-united"
+        },
+        {
+          "label": "Bedfont Sports",
+          "country": "england",
+          "slug": "bedfont-sports"
+        },
+        {
+          "label": "Binfield",
+          "country": "england",
+          "slug": "binfield"
+        },
+        {
+          "label": "Bognor Regis",
+          "country": "england",
+          "slug": "bognor-regis"
+        },
+        {
+          "label": "Egham Town",
+          "country": "england",
+          "slug": "egham-town"
+        },
+        {
+          "label": "Fareham Town",
+          "country": "england",
+          "slug": "fareham-town"
+        },
+        {
+          "label": "Hanworth Villa",
+          "country": "england",
+          "slug": "hanworth-villa"
+        },
+        {
+          "label": "Harrow Borough",
+          "country": "england",
+          "slug": "harrow-borough"
+        },
+        {
+          "label": "Hartley Wintney",
+          "country": "england",
+          "slug": "hartley-wintney"
+        },
+        {
+          "label": "Hayes & Yeading",
+          "country": "england",
+          "slug": "hayes-yeading"
+        },
+        {
+          "label": "Hendon",
+          "country": "england",
+          "slug": "hendon"
+        },
+        {
+          "label": "Horndean",
+          "country": "england",
+          "slug": "horndean"
+        },
+        {
+          "label": "Kingstonian",
+          "country": "england",
+          "slug": "kingstonian"
+        },
+        {
+          "label": "Leatherhead",
+          "country": "england",
+          "slug": "leatherhead"
+        },
+        {
+          "label": "Littlehampton Town",
+          "country": "england",
+          "slug": "littlehampton-town"
+        },
+        {
+          "label": "Met Police",
+          "country": "england",
+          "slug": "met-police"
+        },
+        {
+          "label": "Moneyfields",
+          "country": "england",
+          "slug": "moneyfields"
+        },
+        {
+          "label": "Raynes Park Vale",
+          "country": "england",
+          "slug": "raynes-park-vale"
+        },
+        {
+          "label": "South Park",
+          "country": "england",
+          "slug": "south-park"
+        },
+        {
+          "label": "Southall",
+          "country": "england",
+          "slug": "southall"
+        },
+        {
+          "label": "Westfield",
+          "country": "england",
+          "slug": "westfield"
+        },
+        {
+          "label": "AFC Croydon",
+          "country": "england",
+          "slug": "afc-croydon"
+        },
+        {
+          "label": "Ashford United",
+          "country": "england",
+          "slug": "ashford-united"
+        },
+        {
+          "label": "Beckenham Town",
+          "country": "england",
+          "slug": "beckenham-town"
+        },
+        {
+          "label": "Broadbridge Heath",
+          "country": "england",
+          "slug": "broadbridge-heath"
+        },
+        {
+          "label": "Crowborough Athletic",
+          "country": "england",
+          "slug": "crowborough-athletic"
+        },
+        {
+          "label": "Deal Town",
+          "country": "england",
+          "slug": "deal-town"
+        },
+        {
+          "label": "East Grinstead Town",
+          "country": "england",
+          "slug": "east-grinstead-town"
+        },
+        {
+          "label": "Eastbourne Town",
+          "country": "england",
+          "slug": "eastbourne-town"
+        },
+        {
+          "label": "Erith Town",
+          "country": "england",
+          "slug": "erith-town"
+        },
+        {
+          "label": "Faversham Town",
+          "country": "england",
+          "slug": "faversham-town"
+        },
+        {
+          "label": "Hassocks",
+          "country": "england",
+          "slug": "hassocks"
+        },
+        {
+          "label": "Hastings",
+          "country": "england",
+          "slug": "hastings"
+        },
+        {
+          "label": "Herne Bay",
+          "country": "england",
+          "slug": "herne-bay"
+        },
+        {
+          "label": "Jersey Bulls",
+          "country": "england",
+          "slug": "jersey-bulls"
+        },
+        {
+          "label": "Margate",
+          "country": "england",
+          "slug": "margate"
+        },
+        {
+          "label": "Merstham",
+          "country": "england",
+          "slug": "merstham"
+        },
+        {
+          "label": "Sevenoaks Town",
+          "country": "england",
+          "slug": "sevenoaks-town"
+        },
+        {
+          "label": "Sheppey United",
+          "country": "england",
+          "slug": "sheppey-united"
+        },
+        {
+          "label": "Sittingbourne",
+          "country": "england",
+          "slug": "sittingbourne"
+        },
+        {
+          "label": "Three Bridges",
+          "country": "england",
+          "slug": "three-bridges"
+        },
+        {
+          "label": "VCD Athletic",
+          "country": "england",
+          "slug": "vcd-athletic"
+        },
+        {
+          "label": "Whyteleafe",
+          "country": "england",
+          "slug": "whyteleafe"
+        },
+        {
+          "label": "Ashton",
+          "country": "england",
+          "slug": "ashton"
+        },
+        {
+          "label": "Bamber Bridge",
+          "country": "england",
+          "slug": "bamber-bridge"
+        },
+        {
+          "label": "Cleethorpes Town",
+          "country": "england",
+          "slug": "cleethorpes-town"
+        },
+        {
+          "label": "FC United",
+          "country": "england",
+          "slug": "fc-united"
+        },
+        {
+          "label": "Gainsborough",
+          "country": "england",
+          "slug": "gainsborough"
+        },
+        {
+          "label": "Guiseley",
+          "country": "england",
+          "slug": "guiseley"
+        },
+        {
+          "label": "Hebburn Town",
+          "country": "england",
+          "slug": "hebburn-town"
+        },
+        {
+          "label": "Hednesford",
+          "country": "england",
+          "slug": "hednesford"
+        },
+        {
+          "label": "Hyde",
+          "country": "england",
+          "slug": "hyde"
+        },
+        {
+          "label": "Ilkeston",
+          "country": "england",
+          "slug": "ilkeston"
+        },
+        {
+          "label": "Lancaster City",
+          "country": "england",
+          "slug": "lancaster-city"
+        },
+        {
+          "label": "Leek Town",
+          "country": "england",
+          "slug": "leek-town"
+        },
+        {
+          "label": "Morpeth Town",
+          "country": "england",
+          "slug": "morpeth-town"
+        },
+        {
+          "label": "Prescot Cables",
+          "country": "england",
+          "slug": "prescot-cables"
+        },
+        {
+          "label": "Rushall",
+          "country": "england",
+          "slug": "rushall"
+        },
+        {
+          "label": "Stocksbridge",
+          "country": "england",
+          "slug": "stocksbridge"
+        },
+        {
+          "label": "Stockton Town",
+          "country": "england",
+          "slug": "stockton-town"
+        },
+        {
+          "label": "Warrington",
+          "country": "england",
+          "slug": "warrington"
+        },
+        {
+          "label": "Warrington Rylands",
+          "country": "england",
+          "slug": "warrington-rylands"
+        },
+        {
+          "label": "Whitby",
+          "country": "england",
+          "slug": "whitby"
+        },
+        {
+          "label": "Workington",
+          "country": "england",
+          "slug": "workington"
+        },
+        {
+          "label": "Ashington AFC",
+          "country": "england",
+          "slug": "ashington-afc"
+        },
+        {
+          "label": "Bishop Auckland",
+          "country": "england",
+          "slug": "bishop-auckland"
+        },
+        {
+          "label": "Blyth Spartans",
+          "country": "england",
+          "slug": "blyth-spartans"
+        },
+        {
+          "label": "Blyth Town",
+          "country": "england",
+          "slug": "blyth-town"
+        },
+        {
+          "label": "Bradford PA",
+          "country": "england",
+          "slug": "bradford-pa"
+        },
+        {
+          "label": "Bridlington Town",
+          "country": "england",
+          "slug": "bridlington-town"
+        },
+        {
+          "label": "Brighouse Town",
+          "country": "england",
+          "slug": "brighouse-town"
+        },
+        {
+          "label": "Consett AFC",
+          "country": "england",
+          "slug": "consett-afc"
+        },
+        {
+          "label": "Dunston UTS",
+          "country": "england",
+          "slug": "dunston-uts"
+        },
+        {
+          "label": "Emley AFC",
+          "country": "england",
+          "slug": "emley-afc"
+        },
+        {
+          "label": "Garforth Town",
+          "country": "england",
+          "slug": "garforth-town"
+        },
+        {
+          "label": "Grimsby Borough",
+          "country": "england",
+          "slug": "grimsby-borough"
+        },
+        {
+          "label": "Hallam",
+          "country": "england",
+          "slug": "hallam"
+        },
+        {
+          "label": "Heaton Stannington",
+          "country": "england",
+          "slug": "heaton-stannington"
+        },
+        {
+          "label": "Lincoln Utd",
+          "country": "england",
+          "slug": "lincoln-utd"
+        },
+        {
+          "label": "Matlock",
+          "country": "england",
+          "slug": "matlock"
+        },
+        {
+          "label": "Newton Aycliffe",
+          "country": "england",
+          "slug": "newton-aycliffe"
+        },
+        {
+          "label": "North Ferriby United",
+          "country": "england",
+          "slug": "north-ferriby-united"
+        },
+        {
+          "label": "Ossett United",
+          "country": "england",
+          "slug": "ossett-united"
+        },
+        {
+          "label": "Pontefract Collieries",
+          "country": "england",
+          "slug": "pontefract-collieries"
+        },
+        {
+          "label": "Redcar Athletic",
+          "country": "england",
+          "slug": "redcar-athletic"
+        },
+        {
+          "label": "Silsden",
+          "country": "england",
+          "slug": "silsden"
+        },
+        {
+          "label": "Atherton Collieries",
+          "country": "england",
+          "slug": "atherton-collieries"
+        },
+        {
+          "label": "Avro",
+          "country": "england",
+          "slug": "avro"
+        },
+        {
+          "label": "Bootle",
+          "country": "england",
+          "slug": "bootle"
+        },
+        {
+          "label": "Bury",
+          "country": "england",
+          "slug": "bury"
+        },
+        {
+          "label": "Chasetown",
+          "country": "england",
+          "slug": "chasetown"
+        },
+        {
+          "label": "Clitheroe FC",
+          "country": "england",
+          "slug": "clitheroe-fc"
+        },
+        {
+          "label": "Congleton Town",
+          "country": "england",
+          "slug": "congleton-town"
+        },
+        {
+          "label": "Darlaston Town",
+          "country": "england",
+          "slug": "darlaston-town"
+        },
+        {
+          "label": "Kidsgrove Athletic",
+          "country": "england",
+          "slug": "kidsgrove-athletic"
+        },
+        {
+          "label": "Lower Breck",
+          "country": "england",
+          "slug": "lower-breck"
+        },
+        {
+          "label": "Mossley",
+          "country": "england",
+          "slug": "mossley"
+        },
+        {
+          "label": "Nantwich",
+          "country": "england",
+          "slug": "nantwich"
+        },
+        {
+          "label": "Newcastle Town",
+          "country": "england",
+          "slug": "newcastle-town"
+        },
+        {
+          "label": "Runcorn Linnets",
+          "country": "england",
+          "slug": "runcorn-linnets"
+        },
+        {
+          "label": "Shifnal Town",
+          "country": "england",
+          "slug": "shifnal-town"
+        },
+        {
+          "label": "Sporting Khalsa",
+          "country": "england",
+          "slug": "sporting-khalsa"
+        },
+        {
+          "label": "Stafford Rangers",
+          "country": "england",
+          "slug": "stafford-rangers"
+        },
+        {
+          "label": "Stalybridge",
+          "country": "england",
+          "slug": "stalybridge"
+        },
+        {
+          "label": "Trafford FC",
+          "country": "england",
+          "slug": "trafford-fc"
+        },
+        {
+          "label": "Vauxhall Motors",
+          "country": "england",
+          "slug": "vauxhall-motors"
+        },
+        {
+          "label": "Witton Albion",
+          "country": "england",
+          "slug": "witton-albion"
+        },
+        {
+          "label": "Wythenshawe Town",
+          "country": "england",
+          "slug": "wythenshawe-town"
+        },
+        {
+          "label": "Anstey Nomads",
+          "country": "england",
+          "slug": "anstey-nomads"
+        },
+        {
+          "label": "Basford Utd",
+          "country": "england",
+          "slug": "basford-utd"
+        },
+        {
+          "label": "Bedworth United",
+          "country": "england",
+          "slug": "bedworth-united"
+        },
+        {
+          "label": "Belper Town",
+          "country": "england",
+          "slug": "belper-town"
+        },
+        {
+          "label": "Boldmere St. Michaels",
+          "country": "england",
+          "slug": "boldmere-st-michaels"
+        },
+        {
+          "label": "Bourne Town",
+          "country": "england",
+          "slug": "bourne-town"
+        },
+        {
+          "label": "Carlton Town",
+          "country": "england",
+          "slug": "carlton-town"
+        },
+        {
+          "label": "Coleshill Town",
+          "country": "england",
+          "slug": "coleshill-town"
+        },
+        {
+          "label": "Corby",
+          "country": "england",
+          "slug": "corby"
+        },
+        {
+          "label": "Coventry Sphinx",
+          "country": "england",
+          "slug": "coventry-sphinx"
+        },
+        {
+          "label": "Lichfield City",
+          "country": "england",
+          "slug": "lichfield-city"
+        },
+        {
+          "label": "Long Eaton United",
+          "country": "england",
+          "slug": "long-eaton-united"
+        },
+        {
+          "label": "Loughborough University",
+          "country": "england",
+          "slug": "loughborough-university"
+        },
+        {
+          "label": "Mickleover Sports",
+          "country": "england",
+          "slug": "mickleover-sports"
+        },
+        {
+          "label": "Racing Club Warwick",
+          "country": "england",
+          "slug": "racing-club-warwick"
+        },
+        {
+          "label": "Rugby Borough",
+          "country": "england",
+          "slug": "rugby-borough"
+        },
+        {
+          "label": "Rugby Town",
+          "country": "england",
+          "slug": "rugby-town"
+        },
+        {
+          "label": "Rushden & D'mnds",
+          "country": "england",
+          "slug": "rushden-dmnds"
+        },
+        {
+          "label": "Shepshed Dynamo",
+          "country": "england",
+          "slug": "shepshed-dynamo"
+        },
+        {
+          "label": "St Neots",
+          "country": "england",
+          "slug": "st-neots"
+        },
+        {
+          "label": "Sutton Coldfield",
+          "country": "england",
+          "slug": "sutton-coldfield"
+        },
+        {
+          "label": "Wellingborough Town",
+          "country": "england",
+          "slug": "wellingborough-town"
+        },
+        {
+          "label": "AFC Sudbury",
+          "country": "england",
+          "slug": "afc-sudbury"
+        },
+        {
+          "label": "Alvechurch",
+          "country": "england",
+          "slug": "alvechurch"
+        },
+        {
+          "label": "Banbury Utd",
+          "country": "england",
+          "slug": "banbury-utd"
+        },
+        {
+          "label": "Barwell",
+          "country": "england",
+          "slug": "barwell"
+        },
+        {
+          "label": "Bishop's Stortford",
+          "country": "england",
+          "slug": "bishops-stortford"
+        },
+        {
+          "label": "Bromsgrove Sporting",
+          "country": "england",
+          "slug": "bromsgrove-sporting"
+        },
+        {
+          "label": "Bury Town",
+          "country": "england",
+          "slug": "bury-town"
+        },
+        {
+          "label": "Halesowen Town",
+          "country": "england",
+          "slug": "halesowen-town"
+        },
+        {
+          "label": "Harborough Town",
+          "country": "england",
+          "slug": "harborough-town"
+        },
+        {
+          "label": "Kettering",
+          "country": "england",
+          "slug": "kettering"
+        },
+        {
+          "label": "Leiston",
+          "country": "england",
+          "slug": "leiston"
+        },
+        {
+          "label": "Needham Market",
+          "country": "england",
+          "slug": "needham-market"
+        },
+        {
+          "label": "Quorn",
+          "country": "england",
+          "slug": "quorn"
+        },
+        {
+          "label": "Real Bedford",
+          "country": "england",
+          "slug": "real-bedford"
+        },
+        {
+          "label": "Redditch",
+          "country": "england",
+          "slug": "redditch"
+        },
+        {
+          "label": "Royston Town",
+          "country": "england",
+          "slug": "royston-town"
+        },
+        {
+          "label": "Spalding Utd",
+          "country": "england",
+          "slug": "spalding-utd"
+        },
+        {
+          "label": "St Ives Town",
+          "country": "england",
+          "slug": "st-ives-town"
+        },
+        {
+          "label": "Stamford AFC",
+          "country": "england",
+          "slug": "stamford-afc"
+        },
+        {
+          "label": "Stourbridge",
+          "country": "england",
+          "slug": "stourbridge"
+        },
+        {
+          "label": "Stratford Town",
+          "country": "england",
+          "slug": "stratford-town"
+        },
+        {
+          "label": "Worcester",
+          "country": "england",
+          "slug": "worcester"
+        },
+        {
+          "label": "Basingstoke",
+          "country": "england",
+          "slug": "basingstoke"
+        },
+        {
+          "label": "Berkhamsted Town",
+          "country": "england",
+          "slug": "berkhamsted-town"
+        },
+        {
+          "label": "Bracknell Town",
+          "country": "england",
+          "slug": "bracknell-town"
+        },
+        {
+          "label": "Chertsey Town",
+          "country": "england",
+          "slug": "chertsey-town"
+        },
+        {
+          "label": "Dorchester",
+          "country": "england",
+          "slug": "dorchester"
+        },
+        {
+          "label": "Evesham Utd",
+          "country": "england",
+          "slug": "evesham-utd"
+        },
+        {
+          "label": "Farnham Town",
+          "country": "england",
+          "slug": "farnham-town"
+        },
+        {
+          "label": "Gloucester",
+          "country": "england",
+          "slug": "gloucester"
+        },
+        {
+          "label": "Gosport Borough",
+          "country": "england",
+          "slug": "gosport-borough"
+        },
+        {
+          "label": "Hanwell Town",
+          "country": "england",
+          "slug": "hanwell-town"
+        },
+        {
+          "label": "Havant and Waterlooville",
+          "country": "england",
+          "slug": "havant-and-waterlooville"
+        },
+        {
+          "label": "Hungerford",
+          "country": "england",
+          "slug": "hungerford"
+        },
+        {
+          "label": "Plymouth Parkway",
+          "country": "england",
+          "slug": "plymouth-parkway"
+        },
+        {
+          "label": "Poole Town",
+          "country": "england",
+          "slug": "poole-town"
+        },
+        {
+          "label": "Sholing",
+          "country": "england",
+          "slug": "sholing"
+        },
+        {
+          "label": "Taunton Town",
+          "country": "england",
+          "slug": "taunton-town"
+        },
+        {
+          "label": "Tiverton",
+          "country": "england",
+          "slug": "tiverton"
+        },
+        {
+          "label": "Uxbridge",
+          "country": "england",
+          "slug": "uxbridge"
+        },
+        {
+          "label": "Walton & Hersham",
+          "country": "england",
+          "slug": "walton-hersham"
+        },
+        {
+          "label": "Weymouth",
+          "country": "england",
+          "slug": "weymouth"
+        },
+        {
+          "label": "Wimborne Town",
+          "country": "england",
+          "slug": "wimborne-town"
+        },
+        {
+          "label": "Yate Town",
+          "country": "england",
+          "slug": "yate-town"
+        },
+        {
+          "label": "AFC Dunstable",
+          "country": "england",
+          "slug": "afc-dunstable"
+        },
+        {
+          "label": "Aylesbury United",
+          "country": "england",
+          "slug": "aylesbury-united"
+        },
+        {
+          "label": "Barton Rovers",
+          "country": "england",
+          "slug": "barton-rovers"
+        },
+        {
+          "label": "Beaconsfield Town",
+          "country": "england",
+          "slug": "beaconsfield-town"
+        },
+        {
+          "label": "Biggleswade",
+          "country": "england",
+          "slug": "biggleswade"
+        },
+        {
+          "label": "Biggleswade Town",
+          "country": "england",
+          "slug": "biggleswade-town"
+        },
+        {
+          "label": "Enfield FC",
+          "country": "england",
+          "slug": "enfield-fc"
+        },
+        {
+          "label": "Flackwell Heath",
+          "country": "england",
+          "slug": "flackwell-heath"
+        },
+        {
+          "label": "Hadley",
+          "country": "england",
+          "slug": "hadley"
+        },
+        {
+          "label": "Hertford Town",
+          "country": "england",
+          "slug": "hertford-town"
+        },
+        {
+          "label": "Hitchin Town",
+          "country": "england",
+          "slug": "hitchin-town"
+        },
+        {
+          "label": "Leighton Town",
+          "country": "england",
+          "slug": "leighton-town"
+        },
+        {
+          "label": "Leverstock Green",
+          "country": "england",
+          "slug": "leverstock-green"
+        },
+        {
+          "label": "London Lions",
+          "country": "england",
+          "slug": "london-lions"
+        },
+        {
+          "label": "Marlow",
+          "country": "england",
+          "slug": "marlow"
+        },
+        {
+          "label": "Milton Keynes Irish",
+          "country": "england",
+          "slug": "milton-keynes-irish"
+        },
+        {
+          "label": "Northwood",
+          "country": "england",
+          "slug": "northwood"
+        },
+        {
+          "label": "Rayners Lane",
+          "country": "england",
+          "slug": "rayners-lane"
+        },
+        {
+          "label": "Stotfold",
+          "country": "england",
+          "slug": "stotfold"
+        },
+        {
+          "label": "Thame United",
+          "country": "england",
+          "slug": "thame-united"
+        },
+        {
+          "label": "Ware",
+          "country": "england",
+          "slug": "ware"
+        },
+        {
+          "label": "Welwyn Garden City",
+          "country": "england",
+          "slug": "welwyn-garden-city"
+        },
+        {
+          "label": "Bashley",
+          "country": "england",
+          "slug": "bashley"
+        },
+        {
+          "label": "Bideford",
+          "country": "england",
+          "slug": "bideford"
+        },
+        {
+          "label": "Bishop's Cleeve",
+          "country": "england",
+          "slug": "bishops-cleeve"
+        },
+        {
+          "label": "Bristol Manor Farm",
+          "country": "england",
+          "slug": "bristol-manor-farm"
+        },
+        {
+          "label": "Brixham AFC",
+          "country": "england",
+          "slug": "brixham-afc"
+        },
+        {
+          "label": "Didcot Town",
+          "country": "england",
+          "slug": "didcot-town"
+        },
+        {
+          "label": "Exmouth",
+          "country": "england",
+          "slug": "exmouth"
+        },
+        {
+          "label": "Falmouth Town",
+          "country": "england",
+          "slug": "falmouth-town"
+        },
+        {
+          "label": "Frome Town",
+          "country": "england",
+          "slug": "frome-town"
+        },
+        {
+          "label": "Hartpury Uni",
+          "country": "england",
+          "slug": "hartpury-uni"
+        },
+        {
+          "label": "Larkhall Athletic",
+          "country": "england",
+          "slug": "larkhall-athletic"
+        },
+        {
+          "label": "Malvern Town",
+          "country": "england",
+          "slug": "malvern-town"
+        },
+        {
+          "label": "Melksham Town",
+          "country": "england",
+          "slug": "melksham-town"
+        },
+        {
+          "label": "Mousehole AFC",
+          "country": "england",
+          "slug": "mousehole-afc"
+        },
+        {
+          "label": "Portishead Town",
+          "country": "england",
+          "slug": "portishead-town"
+        },
+        {
+          "label": "SC Inkberrow",
+          "country": "england",
+          "slug": "sc-inkberrow"
+        },
+        {
+          "label": "Shaftesbury",
+          "country": "england",
+          "slug": "shaftesbury"
+        },
+        {
+          "label": "Swindon Supermarine",
+          "country": "england",
+          "slug": "swindon-supermarine"
+        },
+        {
+          "label": "Tavistock",
+          "country": "england",
+          "slug": "tavistock"
+        },
+        {
+          "label": "Westbury United",
+          "country": "england",
+          "slug": "westbury-united"
+        },
+        {
+          "label": "Willand Rovers",
+          "country": "england",
+          "slug": "willand-rovers"
+        },
+        {
+          "label": "Winchester City",
+          "country": "england",
+          "slug": "winchester-city"
+        },
+        {
+          "label": "Arsenal U21",
+          "country": "england",
+          "slug": "arsenal-u21"
+        },
+        {
+          "label": "Aston Villa U21",
+          "country": "england",
+          "slug": "aston-villa-u21"
+        },
+        {
+          "label": "Birmingham U21",
+          "country": "england",
+          "slug": "birmingham-u21"
+        },
+        {
+          "label": "Chelsea U21",
+          "country": "england",
+          "slug": "chelsea-u21"
+        },
+        {
+          "label": "Crystal Palace U21",
+          "country": "england",
+          "slug": "crystal-palace-u21"
+        },
+        {
+          "label": "Derby U21",
+          "country": "england",
+          "slug": "derby-u21"
+        },
+        {
+          "label": "Ipswich U21",
+          "country": "england",
+          "slug": "ipswich-u21"
+        },
+        {
+          "label": "Liverpool U21",
+          "country": "england",
+          "slug": "liverpool-u21"
+        },
+        {
+          "label": "Man City U21",
+          "country": "england",
+          "slug": "man-city-u21"
+        },
+        {
+          "label": "Norwich U21",
+          "country": "england",
+          "slug": "norwich-u21"
+        },
+        {
+          "label": "Reading U21",
+          "country": "england",
+          "slug": "reading-u21"
+        },
+        {
+          "label": "Stoke City U21",
+          "country": "england",
+          "slug": "stoke-city-u21"
+        },
+        {
+          "label": "Tottenham U21",
+          "country": "england",
+          "slug": "tottenham-u21"
+        },
+        {
+          "label": "Blackburn U18",
+          "country": "england",
+          "slug": "blackburn-u18"
+        },
+        {
+          "label": "Burnley U18",
+          "country": "england",
+          "slug": "burnley-u18"
+        },
+        {
+          "label": "Derby U18",
+          "country": "england",
+          "slug": "derby-u18"
+        },
+        {
+          "label": "Everton U18",
+          "country": "england",
+          "slug": "everton-u18"
+        },
+        {
+          "label": "Leeds U18",
+          "country": "england",
+          "slug": "leeds-u18"
+        },
+        {
+          "label": "Liverpool U18",
+          "country": "england",
+          "slug": "liverpool-u18"
+        },
+        {
+          "label": "Man City U18",
+          "country": "england",
+          "slug": "man-city-u18"
+        },
+        {
+          "label": "Man Utd U18",
+          "country": "england",
+          "slug": "man-utd-u18"
+        },
+        {
+          "label": "Middlesbrough U18",
+          "country": "england",
+          "slug": "middlesbrough-u18"
+        },
+        {
+          "label": "Newcastle U18",
+          "country": "england",
+          "slug": "newcastle-u18"
+        },
+        {
+          "label": "Nott'm Forest U18",
+          "country": "england",
+          "slug": "nottm-forest-u18"
+        },
+        {
+          "label": "Stoke U18",
+          "country": "england",
+          "slug": "stoke-u18"
+        },
+        {
+          "label": "Sunderland U18",
+          "country": "england",
+          "slug": "sunderland-u18"
+        },
+        {
+          "label": "Wolves U18",
+          "country": "england",
+          "slug": "wolves-u18"
+        },
+        {
+          "label": "Arsenal U18",
+          "country": "england",
+          "slug": "arsenal-u18"
+        },
+        {
+          "label": "Aston Villa U18",
+          "country": "england",
+          "slug": "aston-villa-u18"
+        },
+        {
+          "label": "Birmingham U18",
+          "country": "england",
+          "slug": "birmingham-u18"
+        },
+        {
+          "label": "Brighton U18",
+          "country": "england",
+          "slug": "brighton-u18"
+        },
+        {
+          "label": "Chelsea U18",
+          "country": "england",
+          "slug": "chelsea-u18"
+        },
+        {
+          "label": "Crystal Palace U18",
+          "country": "england",
+          "slug": "crystal-palace-u18"
+        },
+        {
+          "label": "Fulham U18",
+          "country": "england",
+          "slug": "fulham-u18"
+        },
+        {
+          "label": "Ipswich U18",
+          "country": "england",
+          "slug": "ipswich-u18"
+        },
+        {
+          "label": "Leicester U18",
+          "country": "england",
+          "slug": "leicester-u18"
+        },
+        {
+          "label": "Norwich U18",
+          "country": "england",
+          "slug": "norwich-u18"
+        },
+        {
+          "label": "Reading U18",
+          "country": "england",
+          "slug": "reading-u18"
+        },
+        {
+          "label": "Southampton U18",
+          "country": "england",
+          "slug": "southampton-u18"
+        },
+        {
+          "label": "Tottenham U18",
+          "country": "england",
+          "slug": "tottenham-u18"
+        },
+        {
+          "label": "West Brom U18",
+          "country": "england",
+          "slug": "west-brom-u18"
+        },
+        {
+          "label": "West Ham U18",
+          "country": "england",
+          "slug": "west-ham-u18"
+        },
+        {
+          "label": "Arsenal W",
+          "country": "england",
+          "slug": "arsenal-w"
+        },
+        {
+          "label": "Aston Villa Women",
+          "country": "england",
+          "slug": "aston-villa-women"
+        },
+        {
+          "label": "Brighton Women",
+          "country": "england",
+          "slug": "brighton-women"
+        },
+        {
+          "label": "Chelsea Women",
+          "country": "england",
+          "slug": "chelsea-women"
+        },
+        {
+          "label": "Everton Women",
+          "country": "england",
+          "slug": "everton-women"
+        },
+        {
+          "label": "Leicester Women",
+          "country": "england",
+          "slug": "leicester-women"
+        },
+        {
+          "label": "Liverpool Women",
+          "country": "england",
+          "slug": "liverpool-women"
+        },
+        {
+          "label": "London City Lionesses",
+          "country": "england",
+          "slug": "london-city-lionesses"
+        },
+        {
+          "label": "Man City Women",
+          "country": "england",
+          "slug": "man-city-women"
+        },
+        {
+          "label": "Man Utd Women",
+          "country": "england",
+          "slug": "man-utd-women"
+        },
+        {
+          "label": "Tottenham Women",
+          "country": "england",
+          "slug": "tottenham-women"
+        },
+        {
+          "label": "West Ham Women",
+          "country": "england",
+          "slug": "west-ham-women"
+        },
+        {
+          "label": "Birmingham Women",
+          "country": "england",
+          "slug": "birmingham-women"
+        },
+        {
+          "label": "Bristol City Women",
+          "country": "england",
+          "slug": "bristol-city-women"
+        },
+        {
+          "label": "Charlton Women",
+          "country": "england",
+          "slug": "charlton-women"
+        },
+        {
+          "label": "Crystal Palace W",
+          "country": "england",
+          "slug": "crystal-palace-w"
+        },
+        {
+          "label": "Durham Women",
+          "country": "england",
+          "slug": "durham-women"
+        },
+        {
+          "label": "Ipswich Women",
+          "country": "england",
+          "slug": "ipswich-women"
+        },
+        {
+          "label": "Newcastle Women",
+          "country": "england",
+          "slug": "newcastle-women"
+        },
+        {
+          "label": "Nott'm Forest Women",
+          "country": "england",
+          "slug": "nottm-forest-women"
+        },
+        {
+          "label": "Portsmouth W",
+          "country": "england",
+          "slug": "portsmouth-w"
+        },
+        {
+          "label": "Sheffield Utd W",
+          "country": "england",
+          "slug": "sheffield-utd-w"
+        },
+        {
+          "label": "Southampton Women",
+          "country": "england",
+          "slug": "southampton-women"
+        },
+        {
+          "label": "Sunderland Women",
+          "country": "england",
+          "slug": "sunderland-women"
+        },
+        {
+          "label": "Aberdeen",
+          "country": "scotland",
+          "slug": "aberdeen"
+        },
+        {
+          "label": "Celtic",
+          "country": "scotland",
+          "slug": "celtic"
+        },
+        {
+          "label": "Dundee",
+          "country": "scotland",
+          "slug": "dundee"
+        },
+        {
+          "label": "Dundee Utd",
+          "country": "scotland",
+          "slug": "dundee-utd"
+        },
+        {
+          "label": "Falkirk",
+          "country": "scotland",
+          "slug": "falkirk"
+        },
+        {
+          "label": "Hearts",
+          "country": "scotland",
+          "slug": "hearts"
+        },
+        {
+          "label": "Hibernian",
+          "country": "scotland",
+          "slug": "hibernian"
+        },
+        {
+          "label": "Kilmarnock",
+          "country": "scotland",
+          "slug": "kilmarnock"
+        },
+        {
+          "label": "Livingston",
+          "country": "scotland",
+          "slug": "livingston"
+        },
+        {
+          "label": "Motherwell",
+          "country": "scotland",
+          "slug": "motherwell"
+        },
+        {
+          "label": "Rangers",
+          "country": "scotland",
+          "slug": "rangers"
+        },
+        {
+          "label": "St Mirren",
+          "country": "scotland",
+          "slug": "st-mirren"
+        },
+        {
+          "label": "Airdrieonians",
+          "country": "scotland",
+          "slug": "airdrieonians"
+        },
+        {
+          "label": "Arbroath",
+          "country": "scotland",
+          "slug": "arbroath"
+        },
+        {
+          "label": "Ayr",
+          "country": "scotland",
+          "slug": "ayr"
+        },
+        {
+          "label": "Dunfermline",
+          "country": "scotland",
+          "slug": "dunfermline"
+        },
+        {
+          "label": "Morton",
+          "country": "scotland",
+          "slug": "morton"
+        },
+        {
+          "label": "Partick Thistle",
+          "country": "scotland",
+          "slug": "partick-thistle"
+        },
+        {
+          "label": "Queen's Park",
+          "country": "scotland",
+          "slug": "queens-park"
+        },
+        {
+          "label": "Raith Rovers",
+          "country": "scotland",
+          "slug": "raith-rovers"
+        },
+        {
+          "label": "Ross County",
+          "country": "scotland",
+          "slug": "ross-county"
+        },
+        {
+          "label": "St Johnstone",
+          "country": "scotland",
+          "slug": "st-johnstone"
+        },
+        {
+          "label": "Alloa",
+          "country": "scotland",
+          "slug": "alloa"
+        },
+        {
+          "label": "Cove Rangers",
+          "country": "scotland",
+          "slug": "cove-rangers"
+        },
+        {
+          "label": "East Fife",
+          "country": "scotland",
+          "slug": "east-fife"
+        },
+        {
+          "label": "Hamilton",
+          "country": "scotland",
+          "slug": "hamilton"
+        },
+        {
+          "label": "Inverness CT",
+          "country": "scotland",
+          "slug": "inverness-ct"
+        },
+        {
+          "label": "Kelty Hearts",
+          "country": "scotland",
+          "slug": "kelty-hearts"
+        },
+        {
+          "label": "Montrose",
+          "country": "scotland",
+          "slug": "montrose"
+        },
+        {
+          "label": "Peterhead",
+          "country": "scotland",
+          "slug": "peterhead"
+        },
+        {
+          "label": "Queen of Sth",
+          "country": "scotland",
+          "slug": "queen-of-sth"
+        },
+        {
+          "label": "Stenhousemuir",
+          "country": "scotland",
+          "slug": "stenhousemuir"
+        },
+        {
+          "label": "Annan Athletic",
+          "country": "scotland",
+          "slug": "annan-athletic"
+        },
+        {
+          "label": "Clyde",
+          "country": "scotland",
+          "slug": "clyde"
+        },
+        {
+          "label": "Dumbarton",
+          "country": "scotland",
+          "slug": "dumbarton"
+        },
+        {
+          "label": "East Kilbride",
+          "country": "scotland",
+          "slug": "east-kilbride"
+        },
+        {
+          "label": "Elgin",
+          "country": "scotland",
+          "slug": "elgin"
+        },
+        {
+          "label": "FC Edinburgh",
+          "country": "scotland",
+          "slug": "fc-edinburgh"
+        },
+        {
+          "label": "Forfar",
+          "country": "scotland",
+          "slug": "forfar"
+        },
+        {
+          "label": "Spartans FC",
+          "country": "scotland",
+          "slug": "spartans-fc"
+        },
+        {
+          "label": "Stirling",
+          "country": "scotland",
+          "slug": "stirling"
+        },
+        {
+          "label": "Stranraer",
+          "country": "scotland",
+          "slug": "stranraer"
+        },
+        {
+          "label": "Bonnyrigg Rose",
+          "country": "scotland",
+          "slug": "bonnyrigg-rose"
+        },
+        {
+          "label": "Brechin",
+          "country": "scotland",
+          "slug": "brechin"
+        },
+        {
+          "label": "Brora Rangers",
+          "country": "scotland",
+          "slug": "brora-rangers"
+        },
+        {
+          "label": "Banks O'Dee",
+          "country": "scotland",
+          "slug": "banks-odee"
+        },
+        {
+          "label": "Buckie Thistle",
+          "country": "scotland",
+          "slug": "buckie-thistle"
+        },
+        {
+          "label": "Clachnacuddin",
+          "country": "scotland",
+          "slug": "clachnacuddin"
+        },
+        {
+          "label": "Deveronvale",
+          "country": "scotland",
+          "slug": "deveronvale"
+        },
+        {
+          "label": "Formartine United",
+          "country": "scotland",
+          "slug": "formartine-united"
+        },
+        {
+          "label": "Forres Mechanics",
+          "country": "scotland",
+          "slug": "forres-mechanics"
+        },
+        {
+          "label": "Fraserburgh",
+          "country": "scotland",
+          "slug": "fraserburgh"
+        },
+        {
+          "label": "Huntly",
+          "country": "scotland",
+          "slug": "huntly"
+        },
+        {
+          "label": "Inverurie Loco Works",
+          "country": "scotland",
+          "slug": "inverurie-loco-works"
+        },
+        {
+          "label": "Keith",
+          "country": "scotland",
+          "slug": "keith"
+        },
+        {
+          "label": "Lossiemouth",
+          "country": "scotland",
+          "slug": "lossiemouth"
+        },
+        {
+          "label": "Nairn County",
+          "country": "scotland",
+          "slug": "nairn-county"
+        },
+        {
+          "label": "Rothes",
+          "country": "scotland",
+          "slug": "rothes"
+        },
+        {
+          "label": "Strathspey Thistle",
+          "country": "scotland",
+          "slug": "strathspey-thistle"
+        },
+        {
+          "label": "Turriff United",
+          "country": "scotland",
+          "slug": "turriff-united"
+        },
+        {
+          "label": "Wick Academy",
+          "country": "scotland",
+          "slug": "wick-academy"
+        },
+        {
+          "label": "Albion",
+          "country": "scotland",
+          "slug": "albion"
+        },
+        {
+          "label": "Berwick",
+          "country": "scotland",
+          "slug": "berwick"
+        },
+        {
+          "label": "Bo'ness United",
+          "country": "scotland",
+          "slug": "boness-united"
+        },
+        {
+          "label": "Broxburn Athletic",
+          "country": "scotland",
+          "slug": "broxburn-athletic"
+        },
+        {
+          "label": "Caledonian Braves",
+          "country": "scotland",
+          "slug": "caledonian-braves"
+        },
+        {
+          "label": "Celtic II",
+          "country": "scotland",
+          "slug": "celtic-ii"
+        },
+        {
+          "label": "Clydebank",
+          "country": "scotland",
+          "slug": "clydebank"
+        },
+        {
+          "label": "Cowdenbeath",
+          "country": "scotland",
+          "slug": "cowdenbeath"
+        },
+        {
+          "label": "CS Strollers",
+          "country": "scotland",
+          "slug": "cs-strollers"
+        },
+        {
+          "label": "Cumbernauld Colts",
+          "country": "scotland",
+          "slug": "cumbernauld-colts"
+        },
+        {
+          "label": "East Stirling",
+          "country": "scotland",
+          "slug": "east-stirling"
+        },
+        {
+          "label": "Gala Fairydean",
+          "country": "scotland",
+          "slug": "gala-fairydean"
+        },
+        {
+          "label": "Gretna 2008",
+          "country": "scotland",
+          "slug": "gretna-2008"
+        },
+        {
+          "label": "Hearts B",
+          "country": "scotland",
+          "slug": "hearts-b"
+        },
+        {
+          "label": "Linlithgow Rose",
+          "country": "scotland",
+          "slug": "linlithgow-rose"
+        },
+        {
+          "label": "Stirling University",
+          "country": "scotland",
+          "slug": "stirling-university"
+        },
+        {
+          "label": "Tranent Juniors",
+          "country": "scotland",
+          "slug": "tranent-juniors"
+        },
+        {
+          "label": "Aberdeen Women",
+          "country": "scotland",
+          "slug": "aberdeen-women"
+        },
+        {
+          "label": "Celtic Women",
+          "country": "scotland",
+          "slug": "celtic-women"
+        },
+        {
+          "label": "Glasgow City W",
+          "country": "scotland",
+          "slug": "glasgow-city-w"
+        },
+        {
+          "label": "Hamilton Women",
+          "country": "scotland",
+          "slug": "hamilton-women"
+        },
+        {
+          "label": "Hearts Women",
+          "country": "scotland",
+          "slug": "hearts-women"
+        },
+        {
+          "label": "Hibernian Women",
+          "country": "scotland",
+          "slug": "hibernian-women"
+        },
+        {
+          "label": "Montrose Women",
+          "country": "scotland",
+          "slug": "montrose-women"
+        },
+        {
+          "label": "Motherwell Women",
+          "country": "scotland",
+          "slug": "motherwell-women"
+        },
+        {
+          "label": "Partick Thistle W",
+          "country": "scotland",
+          "slug": "partick-thistle-w"
+        },
+        {
+          "label": "Rangers Women",
+          "country": "scotland",
+          "slug": "rangers-women"
+        },
+        {
+          "label": "Bala Town",
+          "country": "wales",
+          "slug": "bala-town"
+        },
+        {
+          "label": "Barry Town",
+          "country": "wales",
+          "slug": "barry-town"
+        },
+        {
+          "label": "Briton Ferry",
+          "country": "wales",
+          "slug": "briton-ferry"
+        },
+        {
+          "label": "Caernarfon Town",
+          "country": "wales",
+          "slug": "caernarfon-town"
+        },
+        {
+          "label": "Cardiff Metropolitan",
+          "country": "wales",
+          "slug": "cardiff-metropolitan"
+        },
+        {
+          "label": "Colwyn Bay",
+          "country": "wales",
+          "slug": "colwyn-bay"
+        },
+        {
+          "label": "Connah's Quay Nomads",
+          "country": "wales",
+          "slug": "connahs-quay-nomads"
+        },
+        {
+          "label": "Flint Town United",
+          "country": "wales",
+          "slug": "flint-town-united"
+        },
+        {
+          "label": "Haverfordwest County AFC",
+          "country": "wales",
+          "slug": "haverfordwest-county-afc"
+        },
+        {
+          "label": "Llanelli",
+          "country": "wales",
+          "slug": "llanelli"
+        },
+        {
+          "label": "Penybont",
+          "country": "wales",
+          "slug": "penybont"
+        },
+        {
+          "label": "The New Saints",
+          "country": "wales",
+          "slug": "the-new-saints"
+        },
+        {
+          "label": "Brickfield Rangers",
+          "country": "wales",
+          "slug": "brickfield-rangers"
+        },
+        {
+          "label": "Broughton",
+          "country": "wales",
+          "slug": "broughton"
+        },
+        {
+          "label": "Buckley Town",
+          "country": "wales",
+          "slug": "buckley-town"
+        },
+        {
+          "label": "Caersws",
+          "country": "wales",
+          "slug": "caersws"
+        },
+        {
+          "label": "Denbigh Town",
+          "country": "wales",
+          "slug": "denbigh-town"
+        },
+        {
+          "label": "Flint Mountain",
+          "country": "wales",
+          "slug": "flint-mountain"
+        },
+        {
+          "label": "Gresford Athletic",
+          "country": "wales",
+          "slug": "gresford-athletic"
+        },
+        {
+          "label": "Guilsfield FC",
+          "country": "wales",
+          "slug": "guilsfield-fc"
+        },
+        {
+          "label": "Holyhead Hotspur",
+          "country": "wales",
+          "slug": "holyhead-hotspur"
+        },
+        {
+          "label": "Holywell Town",
+          "country": "wales",
+          "slug": "holywell-town"
+        },
+        {
+          "label": "Llandudno FC",
+          "country": "wales",
+          "slug": "llandudno-fc"
+        },
+        {
+          "label": "Mold Alexandra",
+          "country": "wales",
+          "slug": "mold-alexandra"
+        },
+        {
+          "label": "Newtown",
+          "country": "wales",
+          "slug": "newtown"
+        },
+        {
+          "label": "Penrhyncoch",
+          "country": "wales",
+          "slug": "penrhyncoch"
+        },
+        {
+          "label": "Rhyl",
+          "country": "wales",
+          "slug": "rhyl"
+        },
+        {
+          "label": "Ruthin Town",
+          "country": "wales",
+          "slug": "ruthin-town"
+        },
+        {
+          "label": "Aberystwyth",
+          "country": "wales",
+          "slug": "aberystwyth"
+        },
+        {
+          "label": "Afan Lido",
+          "country": "wales",
+          "slug": "afan-lido"
+        },
+        {
+          "label": "Ammanford AFC",
+          "country": "wales",
+          "slug": "ammanford-afc"
+        },
+        {
+          "label": "Baglan Dragons",
+          "country": "wales",
+          "slug": "baglan-dragons"
+        },
+        {
+          "label": "Caerau Ely",
+          "country": "wales",
+          "slug": "caerau-ely"
+        },
+        {
+          "label": "Cambrian United",
+          "country": "wales",
+          "slug": "cambrian-united"
+        },
+        {
+          "label": "Cardiff Draconians",
+          "country": "wales",
+          "slug": "cardiff-draconians"
+        },
+        {
+          "label": "Carmarthen Town",
+          "country": "wales",
+          "slug": "carmarthen-town"
+        },
+        {
+          "label": "Cwmbran Celtic",
+          "country": "wales",
+          "slug": "cwmbran-celtic"
+        },
+        {
+          "label": "Llantwit Major",
+          "country": "wales",
+          "slug": "llantwit-major"
+        },
+        {
+          "label": "Newport City",
+          "country": "wales",
+          "slug": "newport-city"
+        },
+        {
+          "label": "Pontypridd United",
+          "country": "wales",
+          "slug": "pontypridd-united"
+        },
+        {
+          "label": "Trefelin",
+          "country": "wales",
+          "slug": "trefelin"
+        },
+        {
+          "label": "Treowen Stars",
+          "country": "wales",
+          "slug": "treowen-stars"
+        },
+        {
+          "label": "Trethomas Bluebirds",
+          "country": "wales",
+          "slug": "trethomas-bluebirds"
+        },
+        {
+          "label": "Ynyshir Albions",
+          "country": "wales",
+          "slug": "ynyshir-albions"
+        },
+        {
+          "label": "Ballymena",
+          "country": "ireland",
+          "slug": "ballymena"
+        },
+        {
+          "label": "Bangor",
+          "country": "ireland",
+          "slug": "bangor"
+        },
+        {
+          "label": "Carrick Rangers",
+          "country": "ireland",
+          "slug": "carrick-rangers"
+        },
+        {
+          "label": "Cliftonville",
+          "country": "ireland",
+          "slug": "cliftonville"
+        },
+        {
+          "label": "Coleraine",
+          "country": "ireland",
+          "slug": "coleraine"
+        },
+        {
+          "label": "Crusaders",
+          "country": "ireland",
+          "slug": "crusaders"
+        },
+        {
+          "label": "Dungannon Swifts",
+          "country": "ireland",
+          "slug": "dungannon-swifts"
+        },
+        {
+          "label": "Glenavon",
+          "country": "ireland",
+          "slug": "glenavon"
+        },
+        {
+          "label": "Glentoran",
+          "country": "ireland",
+          "slug": "glentoran"
+        },
+        {
+          "label": "Larne",
+          "country": "ireland",
+          "slug": "larne"
+        },
+        {
+          "label": "Linfield",
+          "country": "ireland",
+          "slug": "linfield"
+        },
+        {
+          "label": "Portadown",
+          "country": "ireland",
+          "slug": "portadown"
+        },
+        {
+          "label": "Annagh United",
+          "country": "ireland",
+          "slug": "annagh-united"
+        },
+        {
+          "label": "Ards",
+          "country": "ireland",
+          "slug": "ards"
+        },
+        {
+          "label": "Armagh City",
+          "country": "ireland",
+          "slug": "armagh-city"
+        },
+        {
+          "label": "Ballinamallard Utd",
+          "country": "ireland",
+          "slug": "ballinamallard-utd"
+        },
+        {
+          "label": "Dundela",
+          "country": "ireland",
+          "slug": "dundela"
+        },
+        {
+          "label": "Harland & Wolff Welders",
+          "country": "ireland",
+          "slug": "harland-wolff-welders"
+        },
+        {
+          "label": "Institute FC",
+          "country": "ireland",
+          "slug": "institute-fc"
+        },
+        {
+          "label": "Limavady United",
+          "country": "ireland",
+          "slug": "limavady-united"
+        },
+        {
+          "label": "Loughgall",
+          "country": "ireland",
+          "slug": "loughgall"
+        },
+        {
+          "label": "Newington",
+          "country": "ireland",
+          "slug": "newington"
+        },
+        {
+          "label": "Queens University",
+          "country": "ireland",
+          "slug": "queens-university"
+        },
+        {
+          "label": "Warrenpoint Town",
+          "country": "ireland",
+          "slug": "warrenpoint-town"
+        },
+        {
+          "label": "Bohemians Dublin",
+          "country": "ireland",
+          "slug": "bohemians-dublin"
+        },
+        {
+          "label": "Cork City",
+          "country": "ireland",
+          "slug": "cork-city"
+        },
+        {
+          "label": "Derry City",
+          "country": "ireland",
+          "slug": "derry-city"
+        },
+        {
+          "label": "Drogheda",
+          "country": "ireland",
+          "slug": "drogheda"
+        },
+        {
+          "label": "Galway Utd",
+          "country": "ireland",
+          "slug": "galway-utd"
+        },
+        {
+          "label": "Shamrock Rovers",
+          "country": "ireland",
+          "slug": "shamrock-rovers"
+        },
+        {
+          "label": "Shelbourne",
+          "country": "ireland",
+          "slug": "shelbourne"
+        },
+        {
+          "label": "Sligo Rovers",
+          "country": "ireland",
+          "slug": "sligo-rovers"
+        },
+        {
+          "label": "St Patricks",
+          "country": "ireland",
+          "slug": "st-patricks"
+        },
+        {
+          "label": "Waterford",
+          "country": "ireland",
+          "slug": "waterford"
+        },
+        {
+          "label": "Athlone",
+          "country": "ireland",
+          "slug": "athlone"
+        },
+        {
+          "label": "Bray",
+          "country": "ireland",
+          "slug": "bray"
+        },
+        {
+          "label": "Cobh Ramblers",
+          "country": "ireland",
+          "slug": "cobh-ramblers"
+        },
+        {
+          "label": "Dundalk",
+          "country": "ireland",
+          "slug": "dundalk"
+        },
+        {
+          "label": "Finn Harps",
+          "country": "ireland",
+          "slug": "finn-harps"
+        },
+        {
+          "label": "Kerry",
+          "country": "ireland",
+          "slug": "kerry"
+        },
+        {
+          "label": "Longford",
+          "country": "ireland",
+          "slug": "longford"
+        },
+        {
+          "label": "Treaty United",
+          "country": "ireland",
+          "slug": "treaty-united"
+        },
+        {
+          "label": "UCD",
+          "country": "ireland",
+          "slug": "ucd"
+        },
+        {
+          "label": "Wexford Youths",
+          "country": "ireland",
+          "slug": "wexford-youths"
+        }
+      ]
+    }
+  ]
+}

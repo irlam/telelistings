@@ -1,0 +1,39 @@
+
+[2025-11-28 17:38:52] Channel "UK Football": TheFishy multi-ICS mode – using first 8 of 701 teams (maxTeams=8, delay=2000ms)
+[2025-11-28 17:38:52]   Fetching ICS for team "Arsenal" from https://thefishy.co.uk/calendar/Arsenal
+[2025-11-28 17:38:52]   -> 2 fixtures fetched for team "Arsenal"
+[2025-11-28 17:38:54]   Fetching ICS for team "Aston Villa" from https://thefishy.co.uk/calendar/Aston+Villa
+[2025-11-28 17:38:54]   -> 2 fixtures fetched for team "Aston Villa"
+[2025-11-28 17:38:56]   Fetching ICS for team "Bournemouth" from https://thefishy.co.uk/calendar/Bournemouth
+[2025-11-28 17:38:56]   -> 2 fixtures fetched for team "Bournemouth"
+[2025-11-28 17:38:58]   Fetching ICS for team "Brentford" from https://thefishy.co.uk/calendar/Brentford
+[2025-11-28 17:38:58]   -> 2 fixtures fetched for team "Brentford"
+[2025-11-28 17:39:00]   Fetching ICS for team "Brighton" from https://thefishy.co.uk/calendar/Brighton
+[2025-11-28 17:39:00]   -> 2 fixtures fetched for team "Brighton"
+[2025-11-28 17:39:02]   Fetching ICS for team "Burnley" from https://thefishy.co.uk/calendar/Burnley
+[2025-11-28 17:39:02]   -> 2 fixtures fetched for team "Burnley"
+[2025-11-28 17:39:04]   Fetching ICS for team "Chelsea" from https://thefishy.co.uk/calendar/Chelsea
+[2025-11-28 17:39:04]   -> 2 fixtures fetched for team "Chelsea"
+[2025-11-28 17:39:06]   Fetching ICS for team "Crystal Palace" from https://thefishy.co.uk/calendar/Crystal+Palace
+[2025-11-28 17:39:06]   -> 2 fixtures fetched for team "Crystal Palace"
+[2025-11-28 17:39:06] Channel "UK Football": sent message with 16 fixtures.
+[2025-11-28 17:39:06] Run summary: Channels=1, sent=1, totalMatches=16
+[2025-11-29 09:00:02] Channel "UK Football": TheFishy multi-ICS mode – using first 8 of 701 teams (maxTeams=8, delay=2000ms)
+[2025-11-29 09:00:02]   Fetching ICS for team "Arsenal" from https://thefishy.co.uk/calendar/Arsenal
+[2025-11-29 09:00:02]   -> 2 fixtures fetched for team "Arsenal"
+[2025-11-29 09:00:05]   Fetching ICS for team "Aston Villa" from https://thefishy.co.uk/calendar/Aston+Villa
+[2025-11-29 09:00:05]   -> 2 fixtures fetched for team "Aston Villa"
+[2025-11-29 09:00:07]   Fetching ICS for team "Bournemouth" from https://thefishy.co.uk/calendar/Bournemouth
+[2025-11-29 09:00:07]   -> 2 fixtures fetched for team "Bournemouth"
+[2025-11-29 09:00:09]   Fetching ICS for team "Brentford" from https://thefishy.co.uk/calendar/Brentford
+[2025-11-29 09:00:09]   -> 2 fixtures fetched for team "Brentford"
+[2025-11-29 09:00:11]   Fetching ICS for team "Brighton" from https://thefishy.co.uk/calendar/Brighton
+[2025-11-29 09:00:11]   -> 2 fixtures fetched for team "Brighton"
+[2025-11-29 09:00:13]   Fetching ICS for team "Burnley" from https://thefishy.co.uk/calendar/Burnley
+[2025-11-29 09:00:13]   -> 2 fixtures fetched for team "Burnley"
+[2025-11-29 09:00:15]   Fetching ICS for team "Chelsea" from https://thefishy.co.uk/calendar/Chelsea
+[2025-11-29 09:00:15]   -> 2 fixtures fetched for team "Chelsea"
+[2025-11-29 09:00:17]   Fetching ICS for team "Crystal Palace" from https://thefishy.co.uk/calendar/Crystal+Palace
+[2025-11-29 09:00:17]   -> 2 fixtures fetched for team "Crystal Palace"
+[2025-11-29 09:00:17] Channel "UK Football": sent message with 16 fixtures.
+[2025-11-29 09:00:17] Run summary: Channels=1, sent=1, totalMatches=16

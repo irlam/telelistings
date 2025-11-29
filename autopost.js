@@ -1,0 +1,411 @@
+// autopost.js
+// Autoposter that can:
+//  - In "TheFishy multi" mode: pull fixtures from multiple team ICS feeds (one per team, capped & throttled).
+//  - In default mode: pull from a single ICS URL and filter by team names.
+/**
+ * Telegram Sports TV Bot – Autoposter
+ *
+ * Reads config.json and posts “what’s on” football fixtures into Telegram channels.
+ * Two modes per channel:
+ *  1) TheFishy multi-ICS mode (useTheFishyMulti: true):
+ *     - Each team has an ICS at https://thefishy.co.uk/calendar/<Team+Name>.
+ *     - Only fetch up to multiMaxTeams per run, with multiIcsDelayMs between requests.
+ *     - Merge fixtures across teams, dedupe, sort, and post one combined message.
+ *     - Be polite: stop fetching if we hit HTTP 429 (rate limit).
+ *  2) Single-ICS mode:
+ *     - Use cfg.icsUrl or channel.icsUrl.
+ *     - Optionally filter fixtures by team names.
+ *
+ * Uses getFixturesFromIcs(...) from ics_source.js.
+ * Sends messages via Telegram Bot API (sendMessage).
+ * Logs to autopost.log using logLine().
+ *
+ * Constraints:
+ * - No DB, config from config.json.
+ * - Plain text messages (no Markdown formatting).
+ * - Keep logic small and testable; add good logging for ops.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const { getFixturesFromIcs } = require('./ics_source');
+
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+const LOG_PATH = path.join(__dirname, 'autopost.log');
+
+// ---------- logging helpers ----------
+
+function timestamp() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    now.getFullYear() +
+    '-' +
+    pad(now.getMonth() + 1) +
+    '-' +
+    pad(now.getDate()) +
+    ' ' +
+    pad(now.getHours()) +
+    ':' +
+    pad(now.getMinutes()) +
+    ':' +
+    pad(now.getSeconds())
+  );
+}
+
+function logLine(msg) {
+  const line = `[${timestamp()}] ${msg}\n`;
+  try {
+    fs.appendFileSync(LOG_PATH, line, 'utf8');
+  } catch (_) {
+    // ignore file errors
+  }
+  console.log(line.trim());
+}
+
+// ---------- config helpers ----------
+
+function loadConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    throw new Error(`config.json not found at ${CONFIG_PATH}`);
+  }
+  const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+  return JSON.parse(raw);
+}
+
+// ---------- Telegram helper ----------
+
+async function sendTelegramMessage(botToken, channelId, text) {
+  const url = `https://api.telegram.org/bot${encodeURIComponent(
+    botToken
+  )}/sendMessage`;
+
+  const payload = {
+    chat_id: channelId,
+    text: text
+    // plain text – no Markdown to avoid escaping headaches
+  };
+
+  const resp = await axios.post(url, payload, {
+    timeout: 15000
+  });
+
+  if (!resp.data || !resp.data.ok) {
+    const desc = resp.data && resp.data.description;
+    throw new Error(`Telegram sendMessage failed: ${desc || 'unknown error'}`);
+  }
+}
+
+// ---------- TheFishy helpers ----------
+
+// Build a TheFishy ICS URL from a team label, e.g.
+//   "Man Utd"  -> https://thefishy.co.uk/calendar/Man+Utd
+function buildTheFishyIcsUrl(teamLabel) {
+  const trimmed = String(teamLabel || '').trim();
+  if (!trimmed) return null;
+
+  // Keep letters/numbers/spaces, drop other punctuation from the label.
+  const cleaned = trimmed.replace(/[^A-Za-z0-9\s]/g, '');
+  // Spaces => plus
+  const plus = cleaned.replace(/\s+/g, '+');
+
+  return `https://thefishy.co.uk/calendar/${plus}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------- build message for a channel ----------
+
+async function buildChannelMessage(cfg, channel) {
+  const timezone = cfg.timezone || 'Europe/London';
+  const daysAhead = cfg.icsDaysAhead && Number.isFinite(cfg.icsDaysAhead)
+    ? cfg.icsDaysAhead
+    : 7;
+
+  // --- MODE 1: TheFishy multi-ICS (one ICS per team, capped & throttled) ---
+  if (channel.useTheFishyMulti) {
+    const allTeamEntries = channel.teams || [];
+    if (!allTeamEntries.length) {
+      throw new Error(
+        'useTheFishyMulti is true but this channel has no teams configured'
+      );
+    }
+
+    // Cap how many team ICS feeds we hit in a single run
+    const maxTeams = Number.isFinite(channel.multiMaxTeams)
+      ? channel.multiMaxTeams
+      : 10; // default: 10 teams per run
+
+    const delayMs = Number.isFinite(channel.multiIcsDelayMs)
+      ? channel.multiIcsDelayMs
+      : 1500; // default: 1.5s between requests
+
+    const teams = allTeamEntries.slice(0, maxTeams);
+
+    logLine(
+      `Channel "${channel.label || channel.id}": TheFishy multi-ICS mode – using first ${teams.length} of ${allTeamEntries.length} teams (maxTeams=${maxTeams}, delay=${delayMs}ms)`
+    );
+
+    const allFixtures = [];
+    let hitRateLimit = false;
+
+    for (let i = 0; i < teams.length; i++) {
+      const t = teams[i];
+      const teamLabel = t.label || t.slug || '';
+      if (!teamLabel) {
+        logLine(`  Skipping team with no label: ${JSON.stringify(t)}`);
+        continue;
+      }
+
+      const icsUrl = buildTheFishyIcsUrl(teamLabel);
+      if (!icsUrl) {
+        logLine(`  Skipping team "${teamLabel}" – could not build ICS URL`);
+        continue;
+      }
+
+      try {
+        logLine(`  Fetching ICS for team "${teamLabel}" from ${icsUrl}`);
+        // No extra filtering here; the feed is already per-team.
+        const fixtures = await getFixturesFromIcs(
+          icsUrl,
+          timezone,
+          [],
+          daysAhead
+        );
+
+        fixtures.forEach((f) => {
+          allFixtures.push({
+            ...f,
+            teamLabel
+          });
+        });
+
+        logLine(
+          `  -> ${fixtures.length} fixtures fetched for team "${teamLabel}"`
+        );
+      } catch (err) {
+        const msg = err && err.message ? err.message : String(err);
+        const status = err && err.response && err.response.status;
+        logLine(
+          `  ERROR fetching ICS for team "${teamLabel}": ${msg}`
+        );
+
+        // If TheFishy / Cloudflare gives us 429, stop hammering them this run.
+        if (status === 429) {
+          logLine(
+            '  Hit HTTP 429 (Too Many Requests) – stopping further ICS requests for this run.'
+          );
+          hitRateLimit = true;
+          break;
+        }
+      }
+
+      // Be polite: small delay between requests
+      if (i < teams.length - 1) {
+        await sleep(delayMs);
+      }
+    }
+
+    if (!allFixtures.length) {
+      if (hitRateLimit) {
+        logLine(
+          `Channel "${channel.label || channel.id}": no fixtures collected because of rate limiting.`
+        );
+      } else {
+        logLine(
+          `Channel "${channel.label || channel.id}": no fixtures collected from TheFishy multi-ICS.`
+        );
+      }
+      return { text: '', matchCount: 0 };
+    }
+
+    // Deduplicate by (startTime + summary) in case overlaps
+    const seen = new Set();
+    const merged = [];
+
+    for (const f of allFixtures) {
+      const startIso =
+        f.start instanceof Date ? f.start.toISOString() : new Date(f.start).toISOString();
+      const key = `${startIso}|${f.summary}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(f);
+    }
+
+    merged.sort((a, b) => {
+      const sa =
+        a.start instanceof Date ? a.start.getTime() : new Date(a.start).getTime();
+      const sb =
+        b.start instanceof Date ? b.start.getTime() : new Date(b.start).getTime();
+      return sa - sb;
+    });
+
+    const lines = merged.map((f) => {
+      const dt = f.start instanceof Date ? f.start : new Date(f.start);
+      const when = dt.toLocaleString('en-GB', {
+        timeZone: timezone,
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      let line = `${when} – ${f.summary}`;
+      if (f.location) line += ` @ ${f.location}`;
+      if (f.teamLabel) line += ` [${f.teamLabel}]`;
+
+      return line;
+    });
+
+    const header = `Upcoming fixtures – ${channel.label || channel.id} (next ${daysAhead} day(s))`;
+    const text = `${header}\n\n${lines.join('\n')}`;
+
+    return {
+      text,
+      matchCount: merged.length
+    };
+  }
+
+  // --- MODE 2: Single ICS URL (global or per-channel), filtered by teams ----
+  const icsUrl = channel.icsUrl || cfg.icsUrl;
+  if (!icsUrl) {
+    throw new Error(
+      `No ICS URL configured (channel "${channel.label || channel.id}")`
+    );
+  }
+
+  const teamNames = (channel.teams || []).map(
+    (t) => t.label || t.slug || ''
+  );
+
+  logLine(
+    `Channel "${channel.label || channel.id}": single ICS mode, url=${icsUrl}, daysAhead=${daysAhead}, teamFilters=${teamNames.length}`
+  );
+
+  const fixtures = await getFixturesFromIcs(
+    icsUrl,
+    timezone,
+    teamNames,
+    daysAhead
+  );
+
+  if (!fixtures.length) {
+    return { text: '', matchCount: 0 };
+  }
+
+  const lines = fixtures.map((f) => {
+    const dt = f.start instanceof Date ? f.start : new Date(f.start);
+    const when = dt.toLocaleString('en-GB', {
+      timeZone: timezone,
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    let line = `${when} – ${f.summary}`;
+    if (f.location) line += ` @ ${f.location}`;
+    return line;
+  });
+
+  const header = `Upcoming fixtures from ICS – ${channel.label || channel.id} (next ${daysAhead} day(s))`;
+  const text = `${header}\n\n${lines.join('\n')}`;
+
+  return {
+    text,
+    matchCount: fixtures.length
+  };
+}
+
+// ---------- main runner ----------
+
+async function runOnce() {
+  const cfg = loadConfig();
+
+  const botToken = cfg.botToken;
+  if (!botToken) {
+    throw new Error('botToken not set in config.json');
+  }
+
+  const channels = cfg.channels || [];
+  if (!channels.length) {
+    throw new Error('No channels configured in config.json');
+  }
+
+  const results = [];
+  let totalMatches = 0;
+  let sendCount = 0;
+
+  for (const channel of channels) {
+    const label = channel.label || channel.id || '(unknown channel)';
+
+    try {
+      const { text, matchCount } = await buildChannelMessage(cfg, channel);
+
+      if (!text || !matchCount) {
+        logLine(
+          `Channel "${label}": no fixtures found for current window (matches=0).`
+        );
+        results.push({
+          channelLabel: label,
+          sent: false,
+          matchCount: 0
+        });
+        continue;
+      }
+
+      await sendTelegramMessage(botToken, channel.id, text);
+      logLine(
+        `Channel "${label}": sent message with ${matchCount} fixtures.`
+      );
+
+      results.push({
+        channelLabel: label,
+        sent: true,
+        matchCount
+      });
+
+      totalMatches += matchCount;
+      sendCount += 1;
+    } catch (err) {
+      logLine(
+        `ERROR for channel "${label}": ${err.message || String(err)}`
+      );
+      results.push({
+        channelLabel: label,
+        sent: false,
+        matchCount: 0,
+        error: err.message || String(err)
+      });
+    }
+  }
+
+  const summary = `Channels=${channels.length}, sent=${sendCount}, totalMatches=${totalMatches}`;
+  logLine(`Run summary: ${summary}`);
+
+  return { summary, results };
+}
+
+// allow manual CLI run
+if (require.main === module) {
+  runOnce()
+    .then(({ summary }) => {
+      console.log('Done:', summary);
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('Fatal error in runOnce:', err);
+      process.exit(1);
+    });
+}
+
+module.exports = {
+  runOnce,
+  CONFIG_PATH,
+  LOG_PATH
+};
