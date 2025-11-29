@@ -49,6 +49,8 @@ const TMP_DIR = path.join(__dirname, 'tmp');
 // ---------- Image poster constants ----------
 const MAX_DISPLAYED_TV_REGIONS = 10;
 const POSTER_OVERLAY_OPACITY = 0.88; // Semi-transparent overlay to show background while ensuring readability
+const MIN_FONT_SIZE = 10; // Absolute minimum font size in pixels (ensures text remains readable)
+const TEXT_PADDING_PERCENT = 0.1; // 10% padding on each side (total 20% of canvas width reserved for margins)
 
 // ---------- Team parsing patterns ----------
 // Regex patterns for parsing "Home v Away" from fixture summaries
@@ -185,6 +187,93 @@ function ensureTmpDir() {
 }
 
 /**
+ * Calculate the font size needed to fit text within a maximum width.
+ * Uses binary search to find the optimal font size efficiently.
+ * 
+ * @param {CanvasRenderingContext2D} ctx - Canvas 2D context
+ * @param {string} text - Text to measure
+ * @param {number} maxWidth - Maximum allowed width in pixels
+ * @param {string} fontStyle - Font style prefix (e.g., 'bold', 'italic', '')
+ * @param {number} baseFontSize - Starting font size
+ * @param {string} fontFamily - Font family (e.g., 'Arial, sans-serif')
+ * @returns {number} Optimal font size that fits within maxWidth
+ */
+function calculateFittingFontSize(ctx, text, maxWidth, fontStyle, baseFontSize, fontFamily) {
+  if (!text || maxWidth <= 0) return baseFontSize;
+  
+  // Use absolute minimum font size to ensure text always fits
+  const minFontSize = MIN_FONT_SIZE;
+  
+  // Start with base font size and check if it fits
+  ctx.font = `${fontStyle} ${baseFontSize}px ${fontFamily}`.trim();
+  let textWidth = ctx.measureText(text).width;
+  
+  if (textWidth <= maxWidth) {
+    return baseFontSize; // Text fits at base size
+  }
+  
+  // Binary search for optimal font size
+  let low = minFontSize;
+  let high = baseFontSize;
+  let optimalSize = minFontSize;
+  
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    ctx.font = `${fontStyle} ${mid}px ${fontFamily}`.trim();
+    textWidth = ctx.measureText(text).width;
+    
+    if (textWidth <= maxWidth) {
+      optimalSize = mid;
+      low = mid + 1; // Try larger sizes
+    } else {
+      high = mid - 1; // Try smaller sizes
+    }
+  }
+  
+  return optimalSize;
+}
+
+/**
+ * Draw text that auto-scales to fit within the available width.
+ * The font size is reduced if necessary to prevent text from overflowing.
+ * 
+ * @param {CanvasRenderingContext2D} ctx - Canvas 2D context
+ * @param {string} text - Text to draw
+ * @param {number} x - X position for text
+ * @param {number} y - Y position for text
+ * @param {number} maxWidth - Maximum allowed width in pixels
+ * @param {Object} options - Drawing options
+ * @param {string} options.fontStyle - Font style prefix (e.g., 'bold', 'italic', '')
+ * @param {number} options.fontSize - Base font size
+ * @param {string} options.fontFamily - Font family
+ * @param {string} options.fillStyle - Fill color
+ * @param {string} options.textAlign - Text alignment ('left', 'center', 'right')
+ * @returns {number} The actual font size used
+ */
+function drawAutoScaledText(ctx, text, x, y, maxWidth, options = {}) {
+  const {
+    fontStyle = '',
+    fontSize = 24,
+    fontFamily = 'Arial, sans-serif',
+    fillStyle = '#ffffff',
+    textAlign = 'center'
+  } = options;
+  
+  if (!text) return fontSize;
+  
+  // Calculate the fitting font size
+  const fittingSize = calculateFittingFontSize(ctx, text, maxWidth, fontStyle, fontSize, fontFamily);
+  
+  // Set up context and draw
+  ctx.font = `${fontStyle} ${fittingSize}px ${fontFamily}`.trim();
+  ctx.fillStyle = fillStyle;
+  ctx.textAlign = textAlign;
+  ctx.fillText(text, x, y);
+  
+  return fittingSize;
+}
+
+/**
  * Build a poster image for a fixture using the background image.
  * Returns the path to the generated image file, or null if image generation fails.
  * 
@@ -236,15 +325,22 @@ async function buildPosterImageForFixture(fixture, options = {}) {
     const tvSize = Math.round(baseSize * 0.7);
     const footerSize = Math.round(baseSize * 0.6);
     
+    // Calculate maximum text width (canvas width minus padding on both sides)
+    const maxTextWidth = canvasWidth * (1 - 2 * TEXT_PADDING_PERCENT);
+    const fontFamily = 'Arial, sans-serif';
+    
     // Starting Y position
     let y = canvasHeight * 0.12;
     const lineHeight = baseSize * 1.6;
     
     // Title: "SPORTS LISTINGS ON TV"
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${titleSize}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText('SPORTS LISTINGS ON TV', canvasWidth / 2, y);
+    drawAutoScaledText(ctx, 'SPORTS LISTINGS ON TV', canvasWidth / 2, y, maxTextWidth, {
+      fontStyle: 'bold',
+      fontSize: titleSize,
+      fontFamily,
+      fillStyle: '#ffffff',
+      textAlign: 'center'
+    });
     
     // Decorative lines under title
     y += lineHeight * 0.3;
@@ -261,37 +357,53 @@ async function buildPosterImageForFixture(fixture, options = {}) {
     const timeUk = fixture.timeUk || '';
     const timeEt = fixture.timeEt || '';
     if (timeUk || timeEt) {
-      ctx.font = `${timeSize}px Arial, sans-serif`;
-      ctx.fillStyle = '#80cbc4';
       let timeLine = '';
       if (timeUk) timeLine += `${timeUk} UK`;
       if (timeUk && timeEt) timeLine += '    ';
       if (timeEt) timeLine += `${timeEt} ET`;
-      ctx.fillText(timeLine, canvasWidth / 2, y);
+      drawAutoScaledText(ctx, timeLine, canvasWidth / 2, y, maxTextWidth, {
+        fontStyle: '',
+        fontSize: timeSize,
+        fontFamily,
+        fillStyle: '#80cbc4',
+        textAlign: 'center'
+      });
       y += lineHeight * 1.3;
     }
     
     // Fixture title - prefer matchTitle, fall back to constructing from home/away teams
-    ctx.font = `bold ${fixtureSize}px Arial, sans-serif`;
-    ctx.fillStyle = '#ffffff';
+    let fixtureText = '';
     if (fixture.matchTitle) {
-      ctx.fillText(fixture.matchTitle, canvasWidth / 2, y);
+      fixtureText = fixture.matchTitle;
     } else {
       const homeTeam = (fixture.homeTeam || '').toUpperCase();
       const awayTeam = (fixture.awayTeam || '').toUpperCase();
       if (homeTeam && awayTeam) {
-        ctx.fillText(`${homeTeam} v ${awayTeam}`, canvasWidth / 2, y);
+        fixtureText = `${homeTeam} v ${awayTeam}`;
       } else if (homeTeam) {
-        ctx.fillText(homeTeam, canvasWidth / 2, y);
+        fixtureText = homeTeam;
       }
+    }
+    if (fixtureText) {
+      drawAutoScaledText(ctx, fixtureText, canvasWidth / 2, y, maxTextWidth, {
+        fontStyle: 'bold',
+        fontSize: fixtureSize,
+        fontFamily,
+        fillStyle: '#ffffff',
+        textAlign: 'center'
+      });
     }
     y += lineHeight * 1.1;
     
     // Competition
     if (fixture.competition) {
-      ctx.font = `italic ${competitionSize}px Arial, sans-serif`;
-      ctx.fillStyle = '#aaaaaa';
-      ctx.fillText(fixture.competition, canvasWidth / 2, y);
+      drawAutoScaledText(ctx, fixture.competition, canvasWidth / 2, y, maxTextWidth, {
+        fontStyle: 'italic',
+        fontSize: competitionSize,
+        fontFamily,
+        fillStyle: '#aaaaaa',
+        textAlign: 'center'
+      });
       y += lineHeight;
     }
     
@@ -300,41 +412,77 @@ async function buildPosterImageForFixture(fixture, options = {}) {
     // TV by Region list
     const tvByRegion = fixture.tvByRegion || [];
     if (tvByRegion.length > 0) {
-      ctx.font = `${tvSize}px Arial, sans-serif`;
-      ctx.textAlign = 'left';
+      // Calculate layout for two-column region/channel display
+      const startX = canvasWidth * TEXT_PADDING_PERCENT;
+      const availableWidth = maxTextWidth;
       
-      // Calculate max region width for alignment
-      const maxRegionLen = Math.max(...tvByRegion.map(r => (r.region || '').length));
-      const charWidth = tvSize * 0.6;
-      const regionWidth = maxRegionLen * charWidth + 30;
-      const startX = canvasWidth * 0.15;
+      // Measure all region names to find the longest one
+      ctx.font = `${tvSize}px ${fontFamily}`;
+      let maxRegionWidth = 0;
+      for (const { region } of tvByRegion.slice(0, MAX_DISPLAYED_TV_REGIONS)) {
+        const regionWidth = ctx.measureText(region || '').width;
+        if (regionWidth > maxRegionWidth) {
+          maxRegionWidth = regionWidth;
+        }
+      }
+      
+      // Add padding between region and channel
+      const columnGap = tvSize * 1.5;
+      const regionColumnWidth = maxRegionWidth + columnGap;
+      const channelStartX = startX + regionColumnWidth;
+      const channelMaxWidth = availableWidth - regionColumnWidth;
       
       for (const { region, channel } of tvByRegion.slice(0, MAX_DISPLAYED_TV_REGIONS)) {
-        ctx.fillStyle = '#80cbc4';
-        ctx.fillText(region || '', startX, y);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(channel || '', startX + regionWidth, y);
+        // Draw region (left-aligned, auto-scaled if needed)
+        drawAutoScaledText(ctx, region || '', startX, y, regionColumnWidth - columnGap, {
+          fontStyle: '',
+          fontSize: tvSize,
+          fontFamily,
+          fillStyle: '#80cbc4',
+          textAlign: 'left'
+        });
+        
+        // Draw channel (left-aligned after region, auto-scaled if needed)
+        drawAutoScaledText(ctx, channel || '', channelStartX, y, channelMaxWidth, {
+          fontStyle: '',
+          fontSize: tvSize,
+          fontFamily,
+          fillStyle: '#ffffff',
+          textAlign: 'left'
+        });
+        
         y += lineHeight * 0.85;
       }
       
       if (tvByRegion.length > MAX_DISPLAYED_TV_REGIONS) {
-        ctx.fillStyle = '#aaaaaa';
-        ctx.fillText(`... and ${tvByRegion.length - MAX_DISPLAYED_TV_REGIONS} more`, startX, y);
+        drawAutoScaledText(ctx, `... and ${tvByRegion.length - MAX_DISPLAYED_TV_REGIONS} more`, startX, y, availableWidth, {
+          fontStyle: '',
+          fontSize: tvSize,
+          fontFamily,
+          fillStyle: '#aaaaaa',
+          textAlign: 'left'
+        });
         y += lineHeight * 0.85;
       }
     } else {
-      ctx.font = `${tvSize}px Arial, sans-serif`;
-      ctx.fillStyle = '#aaaaaa';
-      ctx.textAlign = 'center';
-      ctx.fillText('TV details TBC', canvasWidth / 2, y);
+      drawAutoScaledText(ctx, 'TV details TBC', canvasWidth / 2, y, maxTextWidth, {
+        fontStyle: '',
+        fontSize: tvSize,
+        fontFamily,
+        fillStyle: '#aaaaaa',
+        textAlign: 'center'
+      });
     }
     
     // Footer at the bottom
     if (footerText) {
-      ctx.font = `${footerSize}px Arial, sans-serif`;
-      ctx.fillStyle = '#888888';
-      ctx.textAlign = 'center';
-      ctx.fillText(footerText, canvasWidth / 2, canvasHeight - canvasHeight * 0.05);
+      drawAutoScaledText(ctx, footerText, canvasWidth / 2, canvasHeight - canvasHeight * 0.05, maxTextWidth, {
+        fontStyle: '',
+        fontSize: footerSize,
+        fontFamily,
+        fillStyle: '#888888',
+        textAlign: 'center'
+      });
     }
     
     // Generate unique filename and save
