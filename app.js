@@ -129,6 +129,9 @@ app.get('/', (req, res) => {
 
 // --------- Channels page ---------
 
+// Number of columns in the channels table
+const CHANNELS_TABLE_COLS = 6;
+
 app.get('/admin/channels', (req, res) => {
   const cfg = loadConfig();
   const channels = cfg.channels || [];
@@ -178,7 +181,7 @@ app.get('/admin/channels', (req, res) => {
       <tbody>
         ${
           rows ||
-          '<tr><td colspan="6">No channels yet. Add one below.</td></tr>'
+          `<tr><td colspan="${CHANNELS_TABLE_COLS}">No channels yet. Add one below.</td></tr>`
         }
       </tbody>
     </table>

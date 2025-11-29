@@ -162,7 +162,7 @@ function parseTeamsFromSummary(summary) {
  * @param {Object} channel - Channel config object
  * @returns {Object} Adapted fixture with poster fields
  */
-function adaptFixtureForPoster(fixture, channel) {
+function adaptFixtureForPoster(fixture) {
   const start = fixture.start instanceof Date ? fixture.start : new Date(fixture.start);
   
   // Format times in UK and US Eastern timezones
@@ -217,10 +217,13 @@ function adaptFixtureForPoster(fixture, channel) {
  * @param {Object} fixture - Fixture object with poster fields
  * @param {Object} options - Options for formatting
  * @param {boolean} options.showFooter - Whether to show the footer (default true)
+ * @param {string} options.footerText - Custom footer text (default: "Please support the listings by subscribing.")
  * @returns {string} Formatted poster message
  */
+const DEFAULT_FOOTER_TEXT = 'Please support the listings by subscribing.';
+
 function formatFixturePoster(fixture, options = {}) {
-  const { showFooter = true } = options;
+  const { showFooter = true, footerText = DEFAULT_FOOTER_TEXT } = options;
   
   const lines = [];
   
@@ -272,9 +275,9 @@ function formatFixturePoster(fixture, options = {}) {
   }
   
   // Footer (optional)
-  if (showFooter) {
+  if (showFooter && footerText) {
     lines.push('');
-    lines.push('Please support the listings by subscribing.');
+    lines.push(footerText);
   }
   
   return lines.join('\n');
@@ -715,18 +718,17 @@ async function runOnce() {
         for (const fixture of fixtures) {
           try {
             // Adapt the fixture for poster format
-            const posterFixture = adaptFixtureForPoster(fixture, channel);
+            const posterFixture = adaptFixtureForPoster(fixture);
             
             // Format the poster message
             const posterText = formatFixturePoster(posterFixture, {
               showFooter: true
             });
             
-            // Log the fixture being posted
-            const { homeTeam, awayTeam } = parseTeamsFromSummary(fixture.summary);
+            // Log the fixture being posted (use already parsed team names)
             const tvRegionCount = posterFixture.tvByRegion ? posterFixture.tvByRegion.length : 0;
             logLine(
-              `  Poster for ${homeTeam.toUpperCase()} v ${awayTeam.toUpperCase()} – TV regions: ${tvRegionCount}`
+              `  Poster for ${posterFixture.homeTeam.toUpperCase()} v ${posterFixture.awayTeam.toUpperCase()} – TV regions: ${tvRegionCount}`
             );
             
             // Send the poster message
