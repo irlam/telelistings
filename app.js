@@ -178,6 +178,7 @@ function renderLayout(title, bodyHtml) {
     <a href="/admin/teams">Teams</a>
     <a href="/admin/settings">Settings</a>
     <a href="/admin/logs">Logs</a>
+    <a href="/admin/test-lstv">Test LSTV</a>
     <a href="/admin/help">Help</a>
   </p>
   ${bodyHtml}
@@ -586,6 +587,13 @@ app.get('/admin/settings', (req, res) => {
       </p>
       <p>
         <label>
+          <input type="checkbox" name="liveSoccerTvUsePuppeteer" value="true" id="liveSoccerTvUsePuppeteer" ${cfg.liveSoccerTvUsePuppeteer ? 'checked' : ''}>
+          Use Puppeteer (headless Chrome) for LiveSoccerTV scraping
+        </label>
+        <span class="muted">More reliable but slower. Requires Chrome/Chromium installed on server. <a href="/admin/test-lstv">Test the scraper →</a></span>
+      </p>
+      <p>
+        <label>
           <input type="checkbox" name="defaultPosterStyle" value="true" id="defaultPosterStyle" ${cfg.defaultPosterStyle ? 'checked' : ''}>
           Use poster-style layout by default for new channels
         </label>
@@ -642,7 +650,7 @@ app.get('/admin/settings', (req, res) => {
 });
 
 app.post('/admin/settings', (req, res) => {
-  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, liveSoccerTvEnabled, defaultPosterStyle, posterFooterText } = req.body;
+  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, liveSoccerTvEnabled, liveSoccerTvUsePuppeteer, defaultPosterStyle, posterFooterText } = req.body;
   const cfg = loadConfig();
 
   cfg.botToken = (botToken || '').trim();
@@ -651,6 +659,7 @@ app.post('/admin/settings', (req, res) => {
   cfg.icsDaysAhead = parseInt(icsDaysAhead, 10) || 1;
   cfg.theSportsDbApiKey = (theSportsDbApiKey || '').trim();
   cfg.liveSoccerTvEnabled = liveSoccerTvEnabled === 'true';
+  cfg.liveSoccerTvUsePuppeteer = liveSoccerTvUsePuppeteer === 'true';
   cfg.defaultPosterStyle = defaultPosterStyle === 'true';
   cfg.posterFooterText = (posterFooterText || '').trim();
 
@@ -881,6 +890,124 @@ app.get('/cron/run', async (req, res) => {
   } catch (err) {
     console.error('Error in /cron/run:', err);
     res.status(500).send('ERROR: ' + (err.message || String(err)));
+  }
+});
+
+// --------- LSTV Test Page (Admin) ---------
+
+// Import LSTV scraper
+const lstv = require('./scrapers/lstv');
+
+app.get('/admin/test-lstv', async (req, res) => {
+  const { home, away, date } = req.query;
+  
+  let result = null;
+  let error = null;
+  
+  // Only run scraper if params provided
+  if (home && away) {
+    try {
+      result = await lstv.fetchLSTV({
+        home: home.trim(),
+        away: away.trim(),
+        date: date ? new Date(date) : new Date()
+      });
+    } catch (err) {
+      error = err.message || String(err);
+    }
+  }
+  
+  // Build result HTML
+  let resultHtml = '';
+  
+  if (error) {
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>Error</h3>
+      <p>${escapeHtml(error)}</p>
+    </div>`;
+  } else if (result) {
+    const channelRows = (result.regionChannels || [])
+      .map(rc => `<tr><td>${escapeHtml(rc.region || '')}</td><td>${escapeHtml(rc.channel || '')}</td></tr>`)
+      .join('');
+    
+    const hasChannels = (result.regionChannels || []).length > 0;
+    
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid ${hasChannels ? '#00b894' : '#f39c12'};">
+      <h3>Result</h3>
+      <table>
+        <tr><th>URL Scraped</th><td>${result.url ? `<a href="${escapeHtml(result.url)}" target="_blank">${escapeHtml(result.url)}</a>` : '<em>None</em>'}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(result.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Channels Found</th><td>${(result.regionChannels || []).length}</td></tr>
+      </table>
+      
+      ${hasChannels ? `
+      <h4>TV Channels by Region</h4>
+      <table>
+        <thead>
+          <tr><th>Region</th><th>Channel</th></tr>
+        </thead>
+        <tbody>
+          ${channelRows}
+        </tbody>
+      </table>
+      ` : '<p><em>No TV channels found for this fixture.</em></p>'}
+    </div>`;
+  }
+  
+  const body = `
+  <div class="card">
+    <h2>Test LiveSoccerTV Scraper</h2>
+    <p>Test the LSTV Puppeteer scraper by entering team names and optionally a date.</p>
+    
+    <form method="get" action="/admin/test-lstv">
+      <p>
+        <label>Home Team<br>
+        <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required></label>
+      </p>
+      <p>
+        <label>Away Team<br>
+        <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required></label>
+      </p>
+      <p>
+        <label>Date (optional)<br>
+        <input type="date" name="date" value="${escapeHtml(date || '')}"></label>
+        <span class="muted">Leave blank for today's date.</span>
+      </p>
+      <p><button type="submit">Search LiveSoccerTV</button></p>
+    </form>
+  </div>
+  
+  ${resultHtml}
+  
+  <div class="card">
+    <h3>How it works</h3>
+    <ul>
+      <li>The scraper uses Puppeteer (headless Chrome) to load LiveSoccerTV pages.</li>
+      <li>It tries multiple URL patterns to find the match page.</li>
+      <li>TV channels are extracted from the match page's broadcast table.</li>
+      <li>Results are cached for 4 hours to reduce scraping frequency.</li>
+    </ul>
+    <p><a href="/health/lstv" target="_blank">Check LSTV Health Status →</a></p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Test LSTV Scraper - Telegram Sports TV Bot', body));
+});
+
+// --------- LSTV Health Check (Public) ---------
+
+app.get('/health/lstv', async (req, res) => {
+  try {
+    const result = await lstv.healthCheck();
+    res.json(result);
+  } catch (err) {
+    res.json({
+      ok: false,
+      latencyMs: 0,
+      error: err.message || String(err)
+    });
   }
 });
 
