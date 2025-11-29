@@ -430,12 +430,13 @@ function parseFishySummary(summary, ourTeam) {
   const text = (summary || '').trim();
   const team = (ourTeam || '').trim();
   
-  if (!text || !team) {
-    // Fall back: treat summary as opponent, ourTeam as home
-    return {
-      homeTeam: team || cleanTeamName(text),
-      awayTeam: team ? cleanTeamName(text) : ''
-    };
+  // Handle edge cases when summary or team is missing
+  if (!text) {
+    return { homeTeam: team, awayTeam: '' };
+  }
+  if (!team) {
+    // No team provided - just clean the summary text
+    return { homeTeam: cleanTeamName(text), awayTeam: '' };
   }
   
   // Check for "(away)" or "(a)" at the end - our team is away
@@ -516,7 +517,8 @@ function parseTeamsFromSummary(summary) {
 
 /**
  * Adapt a basic fixture object to the poster data model.
- * Adds timeUk, timeEt, homeTeam, awayTeam, matchTitle, and tvByRegion fields.
+ * Adds/updates timeUk, timeEt, homeTeam, awayTeam, matchTitle fields.
+ * Also sets competition, venue, and tvByRegion if not already present.
  * 
  * @param {Object} fixture - Basic fixture object with start, summary, tvChannel, teamLabel, etc.
  * @returns {Object} Adapted fixture with poster fields
