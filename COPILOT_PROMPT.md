@@ -96,6 +96,7 @@ Example:
   "timezone": "Europe/London",
   "icsUrl": "",
   "icsDaysAhead": 7,
+  "theSportsDbApiKey": "",
   "channels": [
     {
       "id": "@FootballOnTvUK",
@@ -114,3 +115,34 @@ Example:
     }
   ]
 }
+```
+
+---
+
+## TheSportsDB v1 API Integration
+
+The bot supports **TheSportsDB v1 API** as an additional source for TV channel information:
+
+- **API Base URL**: `https://www.thesportsdb.com/api/v1/json/<APIKEY>/...`
+- **Configuration**: Set `theSportsDbApiKey` in `config.json` or via the admin GUI Settings page
+- **Module**: `thesportsdb.js` contains all API integration code
+
+### Key Endpoints Used
+
+- `/searchteams.php?t={team_name}` – Search for teams by name
+- `/eventsnext.php?id={team_id}` – Get upcoming events for a team
+- `/lookuptv.php?id={event_id}` – Get TV listings for an event
+
+### How It Works
+
+1. When fixtures are fetched from ICS feeds, the autoposter checks if a TheSportsDB API key is configured
+2. For each fixture, it tries to find a matching event in TheSportsDB by team name and date
+3. If found, it fetches TV listings for that event and adds the TV channel info to the fixture
+4. The TV info is displayed in the Telegram message as `(TV: Sky Sports)` etc.
+
+### Rate Limiting
+
+The integration includes built-in rate limiting:
+- 300ms delay between TheSportsDB API calls
+- Falls back gracefully if API returns errors
+- TV enrichment is optional and won't break fixture posting if it fails

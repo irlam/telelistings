@@ -415,6 +415,13 @@ app.get('/admin/settings', (req, res) => {
         )}"></label>
         <span class="muted">For example, 1 = today only, 7 = next week.</span>
       </p>
+      <p>
+        <label>TheSportsDB API Key (optional)<br>
+        <input type="text" name="theSportsDbApiKey" value="${escapeHtml(
+          cfg.theSportsDbApiKey || ''
+        )}"></label>
+        <span class="muted">Get a key from <a href="https://www.thesportsdb.com/api.php" target="_blank">thesportsdb.com</a>. Used to fetch TV channel info for fixtures. Leave blank to disable.</span>
+      </p>
       <p><button type="submit">Save Settings</button></p>
     </form>
   </div>
@@ -441,13 +448,14 @@ app.get('/admin/settings', (req, res) => {
 });
 
 app.post('/admin/settings', (req, res) => {
-  const { botToken, timezone, icsUrl, icsDaysAhead } = req.body;
+  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey } = req.body;
   const cfg = loadConfig();
 
   cfg.botToken = (botToken || '').trim();
   cfg.timezone = (timezone || '').trim() || 'Europe/London';
   cfg.icsUrl = (icsUrl || '').trim();
   cfg.icsDaysAhead = parseInt(icsDaysAhead, 10) || 1;
+  cfg.theSportsDbApiKey = (theSportsDbApiKey || '').trim();
 
   saveConfig(cfg);
   res.redirect('/admin/settings');
