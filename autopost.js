@@ -46,6 +46,24 @@ const LOG_PATH = path.join(__dirname, 'autopost.log');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const TMP_DIR = path.join(__dirname, 'tmp');
 
+// ---------- Image poster constants ----------
+const MAX_DISPLAYED_TV_REGIONS = 10;
+const POSTER_OVERLAY_OPACITY = 0.88; // Semi-transparent overlay to show background while ensuring readability
+
+// ---------- Team parsing patterns ----------
+// Regex patterns for parsing "Home v Away" from fixture summaries
+// Each pattern captures home team (group 1) and away team (group 2)
+// Patterns are ordered by specificity (most specific first)
+const TEAM_SEPARATOR_PATTERNS = [
+  { name: 'vs_dot', pattern: /^(.+?)\s*vs\.\s*(.+)$/i },       // "vs." with optional spaces around dot
+  { name: 'vs_spaced', pattern: /^(.+?)\s+vs\s+(.+)$/i },      // "vs" with required spaces
+  { name: 'v_spaced', pattern: /^(.+?)\s+v\s+(.+)$/i },        // "v" with required spaces
+  { name: 'hyphen_left', pattern: /^(.+?)\s+-\s*(.+)$/ },      // hyphen with space on left
+  { name: 'hyphen_right', pattern: /^(.+?)\s*-\s+(.+)$/ },     // hyphen with space on right
+  { name: 'at_left', pattern: /^(.+?)\s+@\s*(.+)$/ },          // @ with space on left
+  { name: 'at_right', pattern: /^(.+?)\s*@\s+(.+)$/ }          // @ with space on right
+];
+
 // ---------- logging helpers ----------
 
 function timestamp() {
@@ -205,9 +223,8 @@ async function buildPosterImageForFixture(fixture, options = {}) {
     // Draw background
     ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight);
     
-    // Add fully opaque dark overlay to completely cover background content
-    // This ensures a clean slate for our poster text
-    ctx.fillStyle = 'rgba(18, 18, 18, 1.0)';
+    // Add semi-transparent dark overlay for text readability while showing background
+    ctx.fillStyle = `rgba(18, 18, 18, ${POSTER_OVERLAY_OPACITY})`;
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     
     // Calculate responsive font sizes based on canvas dimensions
@@ -288,7 +305,7 @@ async function buildPosterImageForFixture(fixture, options = {}) {
       const regionWidth = maxRegionLen * charWidth + 30;
       const startX = canvasWidth * 0.15;
       
-      for (const { region, channel } of tvByRegion.slice(0, 10)) { // Limit to 10 regions
+      for (const { region, channel } of tvByRegion.slice(0, MAX_DISPLAYED_TV_REGIONS)) {
         ctx.fillStyle = '#80cbc4';
         ctx.fillText(region || '', startX, y);
         ctx.fillStyle = '#ffffff';
@@ -296,9 +313,9 @@ async function buildPosterImageForFixture(fixture, options = {}) {
         y += lineHeight * 0.85;
       }
       
-      if (tvByRegion.length > 10) {
+      if (tvByRegion.length > MAX_DISPLAYED_TV_REGIONS) {
         ctx.fillStyle = '#aaaaaa';
-        ctx.fillText(`... and ${tvByRegion.length - 10} more`, startX, y);
+        ctx.fillText(`... and ${tvByRegion.length - MAX_DISPLAYED_TV_REGIONS} more`, startX, y);
         y += lineHeight * 0.85;
       }
     } else {
@@ -318,7 +335,9 @@ async function buildPosterImageForFixture(fixture, options = {}) {
     
     // Generate unique filename and save
     const timestamp = Date.now();
-    const homeSlug = (fixture.homeTeam || 'fixture').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 20);
+    const teamName = fixture.homeTeam || 'fixture';
+    const sanitizedTeamName = teamName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    const homeSlug = sanitizedTeamName.slice(0, 20);
     const outputPath = path.join(TMP_DIR, `poster-${homeSlug}-${timestamp}.png`);
     
     const buffer = cvs.toBuffer('image/png');
@@ -414,24 +433,8 @@ function parseTeamsFromSummary(summary) {
     return { homeTeam: '', awayTeam: '' };
   }
   
-  // Try patterns in order of specificity (most specific first)
-  // Each pattern captures home team (group 1) and away team (group 2)
-  const patterns = [
-    // "vs." with optional spaces around the dot
-    /^(.+?)\s*vs\.\s*(.+)$/i,
-    // "vs" with required space(s) around it (to avoid matching inside words)
-    /^(.+?)\s+vs\s+(.+)$/i,
-    // "v" with required space(s) around it
-    /^(.+?)\s+v\s+(.+)$/i,
-    // Hyphen as separator with at least one space or at start/end
-    /^(.+?)\s+-\s*(.+)$/,
-    /^(.+?)\s*-\s+(.+)$/,
-    // @ as separator with at least one space
-    /^(.+?)\s+@\s*(.+)$/,
-    /^(.+?)\s*@\s+(.+)$/
-  ];
-  
-  for (const pattern of patterns) {
+  // Try each separator pattern in order of specificity
+  for (const { pattern } of TEAM_SEPARATOR_PATTERNS) {
     const match = text.match(pattern);
     if (match && match[1] && match[2]) {
       const homeRaw = match[1].trim();
