@@ -196,8 +196,14 @@ async function fetchLFOTVFixtures({ teamName, competition }) {
           let awayTeam = vsMatch[2].trim();
           
           // Clean up team names (remove time/channel info that might be captured)
-          homeTeam = homeTeam.replace(/\d{1,2}[:\.]?\d{0,2}\s*(am|pm)?/gi, '').trim();
-          awayTeam = awayTeam.replace(/Sky Sports|TNT Sports|BBC|ITV|Amazon/gi, '').trim();
+          // Apply same cleaning to both home and away teams for consistency
+          const cleanTeamText = (t) => t
+            .replace(/\d{1,2}[:\.]?\d{0,2}\s*(am|pm)?/gi, '')
+            .replace(/Sky Sports|TNT Sports|BBC|ITV|Amazon/gi, '')
+            .trim();
+          
+          homeTeam = cleanTeamText(homeTeam);
+          awayTeam = cleanTeamText(awayTeam);
           
           if (!homeTeam || !awayTeam) return;
           

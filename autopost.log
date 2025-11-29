@@ -474,3 +474,40 @@
 [2025-11-29T15:13:16.451Z] [WIKI] Missing league name
 [2025-11-29T15:13:16.451Z] [WIKI] Fetching: 2024–25 Premier League
 [2025-11-29T15:13:16.453Z] [WIKI] Error fetching 2024–25 Premier League: getaddrinfo ENOTFOUND en.wikipedia.org
+[2025-11-29T15:16:40.552Z] [LSTV] Missing team names: home="", away=""
+[2025-11-29T15:16:40.553Z] [LSTV] Searching for Test Team A vs Test Team B
+[2025-11-29T15:16:40.644Z] [LSTV] Launching Chrome from /usr/bin/chromium-browser
+[2025-11-29T15:16:40.952Z] [LSTV] Trying URL: https://www.livesoccertv.com/match/test-team-a-vs-test-team-b/
+[2025-11-29T15:16:40.974Z] [LSTV] Error with URL https://www.livesoccertv.com/match/test-team-a-vs-test-team-b/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/match/test-team-a-vs-test-team-b/
+[2025-11-29T15:16:40.974Z] [LSTV] Trying URL: https://www.livesoccertv.com/match/test-team-a-v-test-team-b/
+[2025-11-29T15:16:41.001Z] [LSTV] Error with URL https://www.livesoccertv.com/match/test-team-a-v-test-team-b/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/match/test-team-a-v-test-team-b/
+[2025-11-29T15:16:41.001Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/england/test-team-a/
+[2025-11-29T15:16:41.025Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/england/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/england/test-team-a/
+[2025-11-29T15:16:41.025Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/spain/test-team-a/
+[2025-11-29T15:16:41.051Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/spain/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/spain/test-team-a/
+[2025-11-29T15:16:41.051Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/germany/test-team-a/
+[2025-11-29T15:16:41.077Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/germany/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/germany/test-team-a/
+[2025-11-29T15:16:41.077Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/italy/test-team-a/
+[2025-11-29T15:16:41.100Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/italy/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/italy/test-team-a/
+[2025-11-29T15:16:41.100Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/france/test-team-a/
+[2025-11-29T15:16:41.125Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/france/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/france/test-team-a/
+[2025-11-29T15:16:41.126Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/scotland/test-team-a/
+[2025-11-29T15:16:41.142Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/scotland/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/scotland/test-team-a/
+[2025-11-29T15:16:41.142Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/wales/test-team-a/
+[2025-11-29T15:16:41.160Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/wales/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/wales/test-team-a/
+[2025-11-29T15:16:41.160Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/netherlands/test-team-a/
+[2025-11-29T15:16:41.179Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/netherlands/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/netherlands/test-team-a/
+[2025-11-29T15:16:41.180Z] [LSTV] Trying URL: https://www.livesoccertv.com/teams/portugal/test-team-a/
+[2025-11-29T15:16:41.196Z] [LSTV] Error with URL https://www.livesoccertv.com/teams/portugal/test-team-a/: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/teams/portugal/test-team-a/
+[2025-11-29T15:16:41.196Z] [LSTV] Trying site search...
+[2025-11-29T15:16:41.197Z] [LSTV] Searching: https://www.livesoccertv.com/search?q=Test%20Team%20A%20Test%20Team%20B
+[2025-11-29T15:16:41.217Z] [LSTV] Search error: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/search?q=Test%20Team%20A%20Test%20Team%20B
+[2025-11-29T15:16:41.218Z] [LSTV] WARNING: No TV channels found for Test Team A vs Test Team B - no match page found or page had no channel data
+[2025-11-29T15:16:41.591Z] [LSTV] [health] FAIL in 297ms: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com
+[2025-11-29T15:16:41.684Z] [TSDB] Missing team names: home="", away=""
+[2025-11-29T15:16:41.685Z] [TSDB] Searching for Arsenal vs Chelsea on 2025-11-29
+[2025-11-29T15:16:41.701Z] [TSDB] Error: getaddrinfo ENOTFOUND www.thesportsdb.com
+[2025-11-29T15:16:41.704Z] [TSDB] [health] FAIL in 3ms: getaddrinfo ENOTFOUND www.thesportsdb.com
+[2025-11-29T15:16:41.704Z] [WIKI] Missing league name
+[2025-11-29T15:16:41.705Z] [WIKI] Fetching: 2024–25 Premier League
+[2025-11-29T15:16:41.707Z] [WIKI] Error fetching 2024–25 Premier League: getaddrinfo ENOTFOUND en.wikipedia.org

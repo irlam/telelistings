@@ -69,12 +69,23 @@ function log(msg) {
 }
 
 /**
+ * Format an error for consistent logging.
+ * @param {Error|string} err - Error object or string
+ * @returns {string} Formatted error message
+ */
+function formatError(err) {
+  if (!err) return 'Unknown error';
+  if (typeof err === 'string') return err;
+  return err.message || String(err);
+}
+
+/**
  * Log an error from a source.
  * @param {string} source - Source name (e.g., 'LSTV', 'TSDB')
- * @param {string} errorMsg - Error message
+ * @param {Error|string} err - Error object or message
  */
-function logSourceError(source, errorMsg) {
-  log(`[${source}] error: ${errorMsg}`);
+function logSourceError(source, err) {
+  log(`[${source}] error: ${formatError(err)}`);
 }
 
 // ---------- Helpers ----------
@@ -257,7 +268,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
     }
   } catch (err) {
     result.sourcesUsed.tsdb = false;
-    logSourceError('TSDB', err.message || String(err));
+    logSourceError('TSDB', err);
   }
   
   // ---------- 2. FootballData.org (optional) ----------
@@ -283,7 +294,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
       }
     } catch (err) {
       result.sourcesUsed.footballdata = false;
-      logSourceError('FBD', err.message || String(err));
+      logSourceError('FBD', err);
     }
   }
   
@@ -321,7 +332,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
     }
   } catch (err) {
     result.sourcesUsed.lstv = false;
-    logSourceError('LSTV', err.message || String(err));
+    logSourceError('LSTV', err);
   }
   
   // ---------- 4. BBC Fixtures (optional) ----------
@@ -352,7 +363,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
       }
     } catch (err) {
       result.sourcesUsed.bbc = false;
-      logSourceError('BBC', err.message || String(err));
+      logSourceError('BBC', err);
     }
   }
   
@@ -391,7 +402,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
       }
     } catch (err) {
       result.sourcesUsed.sky = false;
-      logSourceError('SKY', err.message || String(err));
+      logSourceError('SKY', err);
     }
   }
   
@@ -430,7 +441,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
       }
     } catch (err) {
       result.sourcesUsed.tnt = false;
-      logSourceError('TNT', err.message || String(err));
+      logSourceError('TNT', err);
     }
   }
   
@@ -469,7 +480,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
       }
     } catch (err) {
       result.sourcesUsed.lfotv = false;
-      logSourceError('LFOTV', err.message || String(err));
+      logSourceError('LFOTV', err);
     }
   }
   
@@ -512,7 +523,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
       }
     } catch (err) {
       result.sourcesUsed.wiki = false;
-      logSourceError('WIKI', err.message || String(err));
+      logSourceError('WIKI', err);
     }
   }
   

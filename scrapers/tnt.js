@@ -82,8 +82,8 @@ function extractChannels(text) {
     }
   }
   
-  // Also look for patterns like "TNT Sports 1"
-  const tntMatch = text.match(/TNT Sports\s*(\d|Ultimate)?/gi);
+  // Also look for patterns like "TNT Sports 1" or "TNT Sports Ultimate"
+  const tntMatch = text.match(/TNT Sports\s*(\d+|Ultimate)?/gi);
   if (tntMatch) {
     for (const match of tntMatch) {
       const cleaned = match.trim();
@@ -95,7 +95,7 @@ function extractChannels(text) {
   
   // Check for BT Sport (legacy name, now TNT Sports)
   if (textLower.includes('bt sport')) {
-    const btMatch = text.match(/BT Sport\s*(\d)?/gi);
+    const btMatch = text.match(/BT Sport\s*(\d+)?/gi);
     if (btMatch) {
       for (const match of btMatch) {
         // Convert BT Sport to TNT Sports

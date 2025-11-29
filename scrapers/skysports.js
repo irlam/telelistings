@@ -77,18 +77,22 @@ function extractChannels(text) {
   const channels = [];
   const textLower = text.toLowerCase();
   
+  // Check against known Sky Sports channels
   for (const channel of SKY_CHANNELS) {
     if (textLower.includes(channel.toLowerCase())) {
       channels.push(channel);
     }
   }
   
-  // Also look for generic patterns like "Sky Sports" followed by text
-  const skyMatch = text.match(/Sky Sports\s*([A-Za-z]+(?:\s+[A-Za-z]+)?)/gi);
+  // Only add additional channels found via regex if they look like valid channel names
+  // Pattern matches "Sky Sports" followed by common channel qualifiers
+  const validQualifiers = /^Sky Sports\s+(Main Event|Premier League|Football|Arena|Action|Mix|News|\+|\d+)$/i;
+  const skyMatch = text.match(/Sky Sports\s+[A-Za-z0-9+]+(?:\s+[A-Za-z]+)?/gi);
   if (skyMatch) {
     for (const match of skyMatch) {
       const cleaned = match.trim();
-      if (!channels.includes(cleaned)) {
+      // Only add if not already in channels and looks like a valid channel name
+      if (!channels.includes(cleaned) && validQualifiers.test(cleaned)) {
         channels.push(cleaned);
       }
     }
