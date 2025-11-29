@@ -81,7 +81,7 @@ function writeCache(url, text) {
     ensureCacheDir();
     const cacheFile = path.join(CACHE_DIR, getCacheKey(url));
     const entry = {
-      text: text,
+      text,
       timestamp: Date.now()
     };
     fs.writeFileSync(cacheFile, JSON.stringify(entry), 'utf8');
@@ -138,7 +138,7 @@ async function fetchIcsWithCache(icsUrl) {
   } catch (err) {
     // On network error, try to fall back to stale cache
     if (cached) {
-      const status = err && err.response && err.response.status;
+      const status = err?.response?.status;
       const errMsg = status ? `HTTP ${status}` : (err.message || String(err));
       console.log(`[ICS] Network error (${errMsg}) – falling back to cached ICS for ${icsUrl}`);
       return cached.text;
