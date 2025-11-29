@@ -33,6 +33,7 @@ const FormData = require('form-data');
 const { getFixturesFromIcs } = require('./ics_source');
 const theSportsDb = require('./thesportsdb');
 const liveSoccerTv = require('./livesoccertv');
+const lstv = require('./scrapers/lstv');
 
 // Try to load canvas - optional dependency for image generation
 let canvas = null;
@@ -940,8 +941,31 @@ async function enrichFixtureWithLiveSoccerTv(cfg, fixture) {
   }
   
   try {
+    // Use the new Puppeteer-based LSTV scraper if enabled
+    if (cfg.liveSoccerTvUsePuppeteer === true) {
+      logLine(`    [LSTV] Fetching TV info for ${homeTeam} v ${awayTeam}`);
+      
+      const lstvResult = await lstv.fetchLSTV({
+        home: homeTeam,
+        away: awayTeam,
+        date: fixture.start || fixture.date || new Date()
+      });
+      
+      if (lstvResult.regionChannels && lstvResult.regionChannels.length > 0) {
+        fixture.tvByRegion = lstvResult.regionChannels;
+        fixture.tvSource = 'lstv';
+        fixture.tvSourceUrl = lstvResult.url;
+        logLine(`    [LSTV] Found ${lstvResult.regionChannels.length} TV channels for ${homeTeam} v ${awayTeam}`);
+        return fixture;
+      }
+      
+      // Fall through to HTTP-based scraper if Puppeteer found nothing
+      logLine(`    [LSTV] No results from Puppeteer, trying HTTP fallback`);
+    }
+    
+    // Use HTTP-based scraper (original livesoccertv module)
     const enriched = await liveSoccerTv.enrichFixtureWithTvInfo(fixture, {
-      usePuppeteer: cfg.liveSoccerTvUsePuppeteer === true
+      usePuppeteer: false
     });
     
     if (enriched.tvByRegion && enriched.tvByRegion.length > 0) {
