@@ -32,6 +32,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const { getFixturesFromIcs } = require('./ics_source');
 const theSportsDb = require('./thesportsdb');
+const liveSoccerTv = require('./livesoccertv');
 
 // Try to load canvas - optional dependency for image generation
 let canvas = null;
@@ -910,6 +911,51 @@ async function enrichFixtureWithTheSportsDb(cfg, fixture, teamLabel) {
   }
 }
 
+/**
+ * Try to enrich a fixture with TV channel info from LiveSoccerTV scraper.
+ * This provides worldwide TV channel listings by region.
+ * Falls back gracefully if scraping fails.
+ *
+ * @param {Object} cfg - Config object with liveSoccerTvEnabled flag
+ * @param {Object} fixture - Fixture object with homeTeam, awayTeam, start
+ * @returns {Promise<Object>} Fixture object (possibly with tvByRegion enriched)
+ */
+async function enrichFixtureWithLiveSoccerTv(cfg, fixture) {
+  // Skip if LiveSoccerTV is disabled in config
+  if (cfg.liveSoccerTvEnabled === false) {
+    return fixture;
+  }
+  
+  // Skip if fixture already has TV regions populated
+  if (fixture.tvByRegion && fixture.tvByRegion.length > 0) {
+    return fixture;
+  }
+  
+  // Need home and away teams to search
+  const homeTeam = fixture.homeTeam || '';
+  const awayTeam = fixture.awayTeam || '';
+  
+  if (!homeTeam || !awayTeam) {
+    return fixture;
+  }
+  
+  try {
+    const enriched = await liveSoccerTv.enrichFixtureWithTvInfo(fixture, {
+      usePuppeteer: cfg.liveSoccerTvUsePuppeteer === true
+    });
+    
+    if (enriched.tvByRegion && enriched.tvByRegion.length > 0) {
+      logLine(`    [LiveSoccerTV] Found ${enriched.tvByRegion.length} TV channels for ${homeTeam} v ${awayTeam}`);
+    }
+    
+    return enriched;
+  } catch (err) {
+    // Log but don't fail - TV enrichment is optional
+    logLine(`  [LiveSoccerTV] Warning: ${err.message}`);
+    return fixture;
+  }
+}
+
 // ---------- build message for a channel ----------
 
 async function buildChannelMessage(cfg, channel) {
@@ -1053,7 +1099,39 @@ async function buildChannelMessage(cfg, channel) {
 
     // If posterStyle is enabled, return fixtures array for individual poster messages
     if (channel.posterStyle) {
-      // Enrich fixtures with TV channel info from overrides
+      // First, parse team names from summaries for fixtures that need it
+      for (let i = 0; i < merged.length; i++) {
+        const f = merged[i];
+        // Parse teams if not already set
+        if (!f.homeTeam || !f.awayTeam) {
+          if (f.teamLabel) {
+            const parsed = parseFishySummary(f.summary, f.teamLabel);
+            f.homeTeam = parsed.homeTeam;
+            f.awayTeam = parsed.awayTeam;
+          } else {
+            const parsed = parseTeamsFromSummary(f.summary);
+            f.homeTeam = parsed.homeTeam;
+            f.awayTeam = parsed.awayTeam;
+          }
+        }
+      }
+
+      // Try to enrich fixtures with TV info from LiveSoccerTV (worldwide channels)
+      if (cfg.liveSoccerTvEnabled !== false) {
+        logLine(`  Attempting to enrich fixtures with LiveSoccerTV TV info...`);
+        for (let i = 0; i < merged.length; i++) {
+          const f = merged[i];
+          if ((!f.tvByRegion || f.tvByRegion.length === 0) && f.homeTeam && f.awayTeam) {
+            merged[i] = await enrichFixtureWithLiveSoccerTv(cfg, f);
+            // Delay between requests to be polite
+            if (i < merged.length - 1) {
+              await sleep(1000);
+            }
+          }
+        }
+      }
+
+      // Enrich fixtures with TV channel info from overrides (as fallback/override)
       for (let i = 0; i < merged.length; i++) {
         const tvChannel = getTvChannelForFixture(merged[i], channel);
         if (tvChannel) {
@@ -1157,7 +1235,33 @@ async function buildChannelMessage(cfg, channel) {
 
   // If posterStyle is enabled, return fixtures array for individual poster messages
   if (channel.posterStyle) {
-    // Enrich fixtures with TV channel info from overrides
+    // First, parse team names from summaries for fixtures that need it
+    for (let i = 0; i < fixtures.length; i++) {
+      const f = fixtures[i];
+      // Parse teams if not already set
+      if (!f.homeTeam || !f.awayTeam) {
+        const parsed = parseTeamsFromSummary(f.summary);
+        f.homeTeam = parsed.homeTeam;
+        f.awayTeam = parsed.awayTeam;
+      }
+    }
+
+    // Try to enrich fixtures with TV info from LiveSoccerTV (worldwide channels)
+    if (cfg.liveSoccerTvEnabled !== false) {
+      logLine(`  Attempting to enrich fixtures with LiveSoccerTV TV info...`);
+      for (let i = 0; i < fixtures.length; i++) {
+        const f = fixtures[i];
+        if ((!f.tvByRegion || f.tvByRegion.length === 0) && f.homeTeam && f.awayTeam) {
+          fixtures[i] = await enrichFixtureWithLiveSoccerTv(cfg, f);
+          // Delay between requests to be polite
+          if (i < fixtures.length - 1) {
+            await sleep(1000);
+          }
+        }
+      }
+    }
+
+    // Enrich fixtures with TV channel info from overrides (as fallback/override)
     for (let i = 0; i < fixtures.length; i++) {
       const tvChannel = getTvChannelForFixture(fixtures[i], channel);
       if (tvChannel) {
@@ -1403,6 +1507,7 @@ module.exports = {
   getBackgroundImagePath,
   buildPosterImageForFixture,
   sendTelegramPhoto,
+  enrichFixtureWithLiveSoccerTv,
   DEFAULT_FOOTER_TEXT,
   CONFIG_PATH,
   LOG_PATH
