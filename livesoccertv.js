@@ -156,55 +156,67 @@ async function searchTeamMatches(teamName) {
     return [];
   }
 
-  // Build search URL - LiveSoccerTV uses a teams page
+  // Build search URL - LiveSoccerTV uses teams organized by league/country
+  // Try multiple country paths since we don't know the team's league
   const searchSlug = teamName.toLowerCase().trim().replace(/\s+/g, '-');
-  const searchUrl = `${BASE_URL}/teams/england/${searchSlug}/`;
+  const countryPaths = ['england', 'spain', 'germany', 'italy', 'france', 'scotland', 'wales'];
+  
+  for (const country of countryPaths) {
+    const searchUrl = `${BASE_URL}/teams/${country}/${searchSlug}/`;
 
-  try {
-    const html = await fetchPage(searchUrl);
-    const $ = cheerio.load(html);
+    try {
+      const html = await fetchPage(searchUrl);
+      const $ = cheerio.load(html);
 
-    const matches = [];
+      const matches = [];
 
-    // Parse the fixtures table
-    $('table.schedules tbody tr').each((i, row) => {
-      const $row = $(row);
-      const matchLink = $row.find('a[href*="/match/"]').first();
-      
-      if (matchLink.length) {
-        const url = BASE_URL + matchLink.attr('href');
-        const matchText = matchLink.text().trim();
+      // Parse the fixtures table
+      $('table.schedules tbody tr').each((i, row) => {
+        const $row = $(row);
+        const matchLink = $row.find('a[href*="/match/"]').first();
         
-        // Try to parse "Team A vs Team B" format
-        const vsMatch = matchText.match(/^(.+?)\s+(?:vs?\.?|–|-)\s+(.+)$/i);
-        let homeTeam = '';
-        let awayTeam = '';
-        
-        if (vsMatch) {
-          homeTeam = vsMatch[1].trim();
-          awayTeam = vsMatch[2].trim();
+        if (matchLink.length) {
+          const url = BASE_URL + matchLink.attr('href');
+          const matchText = matchLink.text().trim();
+          
+          // Try to parse "Team A vs Team B" format
+          const vsMatch = matchText.match(/^(.+?)\s+(?:vs?\.?|–|-)\s+(.+)$/i);
+          let homeTeam = '';
+          let awayTeam = '';
+          
+          if (vsMatch) {
+            homeTeam = vsMatch[1].trim();
+            awayTeam = vsMatch[2].trim();
+          }
+
+          // Get date/time
+          const dateCell = $row.find('td').first().text().trim();
+          const timeCell = $row.find('td:nth-child(2)').text().trim();
+
+          matches.push({
+            url,
+            homeTeam,
+            awayTeam,
+            date: dateCell,
+            time: timeCell,
+            raw: matchText
+          });
         }
+      });
 
-        // Get date/time
-        const dateCell = $row.find('td').first().text().trim();
-        const timeCell = $row.find('td:nth-child(2)').text().trim();
-
-        matches.push({
-          url,
-          homeTeam,
-          awayTeam,
-          date: dateCell,
-          time: timeCell,
-          raw: matchText
-        });
+      // If we found matches, return them
+      if (matches.length > 0) {
+        return matches;
       }
-    });
-
-    return matches;
-  } catch (err) {
-    console.log(`[LiveSoccerTV] Error searching for team "${teamName}": ${err.message}`);
-    return [];
+    } catch (err) {
+      // Try next country path
+      continue;
+    }
   }
+
+  // No matches found in any country path
+  console.log(`[LiveSoccerTV] No team page found for "${teamName}" in any league`);
+  return [];
 }
 
 /**
@@ -439,7 +451,7 @@ async function fetchPageWithPuppeteer(url) {
   try {
     browser = await pptr.launch({
       executablePath: chromePath,
-      headless: 'new',
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -594,12 +606,19 @@ async function getTvChannelsForMatch(homeTeam, awayTeam, matchDate, options = {}
     const homeSlug = normalizeForUrl(homeTeam);
     const awaySlug = normalizeForUrl(awayTeam);
     
-    // Try direct match URL patterns
+    // Country paths to try for team pages
+    const countryPaths = ['england', 'spain', 'germany', 'italy', 'france', 'scotland', 'wales'];
+    
+    // Build possible URLs - direct match URLs first, then team pages
     const possibleUrls = [
       `${BASE_URL}/match/${homeSlug}-vs-${awaySlug}/`,
-      `${BASE_URL}/match/${homeSlug}-v-${awaySlug}/`,
-      `${BASE_URL}/teams/england/${homeSlug}/`
+      `${BASE_URL}/match/${homeSlug}-v-${awaySlug}/`
     ];
+    
+    // Add team page URLs for each country
+    for (const country of countryPaths) {
+      possibleUrls.push(`${BASE_URL}/teams/${country}/${homeSlug}/`);
+    }
 
     let result = { tvByRegion: [], source: 'livesoccertv' };
     
