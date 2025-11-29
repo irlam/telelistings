@@ -397,9 +397,17 @@ async function buildChannelMessage(cfg, channel) {
     for (let i = 0; i < fixtures.length; i++) {
       const f = fixtures[i];
       if (!f.tvChannel) {
-        // Try to find a matching team for this fixture
+        // Try to find a matching team for this fixture using word boundary matching
         const summary = (f.summary || '').toLowerCase();
-        const matchedTeam = teamNames.find(t => t && summary.includes(t.toLowerCase()));
+        const matchedTeam = teamNames.find(t => {
+          if (!t || t.length < 3) return false;
+          const teamLower = t.toLowerCase();
+          // Escape special regex characters
+          const escaped = teamLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          // Match with word boundaries
+          const regex = new RegExp(`(?:^|[^a-z])${escaped}(?:$|[^a-z])`, 'i');
+          return regex.test(summary);
+        });
         if (matchedTeam) {
           fixtures[i] = await enrichFixtureWithTheSportsDb(cfg, f, matchedTeam);
           // Small delay to be polite to TheSportsDB API

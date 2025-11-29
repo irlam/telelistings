@@ -224,9 +224,19 @@ async function getTvChannels(apiKey, eventId, countryCode = null) {
   let filtered = listings;
   if (countryCode) {
     const code = countryCode.toUpperCase();
+    // Use exact match or common UK/GB variations
+    const ukCodes = ['UK', 'GB', 'UNITED KINGDOM', 'GREAT BRITAIN'];
     filtered = listings.filter(tv => {
-      const tvCountry = (tv.strCountry || '').toUpperCase();
-      return tvCountry === code || tvCountry.includes(code);
+      const tvCountry = (tv.strCountry || '').toUpperCase().trim();
+      // Exact match
+      if (tvCountry === code) {
+        return true;
+      }
+      // Handle UK/GB variations
+      if (ukCodes.includes(code) && ukCodes.includes(tvCountry)) {
+        return true;
+      }
+      return false;
     });
   }
   
@@ -242,6 +252,27 @@ async function getTvChannels(apiKey, eventId, countryCode = null) {
 }
 
 // ---------- Fixture Matching & Enrichment ----------
+
+/**
+ * Check if a team name matches within a fixture summary using word boundaries.
+ * Requires the team name to be at least 3 characters and match as a complete word or phrase.
+ *
+ * @param {string} summary - Fixture summary (lowercase)
+ * @param {string} teamName - Team name to find (lowercase)
+ * @returns {boolean} True if team name matches with word boundaries
+ */
+function teamMatchesInSummary(summary, teamName) {
+  if (!summary || !teamName || teamName.length < 3) {
+    return false;
+  }
+  
+  // Escape special regex characters in team name
+  const escaped = teamName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  
+  // Match team name with word boundaries (start/end of string or non-word characters)
+  const regex = new RegExp(`(?:^|[^a-z])${escaped}(?:$|[^a-z])`, 'i');
+  return regex.test(summary);
+}
 
 /**
  * Try to find a matching TheSportsDB event for an ICS fixture.
@@ -269,24 +300,20 @@ async function findMatchingEvent(apiKey, fixture, teamName) {
     : null;
   
   for (const event of events) {
-    // Match by date first
+    // Match by date first (strong signal)
     if (fixtureDate && event.dateEvent === fixtureDate) {
-      // Then check if home or away team is in fixture summary
+      // Then check if home or away team matches in fixture summary using word boundaries
       const homeTeam = (event.strHomeTeam || '').toLowerCase();
       const awayTeam = (event.strAwayTeam || '').toLowerCase();
       
-      if (fixtureSummary.includes(homeTeam) || fixtureSummary.includes(awayTeam)) {
+      if (teamMatchesInSummary(fixtureSummary, homeTeam) || 
+          teamMatchesInSummary(fixtureSummary, awayTeam)) {
         return event;
       }
     }
-    
-    // Fallback: match by event name similarity
-    const eventName = (event.strEvent || '').toLowerCase();
-    if (fixtureSummary.includes(eventName) || eventName.includes(fixtureSummary)) {
-      return event;
-    }
   }
   
+  // No fallback on event name similarity - too error-prone
   return null;
 }
 
