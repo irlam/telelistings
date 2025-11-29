@@ -714,9 +714,9 @@ async function runOnce() {
           `Channel "${label}": posting ${fixtures.length} fixtures in poster style.`
         );
         
-        // Get footer text from config (empty string means no footer)
-        const posterFooterText = cfg.posterFooterText;
-        const showFooter = posterFooterText !== undefined && posterFooterText !== '';
+        // Get footer text from config (empty/whitespace-only means no footer)
+        const posterFooterText = (cfg.posterFooterText || '').trim();
+        const showFooter = Boolean(posterFooterText);
         
         let postersSent = 0;
         for (const fixture of fixtures) {
