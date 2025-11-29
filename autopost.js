@@ -271,15 +271,19 @@ async function buildPosterImageForFixture(fixture, options = {}) {
       y += lineHeight * 1.3;
     }
     
-    // Fixture: "HOME v AWAY"
-    const homeTeam = (fixture.homeTeam || '').toUpperCase();
-    const awayTeam = (fixture.awayTeam || '').toUpperCase();
+    // Fixture title - prefer matchTitle, fall back to constructing from home/away teams
     ctx.font = `bold ${fixtureSize}px Arial, sans-serif`;
     ctx.fillStyle = '#ffffff';
-    if (homeTeam && awayTeam) {
-      ctx.fillText(`${homeTeam} v ${awayTeam}`, canvasWidth / 2, y);
-    } else if (homeTeam) {
-      ctx.fillText(homeTeam, canvasWidth / 2, y);
+    if (fixture.matchTitle) {
+      ctx.fillText(fixture.matchTitle, canvasWidth / 2, y);
+    } else {
+      const homeTeam = (fixture.homeTeam || '').toUpperCase();
+      const awayTeam = (fixture.awayTeam || '').toUpperCase();
+      if (homeTeam && awayTeam) {
+        ctx.fillText(`${homeTeam} v ${awayTeam}`, canvasWidth / 2, y);
+      } else if (homeTeam) {
+        ctx.fillText(homeTeam, canvasWidth / 2, y);
+      }
     }
     y += lineHeight * 1.1;
     
@@ -413,6 +417,56 @@ function cleanTeamName(name) {
 }
 
 /**
+ * Parse a TheFishy ICS summary to extract home and away teams.
+ * TheFishy summaries have formats like:
+ * - "Crystal Palace (away)" - our team is playing away at Crystal Palace
+ * - "West Ham (home)" - our team is playing at home against West Ham
+ * 
+ * @param {string} summary - The ICS event summary (e.g., "Crystal Palace (away)")
+ * @param {string} ourTeam - The team label for this feed (e.g., "Man Utd")
+ * @returns {{ homeTeam: string, awayTeam: string }}
+ */
+function parseFishySummary(summary, ourTeam) {
+  const text = (summary || '').trim();
+  const team = (ourTeam || '').trim();
+  
+  // Handle edge cases when summary or team is missing
+  if (!text) {
+    return { homeTeam: team, awayTeam: '' };
+  }
+  if (!team) {
+    // No team provided - just clean the summary text
+    return { homeTeam: cleanTeamName(text), awayTeam: '' };
+  }
+  
+  // Check for "(away)" or "(a)" at the end - our team is away
+  const awayMatch = text.match(/^(.+?)\s*\(\s*(?:away|a)\s*\)\s*$/i);
+  if (awayMatch) {
+    const opponent = cleanTeamName(awayMatch[1]);
+    return {
+      homeTeam: opponent,
+      awayTeam: team
+    };
+  }
+  
+  // Check for "(home)" or "(h)" at the end - our team is home
+  const homeMatch = text.match(/^(.+?)\s*\(\s*(?:home|h)\s*\)\s*$/i);
+  if (homeMatch) {
+    const opponent = cleanTeamName(homeMatch[1]);
+    return {
+      homeTeam: team,
+      awayTeam: opponent
+    };
+  }
+  
+  // Fallback: doesn't match TheFishy format, treat summary as opponent with ourTeam as home
+  return {
+    homeTeam: team,
+    awayTeam: cleanTeamName(text)
+  };
+}
+
+/**
  * Parse team names from a fixture summary.
  * Handles various ICS summary formats:
  * - "Team A v Team B"
@@ -463,10 +517,10 @@ function parseTeamsFromSummary(summary) {
 
 /**
  * Adapt a basic fixture object to the poster data model.
- * Adds timeUk, timeEt, homeTeam, awayTeam, and tvByRegion fields.
+ * Adds/updates timeUk, timeEt, homeTeam, awayTeam, matchTitle fields.
+ * Also sets competition, venue, and tvByRegion if not already present.
  * 
- * @param {Object} fixture - Basic fixture object with start, summary, tvChannel, etc.
- * @param {Object} channel - Channel config object
+ * @param {Object} fixture - Basic fixture object with start, summary, tvChannel, teamLabel, etc.
  * @returns {Object} Adapted fixture with poster fields
  */
 function adaptFixtureForPoster(fixture) {
@@ -477,7 +531,26 @@ function adaptFixtureForPoster(fixture) {
   const timeEt = formatTimeInZone(start, 'America/New_York');
   
   // Parse home and away teams from summary
-  const { homeTeam, awayTeam } = parseTeamsFromSummary(fixture.summary);
+  // If teamLabel is present (TheFishy multi-ICS mode), use parseFishySummary
+  // Otherwise fall back to parseTeamsFromSummary for "Home v Away" style summaries
+  let homeTeam, awayTeam;
+  if (fixture.teamLabel) {
+    const parsed = parseFishySummary(fixture.summary, fixture.teamLabel);
+    homeTeam = parsed.homeTeam;
+    awayTeam = parsed.awayTeam;
+  } else {
+    const parsed = parseTeamsFromSummary(fixture.summary);
+    homeTeam = parsed.homeTeam;
+    awayTeam = parsed.awayTeam;
+  }
+  
+  // Build matchTitle from home and away teams
+  let matchTitle = '';
+  if (homeTeam && awayTeam) {
+    matchTitle = `${homeTeam.toUpperCase()} v ${awayTeam.toUpperCase()}`;
+  } else if (homeTeam) {
+    matchTitle = homeTeam.toUpperCase();
+  }
   
   // Build tvByRegion from tvChannel if available (simple conversion)
   // For now, if we have a single tvChannel, put it under a default region
@@ -495,6 +568,7 @@ function adaptFixtureForPoster(fixture) {
     timeEt,
     homeTeam,
     awayTeam,
+    matchTitle,
     competition: fixture.competition || '',
     venue: fixture.location || fixture.venue || '',
     tvByRegion
@@ -551,13 +625,17 @@ function formatFixturePoster(fixture, options = {}) {
     lines.push('');
   }
   
-  // Fixture in uppercase
-  const homeTeam = (fixture.homeTeam || '').toUpperCase();
-  const awayTeam = (fixture.awayTeam || '').toUpperCase();
-  if (homeTeam && awayTeam) {
-    lines.push(`${homeTeam} v ${awayTeam}`);
-  } else if (homeTeam) {
-    lines.push(homeTeam);
+  // Fixture title - prefer matchTitle, fall back to constructing from home/away teams
+  if (fixture.matchTitle) {
+    lines.push(fixture.matchTitle);
+  } else {
+    const homeTeam = (fixture.homeTeam || '').toUpperCase();
+    const awayTeam = (fixture.awayTeam || '').toUpperCase();
+    if (homeTeam && awayTeam) {
+      lines.push(`${homeTeam} v ${awayTeam}`);
+    } else if (homeTeam) {
+      lines.push(homeTeam);
+    }
   }
   
   // Competition (optional)
@@ -1171,6 +1249,7 @@ module.exports = {
   formatFixturePoster,
   adaptFixtureForPoster,
   parseTeamsFromSummary,
+  parseFishySummary,
   cleanTeamName,
   formatTimeInZone,
   getBackgroundImagePath,
