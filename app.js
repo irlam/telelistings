@@ -135,6 +135,7 @@ const CHANNELS_TABLE_COLS = 6;
 app.get('/admin/channels', (req, res) => {
   const cfg = loadConfig();
   const channels = cfg.channels || [];
+  const defaultPosterStyle = cfg.defaultPosterStyle || false;
 
   const rows = channels
     .map((ch, idx) => {
@@ -199,7 +200,7 @@ app.get('/admin/channels', (req, res) => {
       </p>
       <p>
         <label>
-          <input type="checkbox" name="posterStyle" value="true">
+          <input type="checkbox" name="posterStyle" value="true" id="posterStyleAdd" ${defaultPosterStyle ? 'checked' : ''}>
           Use poster-style layout (one message per fixture with TV info)
         </label>
         <span class="muted">If unchecked, uses compact list layout (all fixtures in one message).</span>
@@ -239,7 +240,7 @@ app.get('/admin/channels/edit', (req, res) => {
       </p>
       <p>
         <label>
-          <input type="checkbox" name="posterStyle" value="true" ${ch.posterStyle ? 'checked' : ''}>
+          <input type="checkbox" name="posterStyle" value="true" id="posterStyleEdit" ${ch.posterStyle ? 'checked' : ''}>
           Use poster-style layout
         </label>
         <span class="muted">One message per fixture with visual TV listing. Otherwise uses compact list format.</span>
@@ -501,6 +502,13 @@ app.get('/admin/settings', (req, res) => {
         )}"></label>
         <span class="muted">Get a key from <a href="https://www.thesportsdb.com/api.php" target="_blank">thesportsdb.com</a>. Used to fetch TV channel info for fixtures. Leave blank to disable.</span>
       </p>
+      <p>
+        <label>
+          <input type="checkbox" name="defaultPosterStyle" value="true" id="defaultPosterStyle" ${cfg.defaultPosterStyle ? 'checked' : ''}>
+          Use poster-style layout by default for new channels
+        </label>
+        <span class="muted">When checked, new channels will default to poster-style layout (one message per fixture). Each channel can still override this in its own settings.</span>
+      </p>
       <p><button type="submit">Save Settings</button></p>
     </form>
   </div>
@@ -527,7 +535,7 @@ app.get('/admin/settings', (req, res) => {
 });
 
 app.post('/admin/settings', (req, res) => {
-  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey } = req.body;
+  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, defaultPosterStyle } = req.body;
   const cfg = loadConfig();
 
   cfg.botToken = (botToken || '').trim();
@@ -535,6 +543,7 @@ app.post('/admin/settings', (req, res) => {
   cfg.icsUrl = (icsUrl || '').trim();
   cfg.icsDaysAhead = parseInt(icsDaysAhead, 10) || 1;
   cfg.theSportsDbApiKey = (theSportsDbApiKey || '').trim();
+  cfg.defaultPosterStyle = defaultPosterStyle === 'true';
 
   saveConfig(cfg);
   res.redirect('/admin/settings');
