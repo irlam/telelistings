@@ -7,10 +7,12 @@
     "start": "node app.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.83",
     "axios": "^1.13.2",
     "cheerio": "^1.0.0",
     "express": "^4.21.2",
     "express-basic-auth": "^1.2.1",
+    "form-data": "^4.0.5",
     "multer": "^2.0.2",
     "node-ical": "^0.15.1"
   }

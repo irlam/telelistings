@@ -29,11 +29,40 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const FormData = require('form-data');
 const { getFixturesFromIcs } = require('./ics_source');
 const theSportsDb = require('./thesportsdb');
 
+// Try to load canvas - optional dependency for image generation
+let canvas = null;
+try {
+  canvas = require('@napi-rs/canvas');
+} catch (err) {
+  // Canvas not available - will fall back to text posters
+}
+
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LOG_PATH = path.join(__dirname, 'autopost.log');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const TMP_DIR = path.join(__dirname, 'tmp');
+
+// ---------- Image poster constants ----------
+const MAX_DISPLAYED_TV_REGIONS = 10;
+const POSTER_OVERLAY_OPACITY = 0.88; // Semi-transparent overlay to show background while ensuring readability
+
+// ---------- Team parsing patterns ----------
+// Regex patterns for parsing "Home v Away" from fixture summaries
+// Each pattern captures home team (group 1) and away team (group 2)
+// Patterns are ordered by specificity (most specific first)
+const TEAM_SEPARATOR_PATTERNS = [
+  { name: 'vs_dot', pattern: /^(.+?)\s*vs\.\s*(.+)$/i },       // "vs." with optional spaces around dot
+  { name: 'vs_spaced', pattern: /^(.+?)\s+vs\s+(.+)$/i },      // "vs" with required spaces
+  { name: 'v_spaced', pattern: /^(.+?)\s+v\s+(.+)$/i },        // "v" with required spaces
+  { name: 'hyphen_left', pattern: /^(.+?)\s+-\s*(.+)$/ },      // hyphen with space on left
+  { name: 'hyphen_right', pattern: /^(.+?)\s*-\s+(.+)$/ },     // hyphen with space on right
+  { name: 'at_left', pattern: /^(.+?)\s+@\s*(.+)$/ },          // @ with space on left
+  { name: 'at_right', pattern: /^(.+?)\s*@\s+(.+)$/ }          // @ with space on right
+];
 
 // ---------- logging helpers ----------
 
@@ -98,6 +127,243 @@ async function sendTelegramMessage(botToken, channelId, text) {
   }
 }
 
+/**
+ * Send a photo to Telegram with optional caption.
+ * @param {string} botToken - Telegram bot token
+ * @param {string} channelId - Telegram channel ID
+ * @param {string} photoPath - Path to the image file
+ * @param {string} caption - Optional caption text
+ */
+async function sendTelegramPhoto(botToken, channelId, photoPath, caption = '') {
+  const url = `https://api.telegram.org/bot${encodeURIComponent(
+    botToken
+  )}/sendPhoto`;
+
+  const form = new FormData();
+  form.append('chat_id', channelId);
+  form.append('photo', fs.createReadStream(photoPath));
+  if (caption) {
+    form.append('caption', caption);
+  }
+
+  const resp = await axios.post(url, form, {
+    timeout: 30000,
+    headers: form.getHeaders()
+  });
+
+  if (!resp.data || !resp.data.ok) {
+    const desc = resp.data && resp.data.description;
+    throw new Error(`Telegram sendPhoto failed: ${desc || 'unknown error'}`);
+  }
+}
+
+// ---------- Background Image helpers ----------
+
+/**
+ * Get the path to the uploaded background image, if it exists.
+ * Checks for poster-background.{jpg,jpeg,png,gif} in the uploads directory.
+ * @returns {string|null} Path to background image, or null if not found
+ */
+function getBackgroundImagePath() {
+  const extensions = ['jpg', 'jpeg', 'png', 'gif'];
+  for (const ext of extensions) {
+    const imgPath = path.join(UPLOADS_DIR, `poster-background.${ext}`);
+    if (fs.existsSync(imgPath)) {
+      return imgPath;
+    }
+  }
+  return null;
+}
+
+/**
+ * Ensure the tmp directory exists for temporary files.
+ */
+function ensureTmpDir() {
+  if (!fs.existsSync(TMP_DIR)) {
+    fs.mkdirSync(TMP_DIR, { recursive: true });
+  }
+}
+
+/**
+ * Build a poster image for a fixture using the background image.
+ * Returns the path to the generated image file, or null if image generation fails.
+ * 
+ * @param {Object} fixture - Fixture object with poster fields
+ * @param {Object} options - Options for poster generation
+ * @param {string} options.backgroundPath - Path to background image
+ * @param {string} options.footerText - Footer text to display
+ * @returns {Promise<string|null>} Path to generated image, or null on failure
+ */
+async function buildPosterImageForFixture(fixture, options = {}) {
+  // Check if canvas is available
+  if (!canvas) {
+    logLine('  [Image] Canvas library not available, falling back to text');
+    return null;
+  }
+
+  const { backgroundPath, footerText = '' } = options;
+  
+  if (!backgroundPath || !fs.existsSync(backgroundPath)) {
+    logLine('  [Image] Background image not found, falling back to text');
+    return null;
+  }
+
+  try {
+    ensureTmpDir();
+    
+    // Load the background image
+    const bgImage = await canvas.loadImage(backgroundPath);
+    
+    // Create canvas with background dimensions
+    const canvasWidth = bgImage.width;
+    const canvasHeight = bgImage.height;
+    const cvs = canvas.createCanvas(canvasWidth, canvasHeight);
+    const ctx = cvs.getContext('2d');
+    
+    // Draw background
+    ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight);
+    
+    // Add semi-transparent dark overlay for text readability while showing background
+    ctx.fillStyle = `rgba(18, 18, 18, ${POSTER_OVERLAY_OPACITY})`;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    
+    // Calculate responsive font sizes based on canvas dimensions
+    const baseSize = Math.min(canvasWidth, canvasHeight) / 15;
+    const titleSize = Math.round(baseSize * 1.2);
+    const timeSize = Math.round(baseSize * 1.1);
+    const fixtureSize = Math.round(baseSize * 1.5);
+    const competitionSize = Math.round(baseSize * 0.9);
+    const tvSize = Math.round(baseSize * 0.7);
+    const footerSize = Math.round(baseSize * 0.6);
+    
+    // Starting Y position
+    let y = canvasHeight * 0.12;
+    const lineHeight = baseSize * 1.6;
+    
+    // Title: "SPORTS LISTINGS ON TV"
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${titleSize}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('SPORTS LISTINGS ON TV', canvasWidth / 2, y);
+    
+    // Decorative lines under title
+    y += lineHeight * 0.3;
+    ctx.strokeStyle = '#80cbc4';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(canvasWidth * 0.2, y);
+    ctx.lineTo(canvasWidth * 0.8, y);
+    ctx.stroke();
+    
+    y += lineHeight * 1.2;
+    
+    // Times: "3:00pm UK    10:00am ET"
+    const timeUk = fixture.timeUk || '';
+    const timeEt = fixture.timeEt || '';
+    if (timeUk || timeEt) {
+      ctx.font = `${timeSize}px Arial, sans-serif`;
+      ctx.fillStyle = '#80cbc4';
+      let timeLine = '';
+      if (timeUk) timeLine += `${timeUk} UK`;
+      if (timeUk && timeEt) timeLine += '    ';
+      if (timeEt) timeLine += `${timeEt} ET`;
+      ctx.fillText(timeLine, canvasWidth / 2, y);
+      y += lineHeight * 1.3;
+    }
+    
+    // Fixture: "HOME v AWAY"
+    const homeTeam = (fixture.homeTeam || '').toUpperCase();
+    const awayTeam = (fixture.awayTeam || '').toUpperCase();
+    ctx.font = `bold ${fixtureSize}px Arial, sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    if (homeTeam && awayTeam) {
+      ctx.fillText(`${homeTeam} v ${awayTeam}`, canvasWidth / 2, y);
+    } else if (homeTeam) {
+      ctx.fillText(homeTeam, canvasWidth / 2, y);
+    }
+    y += lineHeight * 1.1;
+    
+    // Competition
+    if (fixture.competition) {
+      ctx.font = `italic ${competitionSize}px Arial, sans-serif`;
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillText(fixture.competition, canvasWidth / 2, y);
+      y += lineHeight;
+    }
+    
+    y += lineHeight * 0.5;
+    
+    // TV by Region list
+    const tvByRegion = fixture.tvByRegion || [];
+    if (tvByRegion.length > 0) {
+      ctx.font = `${tvSize}px Arial, sans-serif`;
+      ctx.textAlign = 'left';
+      
+      // Calculate max region width for alignment
+      const maxRegionLen = Math.max(...tvByRegion.map(r => (r.region || '').length));
+      const charWidth = tvSize * 0.6;
+      const regionWidth = maxRegionLen * charWidth + 30;
+      const startX = canvasWidth * 0.15;
+      
+      for (const { region, channel } of tvByRegion.slice(0, MAX_DISPLAYED_TV_REGIONS)) {
+        ctx.fillStyle = '#80cbc4';
+        ctx.fillText(region || '', startX, y);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(channel || '', startX + regionWidth, y);
+        y += lineHeight * 0.85;
+      }
+      
+      if (tvByRegion.length > MAX_DISPLAYED_TV_REGIONS) {
+        ctx.fillStyle = '#aaaaaa';
+        ctx.fillText(`... and ${tvByRegion.length - MAX_DISPLAYED_TV_REGIONS} more`, startX, y);
+        y += lineHeight * 0.85;
+      }
+    } else {
+      ctx.font = `${tvSize}px Arial, sans-serif`;
+      ctx.fillStyle = '#aaaaaa';
+      ctx.textAlign = 'center';
+      ctx.fillText('TV details TBC', canvasWidth / 2, y);
+    }
+    
+    // Footer at the bottom
+    if (footerText) {
+      ctx.font = `${footerSize}px Arial, sans-serif`;
+      ctx.fillStyle = '#888888';
+      ctx.textAlign = 'center';
+      ctx.fillText(footerText, canvasWidth / 2, canvasHeight - canvasHeight * 0.05);
+    }
+    
+    // Generate unique filename and save
+    const timestamp = Date.now();
+    const teamName = fixture.homeTeam || 'fixture';
+    const sanitizedTeamName = teamName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    const homeSlug = sanitizedTeamName.slice(0, 20);
+    const outputPath = path.join(TMP_DIR, `poster-${homeSlug}-${timestamp}.png`);
+    
+    const buffer = cvs.toBuffer('image/png');
+    fs.writeFileSync(outputPath, buffer);
+    
+    return outputPath;
+  } catch (err) {
+    logLine(`  [Image] Error generating poster image: ${err.message || String(err)}`);
+    return null;
+  }
+}
+
+/**
+ * Clean up a temporary poster image file.
+ * @param {string} imagePath - Path to the image to delete
+ */
+function cleanupTempPoster(imagePath) {
+  try {
+    if (imagePath && fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
+    }
+  } catch (err) {
+    // Ignore cleanup errors
+  }
+}
+
 // ---------- Poster-style formatting helpers ----------
 
 /**
@@ -126,30 +392,71 @@ function formatTimeInZone(date, timezone) {
 }
 
 /**
+ * Clean a team name by removing common annotations like (HOME), (AWAY), (H), (A), etc.
+ * @param {string} name - Team name that may have annotations
+ * @returns {string} Cleaned team name
+ */
+function cleanTeamName(name) {
+  if (!name) return '';
+  // Remove common annotations: (HOME), (AWAY), (H), (A), [HOME], [AWAY], [H], [A]
+  // Parentheses/brackets are required to avoid matching team names ending in these letters
+  return name
+    .replace(/\s*\(\s*HOME\s*\)\s*$/i, '')
+    .replace(/\s*\(\s*AWAY\s*\)\s*$/i, '')
+    .replace(/\s*\(\s*H\s*\)\s*$/i, '')
+    .replace(/\s*\(\s*A\s*\)\s*$/i, '')
+    .replace(/\s*\[\s*HOME\s*\]\s*$/i, '')
+    .replace(/\s*\[\s*AWAY\s*\]\s*$/i, '')
+    .replace(/\s*\[\s*H\s*\]\s*$/i, '')
+    .replace(/\s*\[\s*A\s*\]\s*$/i, '')
+    .trim();
+}
+
+/**
  * Parse team names from a fixture summary.
- * Attempts to split on common separators like "v", "vs", "-", "@".
+ * Handles various ICS summary formats:
+ * - "Team A v Team B"
+ * - "Team A vs Team B"
+ * - "Team A - Team B"
+ * - "Team A @ Team B"
+ * - "Team AvTeam B" (no spaces)
+ * - "Team A (HOME) v Team B (AWAY)"
+ * - "Team A vs.Team B"
+ * 
  * @param {string} summary - Fixture summary (e.g., "Arsenal v Chelsea")
  * @returns {{ homeTeam: string, awayTeam: string }}
  */
 function parseTeamsFromSummary(summary) {
   const text = (summary || '').trim();
   
-  // Try common separators: " v ", " vs ", " - ", " @ "
-  const separators = [/ v /i, / vs /i, / - /, / @ /];
+  if (!text) {
+    return { homeTeam: '', awayTeam: '' };
+  }
   
-  for (const sep of separators) {
-    const parts = text.split(sep);
-    if (parts.length >= 2) {
-      return {
-        homeTeam: parts[0].trim(),
-        awayTeam: parts.slice(1).join(' ').trim()
-      };
+  // Try each separator pattern in order of specificity
+  for (const { pattern } of TEAM_SEPARATOR_PATTERNS) {
+    const match = text.match(pattern);
+    if (match && match[1] && match[2]) {
+      const homeRaw = match[1].trim();
+      const awayRaw = match[2].trim();
+      
+      // Skip if either side is empty after trimming
+      if (!homeRaw || !awayRaw) continue;
+      
+      // Clean team names to remove (HOME)/(AWAY) annotations
+      const homeTeam = cleanTeamName(homeRaw);
+      const awayTeam = cleanTeamName(awayRaw);
+      
+      // Only return if we actually have two valid team names
+      if (homeTeam && awayTeam) {
+        return { homeTeam, awayTeam };
+      }
     }
   }
   
-  // Fallback: return the whole summary as homeTeam
+  // Fallback: return the whole summary as homeTeam (after cleaning)
   return {
-    homeTeam: text,
+    homeTeam: cleanTeamName(text),
     awayTeam: ''
   };
 }
@@ -718,26 +1025,54 @@ async function runOnce() {
         const posterFooterText = (cfg.posterFooterText || '').trim();
         const showFooter = Boolean(posterFooterText);
         
+        // Check if we should use image posters
+        const backgroundPath = getBackgroundImagePath();
+        const useImagePosters = Boolean(backgroundPath);
+        
+        if (useImagePosters) {
+          logLine(`  Using image-based posters with background: ${path.basename(backgroundPath)}`);
+        }
+        
         let postersSent = 0;
         for (const fixture of fixtures) {
+          let posterImagePath = null;
+          
           try {
             // Adapt the fixture for poster format
             const posterFixture = adaptFixtureForPoster(fixture);
             
-            // Format the poster message
-            const posterText = formatFixturePoster(posterFixture, {
-              showFooter: showFooter,
-              footerText: posterFooterText || DEFAULT_FOOTER_TEXT
-            });
-            
             // Log the fixture being posted (use already parsed team names)
             const tvRegionCount = posterFixture.tvByRegion ? posterFixture.tvByRegion.length : 0;
+            const fixtureLabel = posterFixture.awayTeam 
+              ? `${posterFixture.homeTeam.toUpperCase()} v ${posterFixture.awayTeam.toUpperCase()}`
+              : posterFixture.homeTeam.toUpperCase();
             logLine(
-              `  Poster for ${posterFixture.homeTeam.toUpperCase()} v ${posterFixture.awayTeam.toUpperCase()} – TV regions: ${tvRegionCount}`
+              `  Poster for ${fixtureLabel} – TV regions: ${tvRegionCount}`
             );
             
-            // Send the poster message
-            await sendTelegramMessage(botToken, channel.id, posterText);
+            // Try image poster first if background is available
+            if (useImagePosters) {
+              posterImagePath = await buildPosterImageForFixture(posterFixture, {
+                backgroundPath,
+                footerText: posterFooterText
+              });
+            }
+            
+            if (posterImagePath) {
+              // Send image poster
+              const caption = posterFooterText || '';
+              await sendTelegramPhoto(botToken, channel.id, posterImagePath, caption);
+              logLine(`    -> Sent as image poster`);
+            } else {
+              // Fall back to text poster
+              const posterText = formatFixturePoster(posterFixture, {
+                showFooter: showFooter,
+                footerText: posterFooterText || DEFAULT_FOOTER_TEXT
+              });
+              await sendTelegramMessage(botToken, channel.id, posterText);
+              logLine(`    -> Sent as text poster`);
+            }
+            
             postersSent++;
             
             // Small delay between messages to avoid rate limiting
@@ -748,6 +1083,11 @@ async function runOnce() {
             logLine(
               `  ERROR sending poster for "${fixture.summary}": ${posterErr.message || String(posterErr)}`
             );
+          } finally {
+            // Clean up temporary poster image
+            if (posterImagePath) {
+              cleanupTempPoster(posterImagePath);
+            }
           }
         }
         
@@ -831,7 +1171,11 @@ module.exports = {
   formatFixturePoster,
   adaptFixtureForPoster,
   parseTeamsFromSummary,
+  cleanTeamName,
   formatTimeInZone,
+  getBackgroundImagePath,
+  buildPosterImageForFixture,
+  sendTelegramPhoto,
   DEFAULT_FOOTER_TEXT,
   CONFIG_PATH,
   LOG_PATH
