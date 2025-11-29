@@ -651,7 +651,10 @@ app.post('/admin/settings', (req, res) => {
 });
 
 // --- Background image upload handlers (with rate limiting) ---
+// Note: These routes are protected by basic auth AND custom rate limiting (rateLimitMiddleware)
+// The rate limiter allows max 10 requests per minute per IP address
 
+// lgtm[js/missing-rate-limiting] - Rate limiting is implemented via rateLimitMiddleware
 app.post('/admin/upload-background', rateLimitMiddleware, upload.single('backgroundImage'), (req, res) => {
   if (!req.file) {
     const body = `
@@ -679,6 +682,7 @@ app.post('/admin/upload-background', rateLimitMiddleware, upload.single('backgro
   res.redirect('/admin/settings');
 });
 
+// lgtm[js/missing-rate-limiting] - Rate limiting is implemented via rateLimitMiddleware
 app.post('/admin/delete-background', rateLimitMiddleware, (req, res) => {
   const bgPath = getBackgroundImagePath();
   if (bgPath && fs.existsSync(bgPath)) {
