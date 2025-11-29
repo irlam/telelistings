@@ -714,6 +714,10 @@ async function runOnce() {
           `Channel "${label}": posting ${fixtures.length} fixtures in poster style.`
         );
         
+        // Get footer text from config (empty string means no footer)
+        const posterFooterText = cfg.posterFooterText;
+        const showFooter = posterFooterText !== undefined && posterFooterText !== '';
+        
         let postersSent = 0;
         for (const fixture of fixtures) {
           try {
@@ -722,7 +726,8 @@ async function runOnce() {
             
             // Format the poster message
             const posterText = formatFixturePoster(posterFixture, {
-              showFooter: true
+              showFooter: showFooter,
+              footerText: posterFooterText || DEFAULT_FOOTER_TEXT
             });
             
             // Log the fixture being posted (use already parsed team names)
@@ -827,6 +832,7 @@ module.exports = {
   adaptFixtureForPoster,
   parseTeamsFromSummary,
   formatTimeInZone,
+  DEFAULT_FOOTER_TEXT,
   CONFIG_PATH,
   LOG_PATH
 };
