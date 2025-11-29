@@ -10,6 +10,15 @@
       "useTheFishyMulti": true,
       "multiMaxTeams": 8,
       "multiIcsDelayMs": 2000,
+      "tvChannelOverrides": {
+        "Man Utd": "Sky Sports",
+        "Liverpool": "TNT Sports",
+        "Man City": "Sky Sports",
+        "Arsenal": "Sky Sports",
+        "Chelsea": "Sky Sports",
+        "FA Cup": "BBC One",
+        "EFL Cup": "Sky Sports"
+      },
       "teams": [
         {
           "label": "Arsenal",
