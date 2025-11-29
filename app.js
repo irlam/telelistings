@@ -20,11 +20,43 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const basicAuth = require('express-basic-auth');
+const multer = require('multer');
 const { execFile } = require('child_process');
 const { runOnce, CONFIG_PATH, LOG_PATH } = require('./autopost');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Configure multer for background image upload
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: function (req, file, cb) {
+    // Always save as poster-background with original extension
+    const ext = path.extname(file.originalname);
+    cb(null, 'poster-background' + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Only image files (jpg, jpeg, png, gif) are allowed'));
+  }
+});
 
 // --------- helpers ---------
 
@@ -46,11 +78,54 @@ function saveConfig(cfg) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
+function getBackgroundImagePath() {
+  const extensions = ['jpg', 'jpeg', 'png', 'gif'];
+  for (const ext of extensions) {
+    const imgPath = path.join(UPLOADS_DIR, `poster-background.${ext}`);
+    if (fs.existsSync(imgPath)) {
+      return imgPath;
+    }
+  }
+  return null;
+}
+
 function escapeHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+// Simple in-memory rate limiter for file operations
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per minute
+
+function rateLimitMiddleware(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+  
+  if (!rateLimitStore.has(ip)) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return next();
+  }
+  
+  const entry = rateLimitStore.get(ip);
+  
+  // Reset if window has passed
+  if (now > entry.resetAt) {
+    entry.count = 1;
+    entry.resetAt = now + RATE_LIMIT_WINDOW_MS;
+    return next();
+  }
+  
+  // Check if limit exceeded
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).send('Too many requests. Please wait a minute and try again.');
+  }
+  
+  entry.count++;
+  return next();
 }
 
 function renderLayout(title, bodyHtml) {
@@ -509,6 +584,13 @@ app.get('/admin/settings', (req, res) => {
         </label>
         <span class="muted">When checked, new channels will default to poster-style layout (one message per fixture). Each channel can still override this in its own settings.</span>
       </p>
+      <p>
+        <label>Poster Footer Text<br>
+        <input type="text" name="posterFooterText" value="${escapeHtml(
+          cfg.posterFooterText || 'Please support the listings by subscribing.'
+        )}"></label>
+        <span class="muted">Custom footer message shown at the bottom of poster-style messages. Leave blank to hide the footer.</span>
+      </p>
       <p><button type="submit">Save Settings</button></p>
     </form>
   </div>
@@ -529,13 +611,31 @@ app.get('/admin/settings', (req, res) => {
       <button type="submit">Run UK Teams Import</button>
     </form>
   </div>
+
+  <div class="card">
+    <h2>Poster Background Image (Optional)</h2>
+    <p>Upload a background image for future image-based poster generation. This image will be stored for use with visual poster layouts.</p>
+    ${getBackgroundImagePath() ? `<p><strong>Current image:</strong> <code>${escapeHtml(path.basename(getBackgroundImagePath()))}</code></p>` : '<p class="muted">No background image uploaded yet.</p>'}
+    <form method="post" action="/admin/upload-background" enctype="multipart/form-data">
+      <p>
+        <label>Select Image (JPG, PNG, GIF - max 5MB)<br>
+        <input type="file" name="backgroundImage" accept="image/jpeg,image/png,image/gif" required style="padding: 6px 0;"></label>
+      </p>
+      <p><button type="submit">Upload Background Image</button></p>
+    </form>
+    ${getBackgroundImagePath() ? `
+    <form method="post" action="/admin/delete-background" style="margin-top: 10px;">
+      <button type="submit" onclick="return confirm('Delete the current background image?');" style="background:#e74c3c;">Delete Background Image</button>
+    </form>
+    ` : ''}
+  </div>
   `;
 
   res.send(renderLayout('Settings - Telegram Sports TV Bot', body));
 });
 
 app.post('/admin/settings', (req, res) => {
-  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, defaultPosterStyle } = req.body;
+  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, defaultPosterStyle, posterFooterText } = req.body;
   const cfg = loadConfig();
 
   cfg.botToken = (botToken || '').trim();
@@ -544,8 +644,50 @@ app.post('/admin/settings', (req, res) => {
   cfg.icsDaysAhead = parseInt(icsDaysAhead, 10) || 1;
   cfg.theSportsDbApiKey = (theSportsDbApiKey || '').trim();
   cfg.defaultPosterStyle = defaultPosterStyle === 'true';
+  cfg.posterFooterText = (posterFooterText || '').trim();
 
   saveConfig(cfg);
+  res.redirect('/admin/settings');
+});
+
+// --- Background image upload handlers (with rate limiting) ---
+// Note: These routes are protected by basic auth AND custom rate limiting (rateLimitMiddleware)
+// The rate limiter allows max 10 requests per minute per IP address
+
+// lgtm[js/missing-rate-limiting] - Rate limiting is implemented via rateLimitMiddleware
+app.post('/admin/upload-background', rateLimitMiddleware, upload.single('backgroundImage'), (req, res) => {
+  if (!req.file) {
+    const body = `
+    <div class="card">
+      <h2>Upload Failed</h2>
+      <p>No file was uploaded or the file type is not allowed.</p>
+      <p><a href="/admin/settings">Back to Settings</a></p>
+    </div>`;
+    return res.send(renderLayout('Upload Failed - Telegram Sports TV Bot', body));
+  }
+
+  // Delete any old background images with different extensions
+  const extensions = ['jpg', 'jpeg', 'png', 'gif'];
+  const uploadedExt = path.extname(req.file.filename).toLowerCase().slice(1);
+  
+  for (const ext of extensions) {
+    if (ext !== uploadedExt) {
+      const oldPath = path.join(UPLOADS_DIR, `poster-background.${ext}`);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+  }
+
+  res.redirect('/admin/settings');
+});
+
+// lgtm[js/missing-rate-limiting] - Rate limiting is implemented via rateLimitMiddleware
+app.post('/admin/delete-background', rateLimitMiddleware, (req, res) => {
+  const bgPath = getBackgroundImagePath();
+  if (bgPath && fs.existsSync(bgPath)) {
+    fs.unlinkSync(bgPath);
+  }
   res.redirect('/admin/settings');
 });
 
