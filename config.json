@@ -3526,7 +3526,14 @@
           "country": "ireland",
           "slug": "wexford-youths"
         }
-      ]
+      ],
+      "posterStyle": true
+    },
+    {
+      "label": "New Test",
+      "id": "@newtest",
+      "posterStyle": true,
+      "teams": []
     }
   ]
 }
