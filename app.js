@@ -180,6 +180,7 @@ function renderLayout(title, bodyHtml) {
     <a href="/admin/logs">Logs</a>
     <a href="/admin/test-lstv">Test LSTV</a>
     <a href="/admin/test-fixture">Test Fixture</a>
+    <a href="/admin/test-fixture-tv">Test TV Aggregator</a>
     <a href="/admin/help">Help</a>
   </p>
   ${bodyHtml}
@@ -901,6 +902,9 @@ const lstv = require('./scrapers/lstv');
 const tsdb = require('./scrapers/thesportsdb');
 const wiki = require('./scrapers/wiki_broadcasters');
 
+// Import aggregator
+const { getTvDataForFixture } = require('./aggregators/tv_channels');
+
 app.get('/admin/test-lstv', async (req, res) => {
   const { home, away, date } = req.query;
   
@@ -1200,6 +1204,159 @@ app.get('/admin/test-fixture', async (req, res) => {
   `;
   
   res.send(renderLayout('Test Fixture - Telegram Sports TV Bot', body));
+});
+
+// --------- Test Fixture TV Aggregator (Admin) ---------
+
+app.get('/admin/test-fixture-tv', async (req, res) => {
+  const cfg = loadConfig();
+  const { home, away, date, league } = req.query;
+  
+  let result = null;
+  let error = null;
+  
+  // Only run aggregator if params provided
+  if (home && away) {
+    try {
+      const matchDate = date ? new Date(date + 'T12:00:00Z') : new Date();
+      
+      result = await getTvDataForFixture({
+        homeTeam: home.trim(),
+        awayTeam: away.trim(),
+        dateUtc: matchDate,
+        leagueHint: league || null
+      }, {
+        timezone: cfg.timezone || 'Europe/London',
+        debug: true
+      });
+    } catch (err) {
+      error = err.message || String(err);
+    }
+  }
+  
+  // Build result HTML
+  let resultHtml = '';
+  
+  if (error) {
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>Error</h3>
+      <p>${escapeHtml(error)}</p>
+    </div>`;
+  } else if (result) {
+    // Build sources used string
+    const sourcesStr = Object.entries(result.sourcesUsed || {})
+      .filter(([, used]) => used)
+      .map(([name]) => name.toUpperCase())
+      .join(', ') || 'None';
+    
+    // Build TV regions table
+    const regionRows = (result.tvRegions || [])
+      .map(r => `<tr>
+        <td>${escapeHtml(r.region || '')}</td>
+        <td>${escapeHtml(r.channel || '')}</td>
+        <td>${escapeHtml(r.source || '')}</td>
+      </tr>`)
+      .join('');
+    
+    const hasRegions = (result.tvRegions || []).length > 0;
+    const hasStations = (result.tvStationsFlat || []).length > 0;
+    
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid ${hasRegions ? '#00b894' : '#f39c12'};">
+      <h3>Aggregated TV Data</h3>
+      
+      <h4>Basic Info</h4>
+      <table>
+        <tr><th>Home Team</th><td>${escapeHtml(result.homeTeam || '')}</td></tr>
+        <tr><th>Away Team</th><td>${escapeHtml(result.awayTeam || '')}</td></tr>
+        <tr><th>League</th><td>${escapeHtml(result.league || 'N/A')}</td></tr>
+        <tr><th>Venue</th><td>${escapeHtml(result.venue || 'N/A')}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(result.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Kickoff Local</th><td>${escapeHtml(result.kickoffLocal || 'N/A')}</td></tr>
+      </table>
+      
+      ${hasRegions ? `
+      <h4>TV Channels by Region</h4>
+      <table>
+        <thead>
+          <tr><th>Region</th><th>Channel</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          ${regionRows}
+        </tbody>
+      </table>
+      ` : '<p><em>No TV channels found by region.</em></p>'}
+      
+      ${hasStations ? `
+      <h4>All TV Stations (Flat List)</h4>
+      <p>${result.tvStationsFlat.map(s => `<code>${escapeHtml(s)}</code>`).join(', ')}</p>
+      ` : '<p><em>No TV stations found.</em></p>'}
+      
+      <h4>Sources Used</h4>
+      <table>
+        ${Object.entries(result.sourcesUsed || {}).map(([source, used]) => `
+          <tr>
+            <th>${escapeHtml(source.toUpperCase())}</th>
+            <td>${used ? '✅ Data found' : '❌ No data'}</td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>`;
+  }
+  
+  const body = `
+  <div class="card">
+    <h2>Test TV Data Aggregator</h2>
+    <p>Test the unified TV data aggregator that combines data from all sources (TSDB, LSTV, BBC, Sky, TNT, LFOTV, Wikipedia).</p>
+    
+    <form method="get" action="/admin/test-fixture-tv">
+      <p>
+        <label>Home Team<br>
+        <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required></label>
+      </p>
+      <p>
+        <label>Away Team<br>
+        <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required></label>
+      </p>
+      <p>
+        <label>Date (YYYY-MM-DD)<br>
+        <input type="date" name="date" value="${escapeHtml(date || '')}"></label>
+        <span class="muted">Leave blank for today's date.</span>
+      </p>
+      <p>
+        <label>League Hint (optional)<br>
+        <input type="text" name="league" value="${escapeHtml(league || '')}" placeholder="e.g. Premier League"></label>
+        <span class="muted">Optional hint to help Wikipedia lookup. Auto-detected from TSDB if found.</span>
+      </p>
+      <p><button type="submit">Get TV Data</button></p>
+    </form>
+  </div>
+  
+  ${resultHtml}
+  
+  <div class="card">
+    <h3>About the Aggregator</h3>
+    <p>The aggregator calls multiple data sources in order and merges results:</p>
+    <ol>
+      <li><strong>TheSportsDB (TSDB)</strong> – Gets fixture info (kickoff, league, venue)</li>
+      <li><strong>FootballData.org</strong> – Backup for kickoff/league</li>
+      <li><strong>LiveSoccerTV (LSTV)</strong> – Detailed TV channels by region</li>
+      <li><strong>BBC Fixtures</strong> – Additional competition info</li>
+      <li><strong>Sky Sports</strong> – UK Sky channels</li>
+      <li><strong>TNT Sports</strong> – UK TNT channels</li>
+      <li><strong>LiveFootballOnTV</strong> – UK TV listings</li>
+      <li><strong>Wikipedia</strong> – League-wide broadcaster info</li>
+    </ol>
+    <p>Results are deduplicated and merged into a single canonical format.</p>
+    <p>
+      <a href="/health/lstv" target="_blank">LSTV Health →</a> |
+      <a href="/health/tsdb" target="_blank">TSDB Health →</a>
+    </p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Test TV Aggregator - Telegram Sports TV Bot', body));
 });
 
 // --------- LSTV Health Check (Public) ---------
