@@ -579,6 +579,13 @@ app.get('/admin/settings', (req, res) => {
       </p>
       <p>
         <label>
+          <input type="checkbox" name="liveSoccerTvEnabled" value="true" id="liveSoccerTvEnabled" ${cfg.liveSoccerTvEnabled !== false ? 'checked' : ''}>
+          Enable LiveSoccerTV scraper for worldwide TV channel listings
+        </label>
+        <span class="muted">When enabled, the bot will attempt to scrape LiveSoccerTV.com to get TV channel listings by country/region for each fixture. Results are cached for 4 hours.</span>
+      </p>
+      <p>
+        <label>
           <input type="checkbox" name="defaultPosterStyle" value="true" id="defaultPosterStyle" ${cfg.defaultPosterStyle ? 'checked' : ''}>
           Use poster-style layout by default for new channels
         </label>
@@ -635,7 +642,7 @@ app.get('/admin/settings', (req, res) => {
 });
 
 app.post('/admin/settings', (req, res) => {
-  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, defaultPosterStyle, posterFooterText } = req.body;
+  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, liveSoccerTvEnabled, defaultPosterStyle, posterFooterText } = req.body;
   const cfg = loadConfig();
 
   cfg.botToken = (botToken || '').trim();
@@ -643,6 +650,7 @@ app.post('/admin/settings', (req, res) => {
   cfg.icsUrl = (icsUrl || '').trim();
   cfg.icsDaysAhead = parseInt(icsDaysAhead, 10) || 1;
   cfg.theSportsDbApiKey = (theSportsDbApiKey || '').trim();
+  cfg.liveSoccerTvEnabled = liveSoccerTvEnabled === 'true';
   cfg.defaultPosterStyle = defaultPosterStyle === 'true';
   cfg.posterFooterText = (posterFooterText || '').trim();
 
