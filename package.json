@@ -16,6 +16,6 @@
     "form-data": "^4.0.5",
     "multer": "^2.0.2",
     "node-ical": "^0.15.1",
-    "puppeteer-core": "^24.9.0"
+    "puppeteer": "^24.9.0"
   }
 }
