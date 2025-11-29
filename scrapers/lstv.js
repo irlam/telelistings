@@ -246,14 +246,17 @@ function loadPuppeteer() {
   // Try full puppeteer first (bundles Chromium)
   try {
     _puppeteerModule = require('puppeteer');
+    debugLog('Loaded full puppeteer package');
     return _puppeteerModule;
   } catch (err) {
+    debugLog(`Full puppeteer not available: ${err.code || err.message}`);
     // Fall back to puppeteer-core
     try {
       _puppeteerModule = require('puppeteer-core');
+      debugLog('Loaded puppeteer-core package');
       return _puppeteerModule;
     } catch (err2) {
-      log('Neither puppeteer nor puppeteer-core available');
+      log(`Neither puppeteer nor puppeteer-core available: puppeteer: ${err.code || err.message}, puppeteer-core: ${err2.code || err2.message}`);
       _puppeteerModule = null;
       return null;
     }
@@ -271,7 +274,9 @@ function findChromePath() {
   const puppeteer = loadPuppeteer();
   if (puppeteer) {
     try {
-      // Full puppeteer has executablePath() function that returns bundled Chromium path
+      // Both puppeteer and puppeteer-core have executablePath() but only full puppeteer
+      // bundles Chromium and returns a path that exists. puppeteer-core returns a path
+      // that may not exist unless manually installed.
       const bundledPath = puppeteer.executablePath();
       if (bundledPath && fs.existsSync(bundledPath)) {
         return bundledPath;
@@ -812,7 +817,7 @@ async function healthCheck() {
     const result = { 
       ok: false, 
       latencyMs: 0, 
-      error: 'Puppeteer not available. Install puppeteer-core: npm install puppeteer-core',
+      error: 'Puppeteer not available. Install puppeteer (recommended) or puppeteer-core: npm install puppeteer',
       systemInfo
     };
     log(`[health] FAIL: ${result.error}`);
