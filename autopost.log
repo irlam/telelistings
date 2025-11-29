@@ -97,3 +97,4 @@
 [2025-11-29T14:20:44.119Z] [LSTV] Search error: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com/search?q=Test%20Team%20A%20Test%20Team%20B
 [2025-11-29T14:20:44.119Z] [LSTV] No TV channels found for Test Team A vs Test Team B
 [2025-11-29T14:20:44.482Z] [LSTV] [health] FAIL in 286ms: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com
+[2025-11-29T14:23:26.218Z] [LSTV] [health] FAIL in 400ms: net::ERR_NAME_NOT_RESOLVED at https://www.livesoccertv.com
