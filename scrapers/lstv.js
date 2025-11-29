@@ -230,27 +230,44 @@ function scoreCandidate(candidate, requested) {
 
 /**
  * Find a Chrome/Chromium executable on the system.
- * @returns {string|null} Path to Chrome executable
+ * Searches common installation paths and environment variables.
+ * @returns {string|null} Path to Chrome executable or null if not found
  */
 function findChromePath() {
+  // Check environment variables first (highest priority)
+  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
+    return process.env.CHROME_PATH;
+  }
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  
+  // Search common installation paths
   for (const chromePath of CHROME_PATHS) {
     if (chromePath && fs.existsSync(chromePath)) {
       return chromePath;
     }
   }
+  
   return null;
 }
 
 /**
- * Lazy-load puppeteer-core.
+ * Lazy-load puppeteer-core (or full puppeteer if available).
  * @returns {Object|null} Puppeteer module or null if not available
  */
 function loadPuppeteer() {
+  // Try full puppeteer first (bundles Chromium)
   try {
-    return require('puppeteer-core');
+    return require('puppeteer');
   } catch (err) {
-    log('puppeteer-core not available');
-    return null;
+    // Fall back to puppeteer-core
+    try {
+      return require('puppeteer-core');
+    } catch (err2) {
+      log('Neither puppeteer nor puppeteer-core available');
+      return null;
+    }
   }
 }
 
@@ -341,10 +358,10 @@ async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null })
     return emptyResult;
   }
   
-  // Find Chrome
+  // Find Chrome - required for puppeteer-core
   const chromePath = findChromePath();
   if (!chromePath) {
-    log('Chrome/Chromium not found on system');
+    log('Chrome/Chromium not found on system. Set CHROME_PATH env var or install Chrome.');
     return emptyResult;
   }
   
@@ -715,21 +732,33 @@ async function searchOnSite(page, home, away) {
 
 /**
  * Get detailed system information about Chrome/Puppeteer availability.
- * @returns {{puppeteerAvailable: boolean, chromeFound: boolean, chromePath: string|null, searchedPaths: string[]}}
+ * @returns {{puppeteerAvailable: boolean, puppeteerType: string, chromeFound: boolean, chromePath: string|null, searchedPaths: string[]}}
  */
 function getSystemInfo() {
   let puppeteerAvailable = false;
+  let puppeteerType = 'none';
+  
+  // Check for full puppeteer first (bundles Chromium)
   try {
-    require('puppeteer-core');
+    require('puppeteer');
     puppeteerAvailable = true;
+    puppeteerType = 'puppeteer';
   } catch (err) {
-    // Not available
+    // Try puppeteer-core
+    try {
+      require('puppeteer-core');
+      puppeteerAvailable = true;
+      puppeteerType = 'puppeteer-core';
+    } catch (err2) {
+      // Neither available
+    }
   }
   
   const chromePath = findChromePath();
   
   return {
     puppeteerAvailable,
+    puppeteerType,
     chromeFound: !!chromePath,
     chromePath,
     searchedPaths: CHROME_PATHS.filter(p => p) // Filter out null/undefined
@@ -756,6 +785,7 @@ async function healthCheck() {
     return result;
   }
   
+  // chromePath is required for puppeteer-core
   const chromePath = findChromePath();
   if (!chromePath) {
     const result = { 

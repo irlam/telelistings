@@ -37,6 +37,14 @@ const lstv = require('./scrapers/lstv');
 const tsdb = require('./scrapers/thesportsdb');
 const wiki = require('./scrapers/wiki_broadcasters');
 
+// Import the universal aggregator
+let tvAggregator = null;
+try {
+  tvAggregator = require('./aggregators/tv_channels');
+} catch (err) {
+  // Aggregator not available - will use legacy enrichment
+}
+
 // Try to load canvas - optional dependency for image generation
 let canvas = null;
 try {
@@ -1146,6 +1154,95 @@ async function enrichFixtureWithWiki(fixture) {
   }
 }
 
+/**
+ * Enrich a fixture with TV data using the universal aggregator.
+ * This is the preferred method when the aggregator is available.
+ * Falls back to legacy enrichment if aggregator is not available or fails.
+ *
+ * @param {Object} cfg - Config object
+ * @param {Object} fixture - Fixture object with homeTeam, awayTeam, start
+ * @returns {Promise<Object>} Fixture object with TV data from aggregator
+ */
+async function enrichFixtureWithAggregator(cfg, fixture) {
+  // Check if aggregator is available
+  if (!tvAggregator || !tvAggregator.getTvDataForFixture) {
+    logLine('    [AGG] Aggregator not available, falling back to legacy enrichment');
+    return enrichFixtureWithAllSources(cfg, fixture);
+  }
+  
+  const homeTeam = fixture.homeTeam || '';
+  const awayTeam = fixture.awayTeam || '';
+  
+  if (!homeTeam || !awayTeam) {
+    logLine('    [AGG] Missing team names, skipping aggregator');
+    return fixture;
+  }
+  
+  try {
+    logLine(`    [AGG] Getting TV data for ${homeTeam} v ${awayTeam}`);
+    
+    const tvData = await tvAggregator.getTvDataForFixture({
+      homeTeam,
+      awayTeam,
+      dateUtc: fixture.start || fixture.date || new Date(),
+      leagueHint: fixture.competition || fixture.league || null
+    }, {
+      timezone: cfg.timezone || 'Europe/London',
+      debug: false
+    });
+    
+    // Merge aggregator results into fixture
+    if (tvData) {
+      // Use aggregator's league/venue if not already set
+      if (!fixture.competition && tvData.league) {
+        fixture.competition = tvData.league;
+      }
+      if (!fixture.venue && tvData.venue) {
+        fixture.venue = tvData.venue;
+      }
+      
+      // Use aggregator's kickoff if available
+      if (tvData.kickoffUtc) {
+        fixture.aggregatorKickoffUtc = tvData.kickoffUtc;
+        fixture.aggregatorKickoffLocal = tvData.kickoffLocal;
+      }
+      
+      // Use aggregator's TV regions (converted to expected format)
+      if (tvData.tvRegions && tvData.tvRegions.length > 0) {
+        fixture.tvByRegion = tvData.tvRegions.map(r => ({
+          region: r.region,
+          channel: r.channel
+        }));
+        fixture.tvSource = 'aggregator';
+      }
+      
+      // Store flat station list
+      if (tvData.tvStationsFlat && tvData.tvStationsFlat.length > 0) {
+        fixture.tvStationsFlat = tvData.tvStationsFlat;
+      }
+      
+      // Store sources used for debugging
+      fixture.sourcesUsed = tvData.sourcesUsed;
+      
+      // Log summary
+      const sourcesStr = Object.entries(tvData.sourcesUsed || {})
+        .filter(([, used]) => used)
+        .map(([name]) => name.toUpperCase())
+        .join(',') || 'none';
+      const regionCount = tvData.tvRegions?.length || 0;
+      const stationCount = tvData.tvStationsFlat?.length || 0;
+      
+      logLine(`    [AGG] Result: league=${tvData.league || 'unknown'}, regions=${regionCount}, stations=${stationCount}, sources={${sourcesStr}}`);
+    }
+    
+    return fixture;
+  } catch (err) {
+    logLine(`    [AGG] Error: ${err.message}, falling back to legacy enrichment`);
+    // Fall back to legacy enrichment on error
+    return enrichFixtureWithAllSources(cfg, fixture);
+  }
+}
+
 // ---------- build message for a channel ----------
 
 async function buildChannelMessage(cfg, channel) {
@@ -1306,13 +1403,14 @@ async function buildChannelMessage(cfg, channel) {
         }
       }
 
-      // Try to enrich fixtures with TV info from LiveSoccerTV (worldwide channels)
-      if (cfg.liveSoccerTvEnabled !== false) {
-        logLine(`  Attempting to enrich fixtures with LiveSoccerTV TV info...`);
+      // Enrich fixtures with TV info using the aggregator (preferred) or legacy methods
+      // The aggregator combines data from all sources: TSDB, LSTV, BBC, Sky, TNT, LFOTV, Wiki
+      if (cfg.liveSoccerTvEnabled !== false || cfg.useAggregator !== false) {
+        logLine(`  Enriching fixtures with TV data (${tvAggregator ? 'aggregator' : 'legacy'})...`);
         for (let i = 0; i < merged.length; i++) {
           const f = merged[i];
           if ((!f.tvByRegion || f.tvByRegion.length === 0) && f.homeTeam && f.awayTeam) {
-            merged[i] = await enrichFixtureWithLiveSoccerTv(cfg, f);
+            merged[i] = await enrichFixtureWithAggregator(cfg, f);
             // Delay between requests to be polite
             if (i < merged.length - 1) {
               await sleep(1000);
@@ -1436,13 +1534,13 @@ async function buildChannelMessage(cfg, channel) {
       }
     }
 
-    // Try to enrich fixtures with TV info from LiveSoccerTV (worldwide channels)
-    if (cfg.liveSoccerTvEnabled !== false) {
-      logLine(`  Attempting to enrich fixtures with LiveSoccerTV TV info...`);
+    // Enrich fixtures with TV info using the aggregator (preferred) or legacy methods
+    if (cfg.liveSoccerTvEnabled !== false || cfg.useAggregator !== false) {
+      logLine(`  Enriching fixtures with TV data (${tvAggregator ? 'aggregator' : 'legacy'})...`);
       for (let i = 0; i < fixtures.length; i++) {
         const f = fixtures[i];
         if ((!f.tvByRegion || f.tvByRegion.length === 0) && f.homeTeam && f.awayTeam) {
-          fixtures[i] = await enrichFixtureWithLiveSoccerTv(cfg, f);
+          fixtures[i] = await enrichFixtureWithAggregator(cfg, f);
           // Delay between requests to be polite
           if (i < fixtures.length - 1) {
             await sleep(1000);
@@ -1698,6 +1796,8 @@ module.exports = {
   buildPosterImageForFixture,
   sendTelegramPhoto,
   enrichFixtureWithLiveSoccerTv,
+  enrichFixtureWithAggregator,
+  enrichFixtureWithAllSources,
   DEFAULT_FOOTER_TEXT,
   CONFIG_PATH,
   LOG_PATH
