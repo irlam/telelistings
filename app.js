@@ -96,6 +96,38 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;');
 }
 
+// Simple in-memory rate limiter for file operations
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per minute
+
+function rateLimitMiddleware(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+  
+  if (!rateLimitStore.has(ip)) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return next();
+  }
+  
+  const entry = rateLimitStore.get(ip);
+  
+  // Reset if window has passed
+  if (now > entry.resetAt) {
+    entry.count = 1;
+    entry.resetAt = now + RATE_LIMIT_WINDOW_MS;
+    return next();
+  }
+  
+  // Check if limit exceeded
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).send('Too many requests. Please wait a minute and try again.');
+  }
+  
+  entry.count++;
+  return next();
+}
+
 function renderLayout(title, bodyHtml) {
   return `<!doctype html>
 <html>
@@ -618,9 +650,9 @@ app.post('/admin/settings', (req, res) => {
   res.redirect('/admin/settings');
 });
 
-// --- Background image upload handlers ---
+// --- Background image upload handlers (with rate limiting) ---
 
-app.post('/admin/upload-background', upload.single('backgroundImage'), (req, res) => {
+app.post('/admin/upload-background', rateLimitMiddleware, upload.single('backgroundImage'), (req, res) => {
   if (!req.file) {
     const body = `
     <div class="card">
@@ -647,7 +679,7 @@ app.post('/admin/upload-background', upload.single('backgroundImage'), (req, res
   res.redirect('/admin/settings');
 });
 
-app.post('/admin/delete-background', (req, res) => {
+app.post('/admin/delete-background', rateLimitMiddleware, (req, res) => {
   const bgPath = getBackgroundImagePath();
   if (bgPath && fs.existsSync(bgPath)) {
     fs.unlinkSync(bgPath);
