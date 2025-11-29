@@ -3,6 +3,7 @@
   "timezone": "Europe/London",
   "icsUrl": "https://thefishy.co.uk/calendar/Man+Utd",
   "icsDaysAhead": 7,
+  "theSportsDbApiKey": "",
   "channels": [
     {
       "id": "@FootballOnTvUK",

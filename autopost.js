@@ -30,6 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { getFixturesFromIcs } = require('./ics_source');
+const theSportsDb = require('./thesportsdb');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LOG_PATH = path.join(__dirname, 'autopost.log');
@@ -127,7 +128,7 @@ function sleep(ms) {
  * @returns {string|null} The TV channel name if matched, or null if no match
  */
 function getTvChannelForFixture(fixture, channel) {
-  // If fixture already has a tvChannel (e.g. from ICS source), return it
+  // If fixture already has a tvChannel (e.g. from ICS source or TheSportsDB), return it
   if (fixture.tvChannel) {
     return fixture.tvChannel;
   }
@@ -152,6 +153,43 @@ function getTvChannelForFixture(fixture, channel) {
   }
 
   return null;
+}
+
+/**
+ * Try to enrich a fixture with TV channel info from TheSportsDB API.
+ * Falls back gracefully if API key not set or if no TV info found.
+ *
+ * @param {Object} cfg - Config object with theSportsDbApiKey
+ * @param {Object} fixture - Fixture object
+ * @param {string} teamLabel - Team name to search for
+ * @returns {Promise<Object>} Fixture object (possibly with tvChannel enriched)
+ */
+async function enrichFixtureWithTheSportsDb(cfg, fixture, teamLabel) {
+  const apiKey = cfg.theSportsDbApiKey;
+  
+  // Skip if no API key configured
+  if (!apiKey) {
+    return fixture;
+  }
+  
+  // Skip if fixture already has TV channel info
+  if (fixture.tvChannel) {
+    return fixture;
+  }
+  
+  try {
+    const enriched = await theSportsDb.enrichFixtureWithTvInfo(
+      apiKey,
+      fixture,
+      teamLabel,
+      'UK'
+    );
+    return enriched;
+  } catch (err) {
+    // Log but don't fail - TV enrichment is optional
+    logLine(`  [TheSportsDB] Warning: ${err.message}`);
+    return fixture;
+  }
 }
 
 // ---------- build message for a channel ----------
@@ -280,6 +318,21 @@ async function buildChannelMessage(cfg, channel) {
       return sa - sb;
     });
 
+    // Try to enrich fixtures with TV info from TheSportsDB (if API key configured)
+    if (cfg.theSportsDbApiKey) {
+      logLine(`  Attempting to enrich fixtures with TheSportsDB TV info...`);
+      for (let i = 0; i < merged.length; i++) {
+        const f = merged[i];
+        if (!f.tvChannel && f.teamLabel) {
+          merged[i] = await enrichFixtureWithTheSportsDb(cfg, f, f.teamLabel);
+          // Small delay to be polite to TheSportsDB API
+          if (i < merged.length - 1) {
+            await sleep(300);
+          }
+        }
+      }
+    }
+
     const lines = merged.map((f) => {
       const dt = f.start instanceof Date ? f.start : new Date(f.start);
       const when = dt.toLocaleString('en-GB', {
@@ -336,6 +389,26 @@ async function buildChannelMessage(cfg, channel) {
 
   if (!fixtures.length) {
     return { text: '', matchCount: 0 };
+  }
+
+  // Try to enrich fixtures with TV info from TheSportsDB (if API key configured)
+  if (cfg.theSportsDbApiKey && teamNames.length) {
+    logLine(`  Attempting to enrich fixtures with TheSportsDB TV info...`);
+    for (let i = 0; i < fixtures.length; i++) {
+      const f = fixtures[i];
+      if (!f.tvChannel) {
+        // Try to find a matching team for this fixture
+        const summary = (f.summary || '').toLowerCase();
+        const matchedTeam = teamNames.find(t => t && summary.includes(t.toLowerCase()));
+        if (matchedTeam) {
+          fixtures[i] = await enrichFixtureWithTheSportsDb(cfg, f, matchedTeam);
+          // Small delay to be polite to TheSportsDB API
+          if (i < fixtures.length - 1) {
+            await sleep(300);
+          }
+        }
+      }
+    }
   }
 
   const lines = fixtures.map((f) => {
