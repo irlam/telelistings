@@ -129,6 +129,9 @@ app.get('/', (req, res) => {
 
 // --------- Channels page ---------
 
+// Number of columns in the channels table
+const CHANNELS_TABLE_COLS = 6;
+
 app.get('/admin/channels', (req, res) => {
   const cfg = loadConfig();
   const channels = cfg.channels || [];
@@ -136,13 +139,16 @@ app.get('/admin/channels', (req, res) => {
   const rows = channels
     .map((ch, idx) => {
       const teamCount = (ch.teams || []).length;
+      const layoutStyle = ch.posterStyle ? 'Poster' : 'List';
       return `<tr>
         <td>${idx + 1}</td>
         <td>${escapeHtml(ch.label || '')}</td>
         <td>${escapeHtml(ch.id || '')}</td>
         <td>${teamCount}</td>
+        <td><span class="layout-badge layout-${layoutStyle.toLowerCase()}">${layoutStyle}</span></td>
         <td>
-          <form method="post" action="/admin/channels/delete" style="display:inline;">
+          <a href="/admin/channels/edit?index=${idx}">Edit</a>
+          <form method="post" action="/admin/channels/delete" style="display:inline; margin-left:8px;">
             <input type="hidden" name="index" value="${idx}">
             <button type="submit" onclick="return confirm('Delete this channel?');">Delete</button>
           </form>
@@ -152,6 +158,11 @@ app.get('/admin/channels', (req, res) => {
     .join('');
 
   const body = `
+  <style>
+    .layout-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+    .layout-poster { background: #4a90d9; color: #fff; }
+    .layout-list { background: #555; color: #fff; }
+  </style>
   <div class="card">
     <h2>Channels</h2>
     <p>Each channel has its own Telegram channel ID and list of teams. The autoposter will send one message per configured channel.</p>
@@ -163,13 +174,14 @@ app.get('/admin/channels', (req, res) => {
           <th>Label</th>
           <th>Telegram Channel ID</th>
           <th>Teams</th>
+          <th>Layout</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         ${
           rows ||
-          '<tr><td colspan="5">No channels yet. Add one below.</td></tr>'
+          `<tr><td colspan="${CHANNELS_TABLE_COLS}">No channels yet. Add one below.</td></tr>`
         }
       </tbody>
     </table>
@@ -185,6 +197,13 @@ app.get('/admin/channels', (req, res) => {
         <input type="text" name="id" required value="@"></label>
         <span class="muted">For a public channel, this is its username, e.g. <code>@FootballOnTvUK</code>.</span>
       </p>
+      <p>
+        <label>
+          <input type="checkbox" name="posterStyle" value="true">
+          Use poster-style layout (one message per fixture with TV info)
+        </label>
+        <span class="muted">If unchecked, uses compact list layout (all fixtures in one message).</span>
+      </p>
       <p><button type="submit">Add Channel</button></p>
     </form>
   </div>
@@ -193,14 +212,74 @@ app.get('/admin/channels', (req, res) => {
   res.send(renderLayout('Channels - Telegram Sports TV Bot', body));
 });
 
+app.get('/admin/channels/edit', (req, res) => {
+  const cfg = loadConfig();
+  const channels = cfg.channels || [];
+  const idx = parseInt(req.query.index, 10);
+
+  if (Number.isNaN(idx) || idx < 0 || idx >= channels.length) {
+    return res.redirect('/admin/channels');
+  }
+
+  const ch = channels[idx];
+
+  const body = `
+  <div class="card">
+    <h2>Edit Channel: ${escapeHtml(ch.label || ch.id)}</h2>
+
+    <form method="post" action="/admin/channels/update">
+      <input type="hidden" name="index" value="${idx}">
+      <p>
+        <label>Label<br>
+        <input type="text" name="label" value="${escapeHtml(ch.label || '')}" required></label>
+      </p>
+      <p>
+        <label>Telegram Channel username / ID<br>
+        <input type="text" name="id" value="${escapeHtml(ch.id || '')}" required></label>
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="posterStyle" value="true" ${ch.posterStyle ? 'checked' : ''}>
+          Use poster-style layout
+        </label>
+        <span class="muted">One message per fixture with visual TV listing. Otherwise uses compact list format.</span>
+      </p>
+      <p><button type="submit">Save Changes</button></p>
+    </form>
+
+    <p><a href="/admin/channels">← Back to Channels</a></p>
+  </div>
+  `;
+
+  res.send(renderLayout('Edit Channel - Telegram Sports TV Bot', body));
+});
+
+app.post('/admin/channels/update', (req, res) => {
+  const { index, label, id, posterStyle } = req.body;
+  const idx = parseInt(index, 10);
+  const cfg = loadConfig();
+  cfg.channels = cfg.channels || [];
+
+  if (!Number.isNaN(idx) && idx >= 0 && idx < cfg.channels.length) {
+    const ch = cfg.channels[idx];
+    ch.label = (label || '').trim();
+    ch.id = (id || '').trim();
+    ch.posterStyle = posterStyle === 'true';
+    saveConfig(cfg);
+  }
+
+  res.redirect('/admin/channels');
+});
+
 app.post('/admin/channels/add', (req, res) => {
-  const { label, id } = req.body;
+  const { label, id, posterStyle } = req.body;
   const cfg = loadConfig();
   cfg.channels = cfg.channels || [];
 
   cfg.channels.push({
     label: (label || '').trim(),
     id: (id || '').trim(),
+    posterStyle: posterStyle === 'true',
     teams: []
   });
 
