@@ -34,6 +34,10 @@ const axios = require('axios');
 // ---------- Configuration ----------
 
 // Remote scraper service configuration
+// NOTE: Default values are provided for development/testing convenience.
+// In production, set these environment variables explicitly in Plesk Node settings or .env file.
+// The remote VPS service uses HTTP (not HTTPS) as it runs on a private IP.
+// SECURITY: Do not commit actual API keys to source control in production environments.
 const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
 const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY || 'Q0tMx1sJ8nVh3w9L2z';
 

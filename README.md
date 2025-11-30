@@ -50,6 +50,11 @@ LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
 | `LSTV_SCRAPER_URL` | Base URL of the remote LSTV scraper service | `http://185.170.113.230:3333` |
 | `LSTV_SCRAPER_KEY` | API key for authentication (sent as `x-api-key` header) | `Q0tMx1sJ8nVh3w9L2z` |
 
+> **Security Note**: The default values are provided for convenience. In production environments:
+> - Set environment variables explicitly rather than relying on defaults
+> - Do not commit actual API keys to source control
+> - The remote service uses HTTP (not HTTPS) as it runs on a private/internal network
+
 ### How It Works
 
 1. When a fixture is being processed, the bot calls `POST ${LSTV_SCRAPER_URL}/scrape/lstv` with match details
