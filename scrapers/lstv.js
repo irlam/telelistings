@@ -228,13 +228,66 @@ function scoreCandidate(candidate, requested) {
 
 // ---------- Chrome/Puppeteer Helpers ----------
 
+// Cache for puppeteer module
+let _puppeteerModule = null;
+let _puppeteerLoaded = false;
+
+/**
+ * Lazy-load puppeteer (or puppeteer-core as fallback).
+ * @returns {Object|null} Puppeteer module or null if not available
+ */
+function loadPuppeteer() {
+  if (_puppeteerLoaded) {
+    return _puppeteerModule;
+  }
+  
+  _puppeteerLoaded = true;
+  
+  // Try full puppeteer first (bundles Chromium)
+  try {
+    _puppeteerModule = require('puppeteer');
+    debugLog('Loaded full puppeteer package');
+    return _puppeteerModule;
+  } catch (err) {
+    debugLog(`Full puppeteer not available: ${err.code || err.message}`);
+    // Fall back to puppeteer-core
+    try {
+      _puppeteerModule = require('puppeteer-core');
+      debugLog('Loaded puppeteer-core package');
+      return _puppeteerModule;
+    } catch (err2) {
+      log(`Neither puppeteer nor puppeteer-core available: puppeteer: ${err.code || err.message}, puppeteer-core: ${err2.code || err2.message}`);
+      _puppeteerModule = null;
+      return null;
+    }
+  }
+}
+
 /**
  * Find a Chrome/Chromium executable on the system.
- * Searches common installation paths and environment variables.
+ * First checks for puppeteer's bundled Chromium, then environment variables,
+ * then common system installation paths.
  * @returns {string|null} Path to Chrome executable or null if not found
  */
 function findChromePath() {
-  // Check environment variables first (highest priority)
+  // Check for puppeteer's bundled Chromium first (highest priority when available)
+  const puppeteer = loadPuppeteer();
+  if (puppeteer) {
+    try {
+      // Both puppeteer and puppeteer-core have executablePath() but only full puppeteer
+      // bundles Chromium and returns a path that exists. puppeteer-core returns a path
+      // that may not exist unless manually installed.
+      const bundledPath = puppeteer.executablePath();
+      if (bundledPath && fs.existsSync(bundledPath)) {
+        return bundledPath;
+      }
+    } catch (err) {
+      // executablePath() may throw if no bundled Chromium (puppeteer-core case)
+      debugLog(`Bundled Chromium not available: ${err.message}`);
+    }
+  }
+  
+  // Check environment variables
   if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
     return process.env.CHROME_PATH;
   }
@@ -250,25 +303,6 @@ function findChromePath() {
   }
   
   return null;
-}
-
-/**
- * Lazy-load puppeteer-core (or full puppeteer if available).
- * @returns {Object|null} Puppeteer module or null if not available
- */
-function loadPuppeteer() {
-  // Try full puppeteer first (bundles Chromium)
-  try {
-    return require('puppeteer');
-  } catch (err) {
-    // Fall back to puppeteer-core
-    try {
-      return require('puppeteer-core');
-    } catch (err2) {
-      log('Neither puppeteer nor puppeteer-core available');
-      return null;
-    }
-  }
 }
 
 // ---------- URL Building ----------
@@ -732,25 +766,29 @@ async function searchOnSite(page, home, away) {
 
 /**
  * Get detailed system information about Chrome/Puppeteer availability.
- * @returns {{puppeteerAvailable: boolean, puppeteerType: string, chromeFound: boolean, chromePath: string|null, searchedPaths: string[]}}
+ * @returns {{puppeteerAvailable: boolean, puppeteerType: string, chromeFound: boolean, chromePath: string|null, searchedPaths: string[], bundledChrome: boolean}}
  */
 function getSystemInfo() {
   let puppeteerAvailable = false;
   let puppeteerType = 'none';
+  let bundledChrome = false;
   
   // Check for full puppeteer first (bundles Chromium)
-  try {
-    require('puppeteer');
+  const puppeteer = loadPuppeteer();
+  if (puppeteer) {
     puppeteerAvailable = true;
-    puppeteerType = 'puppeteer';
-  } catch (err) {
-    // Try puppeteer-core
+    
+    // Check if it's full puppeteer with bundled Chromium
     try {
-      require('puppeteer-core');
-      puppeteerAvailable = true;
+      const bundledPath = puppeteer.executablePath();
+      if (bundledPath && fs.existsSync(bundledPath)) {
+        bundledChrome = true;
+        puppeteerType = 'puppeteer';
+      } else {
+        puppeteerType = 'puppeteer-core';
+      }
+    } catch (err) {
       puppeteerType = 'puppeteer-core';
-    } catch (err2) {
-      // Neither available
     }
   }
   
@@ -761,6 +799,7 @@ function getSystemInfo() {
     puppeteerType,
     chromeFound: !!chromePath,
     chromePath,
+    bundledChrome,
     searchedPaths: CHROME_PATHS.filter(p => p) // Filter out null/undefined
   };
 }
@@ -778,7 +817,7 @@ async function healthCheck() {
     const result = { 
       ok: false, 
       latencyMs: 0, 
-      error: 'Puppeteer not available. Install puppeteer-core: npm install puppeteer-core',
+      error: 'Puppeteer not available. Install puppeteer (recommended) or puppeteer-core: npm install puppeteer',
       systemInfo
     };
     log(`[health] FAIL: ${result.error}`);
