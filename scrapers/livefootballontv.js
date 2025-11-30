@@ -1,7 +1,11 @@
 // scrapers/livefootballontv.js
 // LiveFootballOnTV scraper for UK TV channel information.
+// NOTE: This is an HTTP scraper that runs directly on Plesk (no Puppeteer needed).
 /**
  * Telegram Sports TV Bot – LiveFootballOnTV Scraper
+ *
+ * This is a lightweight HTTP scraper that can run directly on Plesk.
+ * No browser automation required – uses axios + cheerio for HTML parsing.
  *
  * Exports fetchLFOTVFixtures({ teamName }) which:
  * - Scrapes https://www.live-footballontv.com/

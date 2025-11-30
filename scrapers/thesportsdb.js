@@ -1,7 +1,11 @@
 // scrapers/thesportsdb.js
 // TheSportsDB v1 JSON API integration for fixture lookup and TV station info.
+// NOTE: This is an API client that runs directly on Plesk (no Puppeteer needed).
 /**
  * Telegram Sports TV Bot – TheSportsDB Fixture Scraper
+ *
+ * This is a lightweight API client that can run directly on Plesk.
+ * No browser automation required – uses axios for API calls.
  *
  * Exports fetchTSDBFixture({ home, away, date }) which:
  * - Queries TheSportsDB API for the specific fixture

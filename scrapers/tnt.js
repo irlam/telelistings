@@ -1,7 +1,11 @@
 // scrapers/tnt.js
 // TNT Sports fixtures scraper with TV channel information.
+// NOTE: This is an HTTP scraper that runs directly on Plesk (no Puppeteer needed).
 /**
  * Telegram Sports TV Bot – TNT Sports Fixtures Scraper
+ *
+ * This is a lightweight HTTP scraper that can run directly on Plesk.
+ * No browser automation required – uses axios + cheerio for HTML parsing.
  *
  * Exports fetchTNTFixtures({ teamName }) which:
  * - Fetches TNT Sports fixtures pages

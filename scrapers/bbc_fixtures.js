@@ -1,7 +1,11 @@
 // scrapers/bbc_fixtures.js
 // BBC Sport fixtures scraper.
+// NOTE: This scraper runs directly on Plesk (HTTP-based, no Puppeteer needed).
 /**
  * Telegram Sports TV Bot – BBC Sport Fixtures Scraper
+ *
+ * This is a lightweight HTTP scraper that can run directly on Plesk.
+ * No browser automation required – uses axios + cheerio for HTML parsing.
  *
  * Exports fetchBBCFixtures({ teamName, teamSlug }) which:
  * - Fetches BBC Sport team fixtures page

@@ -21,6 +21,7 @@ const path = require('path');
 const express = require('express');
 const basicAuth = require('express-basic-auth');
 const multer = require('multer');
+const axios = require('axios');
 const { execFile } = require('child_process');
 const { runOnce, CONFIG_PATH, LOG_PATH } = require('./autopost');
 
@@ -1360,33 +1361,37 @@ app.get('/admin/test-fixture-tv', async (req, res) => {
 
 // --------- LSTV Health Check (Public) ---------
 // Proxies to the remote VPS scraper service health endpoint.
-// No longer uses local Puppeteer/Chrome.
+// No longer uses local Puppeteer/Chrome - all scraping happens on the remote VPS.
 
 app.get('/health/lstv', async (req, res) => {
+  const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
+  const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY || 'Q0tMx1sJ8nVh3w9L2z';
+  
   try {
-    const result = await lstv.healthCheck();
-    // Format response according to spec: { ok: true, remote: <health-json> } on success
-    if (result.ok) {
-      res.json({ ok: true, remote: result.remote || result });
-    } else {
-      res.status(500).json({ ok: false, error: result.error || 'Unknown error' });
-    }
+    const response = await axios.get(`${LSTV_SCRAPER_URL}/health`, {
+      headers: {
+        'x-api-key': LSTV_SCRAPER_KEY
+      },
+      timeout: 10000
+    });
+    res.json({ ok: true, remote: response.data });
   } catch (err) {
     res.status(500).json({
       ok: false,
-      error: err.message || String(err)
+      error: err.response?.data?.error || err.message || String(err)
     });
   }
 });
 
 // --------- TSDB Health Check (Public) ---------
+// Proxies to TheSportsDB API health check.
 
 app.get('/health/tsdb', async (req, res) => {
   try {
     const result = await tsdb.healthCheck();
     res.json(result);
   } catch (err) {
-    res.json({
+    res.status(500).json({
       ok: false,
       latencyMs: 0,
       error: err.message || String(err)
