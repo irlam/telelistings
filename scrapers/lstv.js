@@ -1,61 +1,50 @@
 // scrapers/lstv.js
-// LiveSoccerTV scraper using Puppeteer to fetch TV channels for each fixture.
+// LiveSoccerTV remote scraper client – calls a VPS-hosted scraper service.
 /**
- * Telegram Sports TV Bot – LiveSoccerTV Puppeteer Scraper
+ * Telegram Sports TV Bot – LiveSoccerTV Remote Scraper Client
+ *
+ * This module has been updated to use a remote VPS scraper service instead of
+ * local Puppeteer. The VPS handles all browser automation and returns scraped data.
  *
  * Exports fetchLSTV({ home, away, date, kickoffUtc, league }) which:
- * - Searches LiveSoccerTV for the correct match
- * - Uses match scoring to select the best candidate
- * - Opens the match page
- * - Extracts region/channel rows (e.g. Australia → Stan Sport)
+ * - Posts to the remote LSTV scraper service
+ * - Receives TV channel data in response
  *
  * Returns:
  * {
  *   url: string | null,
  *   kickoffUtc: string | null,
+ *   league: string | null,
  *   regionChannels: [{ region, channel }, ...],
  *   matchScore: number | null  // score of the selected match (0-100)
  * }
  *
  * Never throws; on failure returns { regionChannels: [] }
  * All logs use prefix [LSTV]
+ *
+ * Environment Variables (set in Plesk Node settings or .env):
+ *   LSTV_SCRAPER_URL - Base URL of the remote scraper service (default: http://185.170.113.230:3333)
+ *   LSTV_SCRAPER_KEY - API key for authentication (default: Q0tMx1sJ8nVh3w9L2z)
  */
 
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
 // ---------- Configuration ----------
 
-const BASE_URL = 'https://www.livesoccertv.com';
-const DEFAULT_TIMEOUT = 30000;
-const NAVIGATION_TIMEOUT = 60000;
-const PAGE_LOAD_DELAY_MS = 2000; // Delay after page load for dynamic content
+// Remote scraper service configuration
+const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
+const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY || 'Q0tMx1sJ8nVh3w9L2z';
 
-// Match scoring configuration
+// Legacy constants kept for backwards compatibility with tests
+const BASE_URL = 'https://www.livesoccertv.com';
+
+// Match scoring configuration (kept for test compatibility)
 const SCORE_THRESHOLD = 50;          // Minimum score to accept a match (0-100)
-const TIME_WINDOW_HOURS = 3;         // Accept matches within this many hours of kickoff
 
 // Debug flag - set via environment variable LSTV_DEBUG=1 or modify this constant
 const DEBUG = process.env.LSTV_DEBUG === '1' || process.env.LSTV_DEBUG === 'true';
-
-// User agent string - generic format to avoid detection issues
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-// Chrome executable paths to try (environment variables take precedence)
-// This covers common installation paths across Linux, macOS, and Windows
-const CHROME_PATHS = [
-  process.env.CHROME_PATH,
-  process.env.PUPPETEER_EXECUTABLE_PATH,
-  '/usr/bin/chromium-browser',
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/chromium',
-  '/snap/bin/chromium',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/Applications/Chromium.app/Contents/MacOS/Chromium',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-].filter(Boolean);
 
 // ---------- Logging ----------
 
@@ -172,6 +161,7 @@ function teamNameSimilarity(name1, name2) {
  * @returns {number} Score from 0-100
  */
 function scoreCandidate(candidate, requested) {
+  const TIME_WINDOW_HOURS = 3;
   let score = 0;
   
   // Team name matching (50% of total score)
@@ -226,86 +216,7 @@ function scoreCandidate(candidate, requested) {
   return Math.round(score);
 }
 
-// ---------- Chrome/Puppeteer Helpers ----------
-
-// Cache for puppeteer module
-let _puppeteerModule = null;
-let _puppeteerLoaded = false;
-
-/**
- * Lazy-load puppeteer (or puppeteer-core as fallback).
- * @returns {Object|null} Puppeteer module or null if not available
- */
-function loadPuppeteer() {
-  if (_puppeteerLoaded) {
-    return _puppeteerModule;
-  }
-  
-  _puppeteerLoaded = true;
-  
-  // Try full puppeteer first (bundles Chromium)
-  try {
-    _puppeteerModule = require('puppeteer');
-    debugLog('Loaded full puppeteer package');
-    return _puppeteerModule;
-  } catch (err) {
-    debugLog(`Full puppeteer not available: ${err.code || err.message}`);
-    // Fall back to puppeteer-core
-    try {
-      _puppeteerModule = require('puppeteer-core');
-      debugLog('Loaded puppeteer-core package');
-      return _puppeteerModule;
-    } catch (err2) {
-      log(`Neither puppeteer nor puppeteer-core available: puppeteer: ${err.code || err.message}, puppeteer-core: ${err2.code || err2.message}`);
-      _puppeteerModule = null;
-      return null;
-    }
-  }
-}
-
-/**
- * Find a Chrome/Chromium executable on the system.
- * First checks for puppeteer's bundled Chromium, then environment variables,
- * then common system installation paths.
- * @returns {string|null} Path to Chrome executable or null if not found
- */
-function findChromePath() {
-  // Check for puppeteer's bundled Chromium first (highest priority when available)
-  const puppeteer = loadPuppeteer();
-  if (puppeteer) {
-    try {
-      // Both puppeteer and puppeteer-core have executablePath() but only full puppeteer
-      // bundles Chromium and returns a path that exists. puppeteer-core returns a path
-      // that may not exist unless manually installed.
-      const bundledPath = puppeteer.executablePath();
-      if (bundledPath && fs.existsSync(bundledPath)) {
-        return bundledPath;
-      }
-    } catch (err) {
-      // executablePath() may throw if no bundled Chromium (puppeteer-core case)
-      debugLog(`Bundled Chromium not available: ${err.message}`);
-    }
-  }
-  
-  // Check environment variables
-  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
-    return process.env.CHROME_PATH;
-  }
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-  
-  // Search common installation paths
-  for (const chromePath of CHROME_PATHS) {
-    if (chromePath && fs.existsSync(chromePath)) {
-      return chromePath;
-    }
-  }
-  
-  return null;
-}
-
-// ---------- URL Building ----------
+// ---------- URL Building (kept for backwards compatibility) ----------
 
 /**
  * Normalize a team name for URL building.
@@ -322,6 +233,8 @@ function normalizeTeamName(name) {
 
 /**
  * Build possible search URLs for a match on LiveSoccerTV.
+ * Note: This is kept for backwards compatibility with tests but is not used
+ * by the remote scraper client.
  * @param {string} home - Home team name
  * @param {string} away - Away team name
  * @returns {string[]} Array of possible URLs to try
@@ -347,10 +260,20 @@ function buildSearchUrls(home, away) {
   return urls;
 }
 
-// ---------- Main Scraper Function ----------
+/**
+ * Legacy function - no longer used since we use remote scraper.
+ * Returns null for backwards compatibility.
+ * @returns {string|null}
+ */
+function findChromePath() {
+  // No longer using local Chrome - scraping happens on remote VPS
+  return null;
+}
+
+// ---------- Main Remote Scraper Function ----------
 
 /**
- * Fetch TV channel information for a fixture from LiveSoccerTV using Puppeteer.
+ * Fetch TV channel information for a fixture from the remote LiveSoccerTV scraper service.
  *
  * @param {Object} params - Parameters
  * @param {string} params.home - Home team name
@@ -358,13 +281,19 @@ function buildSearchUrls(home, away) {
  * @param {Date|string} params.date - Match date
  * @param {Date|string} params.kickoffUtc - Known kickoff time (optional, for better matching)
  * @param {string} params.league - League/competition name (optional, for better matching)
- * @returns {Promise<{url: string|null, kickoffUtc: string|null, regionChannels: Array<{region: string, channel: string}>, matchScore: number|null}>}
+ * @returns {Promise<{url: string|null, kickoffUtc: string|null, league: string|null, regionChannels: Array<{region: string, channel: string}>, matchScore: number|null}>}
  */
 async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null }) {
+  // Convert date/kickoffUtc to ISO string for API
+  const dateUtc = kickoffUtc 
+    ? (kickoffUtc instanceof Date ? kickoffUtc.toISOString() : kickoffUtc)
+    : (date instanceof Date ? date.toISOString() : date || null);
+  
   // Default empty result - never throw
   const emptyResult = {
     url: null,
-    kickoffUtc: null,
+    kickoffUtc: dateUtc || null,
+    league: league || null,
     regionChannels: [],
     matchScore: null
   };
@@ -375,511 +304,108 @@ async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null })
     return emptyResult;
   }
   
-  const requestedMatch = {
-    home,
-    away,
-    date: date instanceof Date ? date : new Date(date || Date.now()),
-    kickoffUtc: kickoffUtc ? (kickoffUtc instanceof Date ? kickoffUtc : new Date(kickoffUtc)) : null,
-    league
-  };
-  
-  log(`Searching for ${home} vs ${away}${league ? ` (${league})` : ''}`);
-  
-  // Load Puppeteer
-  const puppeteer = loadPuppeteer();
-  if (!puppeteer) {
-    log('Puppeteer not available, cannot scrape');
-    return emptyResult;
-  }
-  
-  // Find Chrome - required for puppeteer-core
-  const chromePath = findChromePath();
-  if (!chromePath) {
-    log('Chrome/Chromium not found on system. Set CHROME_PATH env var or install Chrome.');
-    return emptyResult;
-  }
-  
-  let browser = null;
+  log(`Searching for ${home} vs ${away}${league ? ` (${league})` : ''} via remote scraper`);
+  debugLog(`Remote URL: ${LSTV_SCRAPER_URL}/scrape/lstv`);
   
   try {
-    log(`Launching Chrome from ${chromePath}`);
-    
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--window-size=1920,1080',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process'
-      ]
-    });
-    
-    const page = await browser.newPage();
-    
-    // Set viewport
-    await page.setViewport({
-      width: 1920,
-      height: 1080,
-      deviceScaleFactor: 1
-    });
-    
-    // Set user agent
-    await page.setUserAgent(USER_AGENT);
-    
-    // Set navigation timeout
-    page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT);
-    page.setDefaultTimeout(DEFAULT_TIMEOUT);
-    
-    // Build search URLs
-    const searchUrls = buildSearchUrls(home, away);
-    
-    let matchPageUrl = null;
-    let regionChannels = [];
-    let kickoffUtc = null;
-    
-    // Try each URL to find the match
-    for (const url of searchUrls) {
-      try {
-        log(`Trying URL: ${url}`);
-        
-        await page.goto(url, {
-          waitUntil: 'networkidle2',
-          timeout: NAVIGATION_TIMEOUT
-        });
-        
-        // Wait for dynamic content to load
-        await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
-        
-        // Check if this is a match page or team schedule
-        const isMatchPage = url.includes('/match/');
-        
-        if (isMatchPage) {
-          // We're on a match page, try to extract TV channels
-          const result = await extractTvChannelsFromPage(page);
-          if (result.regionChannels.length > 0) {
-            matchPageUrl = url;
-            regionChannels = result.regionChannels;
-            kickoffUtc = result.kickoffUtc;
-            log(`Found ${regionChannels.length} TV channels on match page`);
-            break;
-          }
-        } else {
-          // Team schedule page - look for the specific match
-          const matchLink = await findMatchOnSchedule(page, home, away, date);
-          if (matchLink) {
-            log(`Found match link: ${matchLink}`);
-            
-            // Navigate to the match page
-            await page.goto(matchLink, {
-              waitUntil: 'networkidle2',
-              timeout: NAVIGATION_TIMEOUT
-            });
-            
-            await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
-            
-            const result = await extractTvChannelsFromPage(page);
-            if (result.regionChannels.length > 0) {
-              matchPageUrl = matchLink;
-              regionChannels = result.regionChannels;
-              kickoffUtc = result.kickoffUtc;
-              log(`Found ${regionChannels.length} TV channels from schedule`);
-              break;
-            }
-          }
-        }
-      } catch (urlErr) {
-        log(`Error with URL ${url}: ${urlErr.message}`);
-        continue;
+    const response = await axios.post(
+      `${LSTV_SCRAPER_URL}/scrape/lstv`,
+      {
+        home,
+        away,
+        dateUtc,
+        leagueHint: league
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': LSTV_SCRAPER_KEY
+        },
+        timeout: 60000 // 60 second timeout for scraping
       }
-    }
+    );
     
-    // If no match found via URLs, try search
-    if (regionChannels.length === 0) {
-      log('Trying site search...');
-      const searchResult = await searchOnSite(page, home, away);
-      if (searchResult) {
-        matchPageUrl = searchResult.url;
-        regionChannels = searchResult.regionChannels;
-        kickoffUtc = searchResult.kickoffUtc;
-      }
-    }
+    const data = response.data;
     
-    if (regionChannels.length > 0) {
-      log(`Success: Found ${regionChannels.length} TV channels for ${home} vs ${away}`);
-      return {
-        url: matchPageUrl,
-        kickoffUtc,
-        regionChannels,
-        matchScore: 75 // Default good score when found via direct match
-      };
-    } else {
-      log(`WARNING: No TV channels found for ${home} vs ${away} - no match page found or page had no channel data`);
-      return {
-        url: null,
-        kickoffUtc: null,
-        regionChannels: [],
-        matchScore: null
-      };
-    }
-    
-  } catch (err) {
-    log(`Error: ${err.message}`);
-    return emptyResult;
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeErr) {
-        // Ignore close errors
-      }
-    }
-  }
-}
-
-/**
- * Extract TV channels from a LiveSoccerTV match page.
- * @param {Page} page - Puppeteer page object
- * @returns {Promise<{regionChannels: Array<{region: string, channel: string}>, kickoffUtc: string|null}>}
- */
-async function extractTvChannelsFromPage(page) {
-  try {
-    const result = await page.evaluate(() => {
-      const channels = [];
-      let kickoffUtc = null;
-      
-      // Try to extract kickoff time
-      const timeEl = document.querySelector('.matchdate, .match-time, [class*="match-date"], time');
-      if (timeEl) {
-        kickoffUtc = timeEl.getAttribute('datetime') || timeEl.textContent.trim();
-      }
-      
-      // Method 1: Look for TV broadcast table rows
-      const rows = document.querySelectorAll('table.listing tbody tr, .broadcast-list tr, .tv-channels tr');
-      rows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        if (cells.length >= 2) {
-          // First cell usually has country/region
-          const regionCell = cells[0];
-          const channelCell = cells[1];
-          
-          // Get region from flag image alt or cell text
-          let region = '';
-          const flagImg = regionCell.querySelector('img');
-          if (flagImg) {
-            region = flagImg.getAttribute('alt') || flagImg.getAttribute('title') || '';
-          }
-          if (!region) {
-            region = regionCell.textContent.trim();
-          }
-          
-          // Get channel(s) from cell - may have multiple channels
-          const channelLinks = channelCell.querySelectorAll('a');
-          if (channelLinks.length > 0) {
-            channelLinks.forEach(link => {
-              const channel = link.textContent.trim();
-              if (region && channel) {
-                channels.push({ region, channel });
-              }
-            });
-          } else {
-            const channel = channelCell.textContent.trim();
-            if (region && channel) {
-              channels.push({ region, channel });
-            }
-          }
-        }
-      });
-      
-      // Method 2: Alternative structure with country flags and channel names
-      if (channels.length === 0) {
-        const items = document.querySelectorAll('.broadcast-item, [class*="broadcast"]');
-        items.forEach(item => {
-          const regionEl = item.querySelector('[class*="country"], img[alt]');
-          const channelEl = item.querySelector('[class*="channel"], a');
-          
-          const region = regionEl ? (regionEl.getAttribute('alt') || regionEl.textContent.trim()) : '';
-          const channel = channelEl ? channelEl.textContent.trim() : '';
-          
-          if (region && channel) {
-            channels.push({ region, channel });
-          }
-        });
-      }
-      
-      // Method 3: Look for any table with country flags
-      if (channels.length === 0) {
-        const allTables = document.querySelectorAll('table');
-        allTables.forEach(table => {
-          const rows = table.querySelectorAll('tr');
-          rows.forEach(row => {
-            const img = row.querySelector('img[alt]');
-            if (img) {
-              const region = img.getAttribute('alt') || '';
-              const textContent = row.textContent.replace(region, '').trim();
-              if (region && textContent) {
-                channels.push({ region, channel: textContent });
-              }
-            }
-          });
-        });
-      }
-      
-      return { regionChannels: channels, kickoffUtc };
-    });
-    
-    // Deduplicate channels
-    const seen = new Set();
-    const unique = [];
-    for (const entry of result.regionChannels) {
-      const key = `${entry.region}|${entry.channel}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(entry);
-      }
-    }
-    
-    return {
-      regionChannels: unique,
-      kickoffUtc: result.kickoffUtc
+    // Extract data from response
+    const result = {
+      url: data.url || null,
+      kickoffUtc: data.kickoffUtc || dateUtc || null,
+      league: data.league || league || null,
+      regionChannels: Array.isArray(data.regionChannels) ? data.regionChannels : [],
+      matchScore: typeof data.matchScore === 'number' ? data.matchScore : null
     };
     
-  } catch (err) {
-    return { regionChannels: [], kickoffUtc: null };
-  }
-}
-
-/**
- * Find a specific match on a team's schedule page.
- * @param {Page} page - Puppeteer page object
- * @param {string} home - Home team name
- * @param {string} away - Away team name
- * @param {Date|string} date - Match date
- * @returns {Promise<string|null>} Match page URL or null
- */
-async function findMatchOnSchedule(page, home, away, date) {
-  try {
-    const matchDate = date instanceof Date
-      ? date.toISOString().slice(0, 10)
-      : String(date || '').slice(0, 10);
-    
-    const homeLower = (home || '').toLowerCase();
-    const awayLower = (away || '').toLowerCase();
-    
-    const matchUrl = await page.evaluate((homeLower, awayLower) => {
-      // Look for match links in the schedule
-      const links = document.querySelectorAll('a[href*="/match/"]');
-      
-      for (const link of links) {
-        const text = link.textContent.toLowerCase();
-        const href = link.getAttribute('href') || '';
-        
-        // Check if both teams appear in the link text or href
-        if ((text.includes(homeLower) || href.includes(homeLower.replace(/\s+/g, '-'))) &&
-            (text.includes(awayLower) || href.includes(awayLower.replace(/\s+/g, '-')))) {
-          // Found a potential match
-          return href.startsWith('http') ? href : 'https://www.livesoccertv.com' + href;
-        }
-      }
-      
-      return null;
-    }, homeLower, awayLower);
-    
-    return matchUrl;
-    
-  } catch (err) {
-    return null;
-  }
-}
-
-/**
- * Search for a match on the LiveSoccerTV site.
- * @param {Page} page - Puppeteer page object
- * @param {string} home - Home team name
- * @param {string} away - Away team name
- * @returns {Promise<{url: string, regionChannels: Array, kickoffUtc: string|null}|null>}
- */
-async function searchOnSite(page, home, away) {
-  try {
-    const searchQuery = `${home} ${away}`;
-    const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(searchQuery)}`;
-    
-    log(`Searching: ${searchUrl}`);
-    
-    await page.goto(searchUrl, {
-      waitUntil: 'networkidle2',
-      timeout: NAVIGATION_TIMEOUT
-    });
-    
-    await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
-    
-    // Look for match links in search results
-    const matchLink = await page.evaluate((homeLower, awayLower) => {
-      const links = document.querySelectorAll('a[href*="/match/"]');
-      
-      for (const link of links) {
-        const text = link.textContent.toLowerCase();
-        const href = link.getAttribute('href') || '';
-        
-        if ((text.includes(homeLower) || href.includes(homeLower.replace(/\s+/g, '-'))) &&
-            (text.includes(awayLower) || href.includes(awayLower.replace(/\s+/g, '-')))) {
-          return href.startsWith('http') ? href : 'https://www.livesoccertv.com' + href;
-        }
-      }
-      
-      return null;
-    }, home.toLowerCase(), away.toLowerCase());
-    
-    if (matchLink) {
-      log(`Found match in search results: ${matchLink}`);
-      
-      await page.goto(matchLink, {
-        waitUntil: 'networkidle2',
-        timeout: NAVIGATION_TIMEOUT
-      });
-      
-      await page.waitForTimeout(PAGE_LOAD_DELAY_MS);
-      
-      const result = await extractTvChannelsFromPage(page);
-      if (result.regionChannels.length > 0) {
-        return {
-          url: matchLink,
-          regionChannels: result.regionChannels,
-          kickoffUtc: result.kickoffUtc
-        };
-      }
+    if (result.regionChannels.length > 0) {
+      log(`Success: Found ${result.regionChannels.length} TV channels for ${home} vs ${away}`);
+    } else {
+      log(`No TV channels found for ${home} vs ${away}`);
     }
     
-    return null;
+    return result;
     
   } catch (err) {
-    log(`Search error: ${err.message}`);
-    return null;
+    // Log the error but never throw
+    const errorMessage = err.response?.data?.error || err.message || String(err);
+    console.error('[LSTV] Remote call error:', errorMessage);
+    log(`Remote scraper error: ${errorMessage}`);
+    
+    return emptyResult;
   }
 }
 
 // ---------- Health Check ----------
 
 /**
- * Get detailed system information about Chrome/Puppeteer availability.
- * @returns {{puppeteerAvailable: boolean, puppeteerType: string, chromeFound: boolean, chromePath: string|null, searchedPaths: string[], bundledChrome: boolean}}
+ * Get detailed system information about the remote scraper service.
+ * @returns {{remoteUrl: string, mode: string}}
  */
 function getSystemInfo() {
-  let puppeteerAvailable = false;
-  let puppeteerType = 'none';
-  let bundledChrome = false;
-  
-  // Check for full puppeteer first (bundles Chromium)
-  const puppeteer = loadPuppeteer();
-  if (puppeteer) {
-    puppeteerAvailable = true;
-    
-    // Check if it's full puppeteer with bundled Chromium
-    try {
-      const bundledPath = puppeteer.executablePath();
-      if (bundledPath && fs.existsSync(bundledPath)) {
-        bundledChrome = true;
-        puppeteerType = 'puppeteer';
-      } else {
-        puppeteerType = 'puppeteer-core';
-      }
-    } catch (err) {
-      puppeteerType = 'puppeteer-core';
-    }
-  }
-  
-  const chromePath = findChromePath();
-  
   return {
-    puppeteerAvailable,
-    puppeteerType,
-    chromeFound: !!chromePath,
-    chromePath,
-    bundledChrome,
-    searchedPaths: CHROME_PATHS.filter(p => p) // Filter out null/undefined
+    remoteUrl: LSTV_SCRAPER_URL,
+    mode: 'remote'
   };
 }
 
 /**
- * Perform a health check by loading the LiveSoccerTV homepage.
- * @returns {Promise<{ok: boolean, latencyMs: number, error?: string, systemInfo?: Object}>}
+ * Perform a health check by calling the remote scraper service health endpoint.
+ * @returns {Promise<{ok: boolean, latencyMs: number, remote?: Object, error?: string}>}
  */
 async function healthCheck() {
   const startTime = Date.now();
-  const systemInfo = getSystemInfo();
-  
-  const puppeteer = loadPuppeteer();
-  if (!puppeteer) {
-    const result = { 
-      ok: false, 
-      latencyMs: 0, 
-      error: 'Puppeteer not available. Install puppeteer (recommended) or puppeteer-core: npm install puppeteer',
-      systemInfo
-    };
-    log(`[health] FAIL: ${result.error}`);
-    return result;
-  }
-  
-  // chromePath is required for puppeteer-core
-  const chromePath = findChromePath();
-  if (!chromePath) {
-    const result = { 
-      ok: false, 
-      latencyMs: 0, 
-      error: 'Chrome/Chromium not found. Install Chrome or set CHROME_PATH environment variable. On Ubuntu: apt-get install chromium-browser',
-      systemInfo
-    };
-    log(`[health] FAIL: ${result.error}`);
-    return result;
-  }
-  
-  let browser = null;
   
   try {
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ]
-    });
-    
-    const page = await browser.newPage();
-    page.setDefaultNavigationTimeout(DEFAULT_TIMEOUT);
-    
-    await page.goto(BASE_URL, {
-      waitUntil: 'networkidle2',
-      timeout: DEFAULT_TIMEOUT
-    });
+    const response = await axios.get(
+      `${LSTV_SCRAPER_URL}/health`,
+      {
+        headers: {
+          'x-api-key': LSTV_SCRAPER_KEY
+        },
+        timeout: 10000 // 10 second timeout for health check
+      }
+    );
     
     const latencyMs = Date.now() - startTime;
-    const result = { ok: true, latencyMs, systemInfo };
+    const result = { 
+      ok: true, 
+      latencyMs, 
+      remote: response.data 
+    };
     
-    log(`[health] OK in ${latencyMs}ms`);
+    log(`[health] OK in ${latencyMs}ms (remote)`);
     return result;
     
   } catch (err) {
     const latencyMs = Date.now() - startTime;
-    const result = { ok: false, latencyMs, error: err.message, systemInfo };
+    const errorMessage = err.response?.data?.error || err.message || String(err);
+    const result = { 
+      ok: false, 
+      latencyMs, 
+      error: errorMessage 
+    };
     
-    log(`[health] FAIL in ${latencyMs}ms: ${err.message}`);
+    log(`[health] FAIL in ${latencyMs}ms: ${errorMessage}`);
     return result;
-    
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeErr) {
-        // Ignore
-      }
-    }
   }
 }
 
@@ -889,7 +415,7 @@ module.exports = {
   fetchLSTV,
   healthCheck,
   getSystemInfo,
-  // Export helpers for testing
+  // Export helpers for testing (backwards compatibility)
   normalizeTeamName,
   normalizeForComparison,
   teamNameSimilarity,

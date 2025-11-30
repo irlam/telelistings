@@ -32,6 +32,36 @@ To enable TV channel information in fixture listings:
 2. Add the key to Settings in the admin GUI, or set `theSportsDbApiKey` in config.json
 3. TV channel info will automatically be fetched and included in fixture messages
 
+## LiveSoccerTV Integration (Remote Scraper)
+
+The bot can fetch detailed TV channel listings from LiveSoccerTV.com. This integration uses a **remote VPS scraper service** instead of local Puppeteer/Chrome, improving reliability and reducing server resource usage.
+
+### Environment Variables
+
+Configure the following environment variables (in Plesk Node settings or a `.env` file):
+
+```
+LSTV_SCRAPER_URL=http://185.170.113.230:3333
+LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
+```
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LSTV_SCRAPER_URL` | Base URL of the remote LSTV scraper service | `http://185.170.113.230:3333` |
+| `LSTV_SCRAPER_KEY` | API key for authentication (sent as `x-api-key` header) | `Q0tMx1sJ8nVh3w9L2z` |
+
+### How It Works
+
+1. When a fixture is being processed, the bot calls `POST ${LSTV_SCRAPER_URL}/scrape/lstv` with match details
+2. The remote VPS performs all browser automation (Puppeteer/Chrome) to scrape LiveSoccerTV
+3. TV channel data by region is returned and merged with other data sources
+4. Results are cached for 4 hours to reduce API calls
+
+### Health Check
+
+- Visit `/health/lstv` on your bot instance to check the remote scraper status
+- The health endpoint proxies to `${LSTV_SCRAPER_URL}/health` on the VPS
+
 ## Image-Based Posters
 
 For poster-style channels, you can upload a background image to generate visually appealing image posters instead of text-only messages.
