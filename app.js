@@ -585,14 +585,13 @@ app.get('/admin/settings', (req, res) => {
           <input type="checkbox" name="liveSoccerTvEnabled" value="true" id="liveSoccerTvEnabled" ${cfg.liveSoccerTvEnabled !== false ? 'checked' : ''}>
           Enable LiveSoccerTV scraper for worldwide TV channel listings
         </label>
-        <span class="muted">When enabled, the bot will attempt to scrape LiveSoccerTV.com to get TV channel listings by country/region for each fixture. Results are cached for 4 hours.</span>
+        <span class="muted">When enabled, the bot will call a remote VPS scraper service to get TV channel listings by country/region for each fixture. Results are cached for 4 hours.</span>
       </p>
-      <p>
-        <label>
-          <input type="checkbox" name="liveSoccerTvUsePuppeteer" value="true" id="liveSoccerTvUsePuppeteer" ${cfg.liveSoccerTvUsePuppeteer ? 'checked' : ''}>
-          Use Puppeteer (headless Chrome) for LiveSoccerTV scraping
-        </label>
-        <span class="muted">More reliable but slower. Requires Chrome/Chromium installed on server. <a href="/admin/test-lstv">Test the scraper →</a></span>
+      <p class="muted" style="margin-left: 24px;">
+        <strong>Note:</strong> LiveSoccerTV scraping now runs on a remote VPS instead of using local Puppeteer/Chrome. 
+        The remote service URL and API key are configured via environment variables 
+        (<code>LSTV_SCRAPER_URL</code> and <code>LSTV_SCRAPER_KEY</code>). 
+        <a href="/admin/test-lstv">Test the scraper →</a>
       </p>
       <p>
         <label>
@@ -993,9 +992,9 @@ app.get('/admin/test-lstv', async (req, res) => {
   <div class="card">
     <h3>How it works</h3>
     <ul>
-      <li>The scraper uses Puppeteer (headless Chrome) to load LiveSoccerTV pages.</li>
-      <li>It tries multiple URL patterns to find the match page.</li>
-      <li>TV channels are extracted from the match page's broadcast table.</li>
+      <li>This test calls a remote VPS scraper service at <code>${escapeHtml(process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333')}</code>.</li>
+      <li>The VPS service handles all browser automation using Puppeteer/Chrome.</li>
+      <li>TV channels are extracted from the LiveSoccerTV match page's broadcast table.</li>
       <li>Results are cached for 4 hours to reduce scraping frequency.</li>
     </ul>
     <p><a href="/health/lstv" target="_blank">Check LSTV Health Status →</a></p>
@@ -1360,15 +1359,21 @@ app.get('/admin/test-fixture-tv', async (req, res) => {
 });
 
 // --------- LSTV Health Check (Public) ---------
+// Proxies to the remote VPS scraper service health endpoint.
+// No longer uses local Puppeteer/Chrome.
 
 app.get('/health/lstv', async (req, res) => {
   try {
     const result = await lstv.healthCheck();
-    res.json(result);
+    // Format response according to spec: { ok: true, remote: <health-json> } on success
+    if (result.ok) {
+      res.json({ ok: true, remote: result.remote || result });
+    } else {
+      res.status(500).json({ ok: false, error: result.error || 'Unknown error' });
+    }
   } catch (err) {
-    res.json({
+    res.status(500).json({
       ok: false,
-      latencyMs: 0,
       error: err.message || String(err)
     });
   }
