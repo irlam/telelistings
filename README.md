@@ -49,16 +49,17 @@ The following environment variables **must** be configured in Plesk Node setting
 
 Example configuration:
 ```
-LSTV_SCRAPER_URL=http://185.170.113.230:3333
-LSTV_SCRAPER_KEY=your_api_key_here
+LSTV_SCRAPER_URL=http://your-vps-ip:3333
+LSTV_SCRAPER_KEY=your_secret_api_key_here
 CRON_SECRET=your_cron_secret_here
 ADMIN_PASSWORD=your_admin_password_here
 ```
 
 > **Security Note**: 
-> - Set environment variables explicitly rather than relying on defaults
-> - Do not commit actual API keys to source control
-> - The remote service uses HTTP (not HTTPS) as it runs on a private/internal network
+> - These environment variables are REQUIRED - no default values are provided
+> - Do not commit actual API keys or credentials to source control
+> - The remote service typically uses HTTP (not HTTPS) as it runs on a private/internal network
+> - Contact your system administrator for the correct LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY values
 
 ### How It Works
 

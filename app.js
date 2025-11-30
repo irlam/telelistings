@@ -652,7 +652,7 @@ app.get('/admin/settings', (req, res) => {
 });
 
 app.post('/admin/settings', (req, res) => {
-  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, liveSoccerTvEnabled, liveSoccerTvUsePuppeteer, defaultPosterStyle, posterFooterText } = req.body;
+  const { botToken, timezone, icsUrl, icsDaysAhead, theSportsDbApiKey, liveSoccerTvEnabled, defaultPosterStyle, posterFooterText } = req.body;
   const cfg = loadConfig();
 
   cfg.botToken = (botToken || '').trim();
@@ -661,7 +661,8 @@ app.post('/admin/settings', (req, res) => {
   cfg.icsDaysAhead = parseInt(icsDaysAhead, 10) || 1;
   cfg.theSportsDbApiKey = (theSportsDbApiKey || '').trim();
   cfg.liveSoccerTvEnabled = liveSoccerTvEnabled === 'true';
-  cfg.liveSoccerTvUsePuppeteer = liveSoccerTvUsePuppeteer === 'true';
+  // NOTE: liveSoccerTvUsePuppeteer is deprecated - Puppeteer is no longer used locally
+  // All scraping is handled by the remote VPS service
   cfg.defaultPosterStyle = defaultPosterStyle === 'true';
   cfg.posterFooterText = (posterFooterText || '').trim();
 
@@ -1362,10 +1363,19 @@ app.get('/admin/test-fixture-tv', async (req, res) => {
 // --------- LSTV Health Check (Public) ---------
 // Proxies to the remote VPS scraper service health endpoint.
 // No longer uses local Puppeteer/Chrome - all scraping happens on the remote VPS.
+// REQUIRES: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables
 
 app.get('/health/lstv', async (req, res) => {
-  const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
-  const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY || 'Q0tMx1sJ8nVh3w9L2z';
+  const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL;
+  const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY;
+  
+  // Validate required environment variables
+  if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
+    return res.status(500).json({
+      ok: false,
+      error: 'LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables must be configured'
+    });
+  }
   
   try {
     const response = await axios.get(`${LSTV_SCRAPER_URL}/health`, {
