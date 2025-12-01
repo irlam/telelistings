@@ -27,3 +27,9 @@ Thumbs.db
 
 # Uploaded files
 uploads/
+
+# Storage directory contents (keep .gitkeep)
+storage/scrapes/
+storage/latest/
+storage/auto_tests/
+!storage/.gitkeep

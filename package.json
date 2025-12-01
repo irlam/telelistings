@@ -1,11 +1,16 @@
 {
   "name": "telegram-sports-bot",
   "version": "1.0.0",
-  "description": "Telegram auto poster + admin GUI for sports TV listings (ICS-based)",
+  "description": "Telegram auto poster + admin GUI for sports TV listings with comprehensive scraper infrastructure",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "test": "node tests/lstv.test.js"
+    "test": "node tests/run_all_tests.js",
+    "test:lstv": "node tests/lstv.test.js",
+    "test:fixtures": "node tests/fixtures_scraper.test.js",
+    "test:auto": "node tests/auto_tester.test.js",
+    "auto-test": "node scripts/run_auto_test.js",
+    "health": "node scripts/health_check.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.83",
