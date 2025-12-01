@@ -176,12 +176,17 @@ async function fetchBBCFixtures({ teamName, teamSlug }) {
     const matches = [];
     
     // Parse fixture cards - BBC uses various selectors
-    // Try multiple selectors for robustness
+    // Try multiple selectors for robustness (updated for 2024+ BBC Sport structure)
     const fixtureSelectors = [
       '.sp-c-fixture',
       '[class*="fixture"]',
       '.qa-match-block',
-      'article[class*="fixture"]'
+      'article[class*="fixture"]',
+      // New BBC structure - match elements
+      '[data-event-type="match"]',
+      '.ssrcss-1sxn96w-MatchWrapper',
+      '[class*="MatchWrapper"]',
+      '[class*="EventCard"]'
     ];
     
     for (const selector of fixtureSelectors) {
@@ -189,9 +194,24 @@ async function fetchBBCFixtures({ teamName, teamSlug }) {
         try {
           const $fixture = $(el);
           
-          // Extract teams
-          const homeTeam = $fixture.find('[class*="home-team"], .sp-c-fixture__team--home, .sp-c-fixture__team-name--home').text().trim();
-          const awayTeam = $fixture.find('[class*="away-team"], .sp-c-fixture__team--away, .sp-c-fixture__team-name--away').text().trim();
+          // Extract teams - try multiple selector patterns
+          let homeTeam = $fixture.find('[class*="home-team"], .sp-c-fixture__team--home, .sp-c-fixture__team-name--home').text().trim();
+          let awayTeam = $fixture.find('[class*="away-team"], .sp-c-fixture__team--away, .sp-c-fixture__team-name--away').text().trim();
+          
+          // Try new BBC structure with team name spans
+          if (!homeTeam || !awayTeam) {
+            const teamNames = $fixture.find('[class*="TeamName"], [class*="teamName"], abbr[title]');
+            if (teamNames.length >= 2) {
+              homeTeam = $(teamNames[0]).attr('title') || $(teamNames[0]).text().trim();
+              awayTeam = $(teamNames[1]).attr('title') || $(teamNames[1]).text().trim();
+            }
+          }
+          
+          // Try data attributes
+          if (!homeTeam || !awayTeam) {
+            homeTeam = $fixture.attr('data-home-team') || homeTeam;
+            awayTeam = $fixture.attr('data-away-team') || awayTeam;
+          }
           
           // Extract time/date
           const timeEl = $fixture.find('time, [datetime]');
@@ -222,7 +242,7 @@ async function fetchBBCFixtures({ teamName, teamSlug }) {
     
     // Alternative: parse from list items
     if (matches.length === 0) {
-      $('li[class*="fixture"], li[data-fixture]').each((i, el) => {
+      $('li[class*="fixture"], li[data-fixture], [role="listitem"]').each((i, el) => {
         try {
           const text = $(el).text().trim();
           // Try to parse "Home Team vs Away Team" patterns
