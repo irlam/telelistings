@@ -1,7 +1,11 @@
 // scrapers/footballdata.js
 // FootballData.org API integration for fixture lookup.
+// NOTE: This is an API client that runs directly on Plesk (no Puppeteer needed).
 /**
  * Telegram Sports TV Bot – FootballData.org Fixture Scraper
+ *
+ * This is a lightweight API client that can run directly on Plesk.
+ * No browser automation required – uses axios for API calls.
  *
  * Exports fetchFootballData({ teamId, dateUtc }) which:
  * - Queries FootballData.org v4 API for fixtures

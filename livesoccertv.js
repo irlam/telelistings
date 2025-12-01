@@ -1,21 +1,28 @@
 // livesoccertv.js
-// Scraper for LiveSoccerTV to extract worldwide TV channel listings for football matches.
+// DEPRECATED: This file is kept for reference only.
+// Actual LiveSoccerTV scraping is now performed by the remote VPS service.
+// Use scrapers/lstv.js to call the remote service.
 /**
- * Telegram Sports TV Bot – LiveSoccerTV Scraper
+ * Telegram Sports TV Bot – LiveSoccerTV Reference Module (DEPRECATED)
  *
- * Provides functions to scrape TV channel listings from LiveSoccerTV.com:
- * - Search for matches by team name or match page URL
- * - Extract TV channels grouped by country/region
- * - Return structured JSON for poster generation
+ * NOTE: This module is DEPRECATED and kept for reference purposes only.
+ * 
+ * LiveSoccerTV scraping is now handled by a remote VPS service to avoid
+ * running Puppeteer/Chrome on the Plesk production server. This improves:
+ * - Server resource usage (no Chrome browser running on Plesk)
+ * - Reliability (dedicated scraping infrastructure)
+ * - Maintenance (scraping code isolated from main application)
  *
- * The scraper uses:
- * - puppeteer-core for browser automation (when available)
- * - Cloudflare bypass techniques (stealth mode, realistic headers)
- * - Caching to avoid re-scraping the same match
+ * For actual LiveSoccerTV data fetching, use:
+ *   const lstv = require('./scrapers/lstv');
+ *   const result = await lstv.fetchLSTV({ home, away, date });
  *
- * Note: This module requires an external Chrome/Chromium installation
- * when using puppeteer-core. It falls back to HTTP scraping when
- * Puppeteer is not available.
+ * The remote VPS service URL is configured via environment variables:
+ *   - LSTV_SCRAPER_URL: Base URL of the scraper service
+ *   - LSTV_SCRAPER_KEY: API key for authentication
+ *
+ * This file contains HTTP-based scraping utilities that could be used
+ * as fallback methods on the VPS if browser automation fails.
  */
 
 const axios = require('axios');
@@ -129,10 +136,11 @@ function getMatchCacheKey(homeTeam, awayTeam, matchDate) {
   return `match:${homeTeam.toLowerCase()}:${awayTeam.toLowerCase()}:${dateStr}`;
 }
 
-// ---------- HTTP Scraper (fallback) ----------
+// ---------- HTTP Scraper (reference implementation) ----------
 
 /**
  * Fetch a page with realistic browser headers.
+ * This is a reference implementation for the VPS service.
  * @param {string} url
  * @returns {Promise<string>} HTML content
  */
@@ -147,80 +155,8 @@ async function fetchPage(url) {
 }
 
 /**
- * Search for a team's upcoming matches on LiveSoccerTV.
- * @param {string} teamName - Team name to search for
- * @returns {Promise<Array<{url: string, homeTeam: string, awayTeam: string, date: string, time: string}>>}
- */
-async function searchTeamMatches(teamName) {
-  if (!teamName) {
-    return [];
-  }
-
-  // Build search URL - LiveSoccerTV uses teams organized by league/country
-  // Try multiple country paths since we don't know the team's league
-  const searchSlug = teamName.toLowerCase().trim().replace(/\s+/g, '-');
-  const countryPaths = ['england', 'spain', 'germany', 'italy', 'france', 'scotland', 'wales'];
-  
-  for (const country of countryPaths) {
-    const searchUrl = `${BASE_URL}/teams/${country}/${searchSlug}/`;
-
-    try {
-      const html = await fetchPage(searchUrl);
-      const $ = cheerio.load(html);
-
-      const matches = [];
-
-      // Parse the fixtures table
-      $('table.schedules tbody tr').each((i, row) => {
-        const $row = $(row);
-        const matchLink = $row.find('a[href*="/match/"]').first();
-        
-        if (matchLink.length) {
-          const url = BASE_URL + matchLink.attr('href');
-          const matchText = matchLink.text().trim();
-          
-          // Try to parse "Team A vs Team B" format
-          const vsMatch = matchText.match(/^(.+?)\s+(?:vs?\.?|–|-)\s+(.+)$/i);
-          let homeTeam = '';
-          let awayTeam = '';
-          
-          if (vsMatch) {
-            homeTeam = vsMatch[1].trim();
-            awayTeam = vsMatch[2].trim();
-          }
-
-          // Get date/time
-          const dateCell = $row.find('td').first().text().trim();
-          const timeCell = $row.find('td:nth-child(2)').text().trim();
-
-          matches.push({
-            url,
-            homeTeam,
-            awayTeam,
-            date: dateCell,
-            time: timeCell,
-            raw: matchText
-          });
-        }
-      });
-
-      // If we found matches, return them
-      if (matches.length > 0) {
-        return matches;
-      }
-    } catch (err) {
-      // Try next country path
-      continue;
-    }
-  }
-
-  // No matches found in any country path
-  console.log(`[LiveSoccerTV] No team page found for "${teamName}" in any league`);
-  return [];
-}
-
-/**
  * Parse TV channels from a match page HTML.
+ * This is a reference implementation for the VPS service.
  * @param {string} html - Match page HTML
  * @returns {Array<{region: string, channel: string}>}
  */
@@ -229,9 +165,6 @@ function parseTvChannels(html) {
   const tvByRegion = [];
 
   // LiveSoccerTV lists TV channels in a table with country flags and channel names
-  // The structure is typically: flag/country | channel name(s)
-  
-  // Method 1: Parse from the "TV Stations" section
   $('table.listing tbody tr, .tv-channels tr, .broadcast-list tr').each((i, row) => {
     const $row = $(row);
     
@@ -251,7 +184,6 @@ function parseTvChannels(html) {
     const channelCell = $row.find('td:nth-child(2), .channels, [class*="channel"]');
     const channels = [];
     
-    // Multiple channels might be listed, separated by <br> or in separate spans
     channelCell.find('a, span').each((j, el) => {
       const channelName = $(el).text().trim();
       if (channelName && !channels.includes(channelName)) {
@@ -259,7 +191,6 @@ function parseTvChannels(html) {
       }
     });
     
-    // Fallback to raw text if no structured elements found
     if (!channels.length) {
       const rawText = channelCell.text().trim();
       if (rawText) {
@@ -267,7 +198,6 @@ function parseTvChannels(html) {
       }
     }
 
-    // Add each channel as a separate entry
     if (region && channels.length) {
       for (const channel of channels) {
         tvByRegion.push({
@@ -277,24 +207,6 @@ function parseTvChannels(html) {
       }
     }
   });
-
-  // Method 2: Parse from any visible broadcast info sections
-  if (tvByRegion.length === 0) {
-    // Try alternative selectors
-    $('.broadcast-item, .tv-listing-item, [class*="broadcast"]').each((i, item) => {
-      const $item = $(item);
-      const region = $item.find('.country, [class*="country"]').text().trim() ||
-                     $item.find('img').attr('alt') || '';
-      const channel = $item.find('.channel, [class*="channel"], a').text().trim();
-      
-      if (region && channel) {
-        tvByRegion.push({
-          region: cleanRegionName(region),
-          channel
-        });
-      }
-    });
-  }
 
   // Deduplicate entries
   const seen = new Set();
@@ -319,7 +231,6 @@ function cleanRegionName(region) {
   return (region || '')
     .trim()
     .replace(/\s+/g, ' ')
-    // Common abbreviation expansions
     .replace(/^UK$/i, 'United Kingdom')
     .replace(/^USA?$/i, 'United States')
     .replace(/^CA$/i, 'Canada')
@@ -328,6 +239,7 @@ function cleanRegionName(region) {
 
 /**
  * Fetch TV channels for a specific match page URL.
+ * This is a reference implementation for the VPS service.
  * @param {string} matchUrl - Full URL to the match page on LiveSoccerTV
  * @returns {Promise<{homeTeam: string, awayTeam: string, tvByRegion: Array<{region: string, channel: string}>}>}
  */
@@ -336,7 +248,6 @@ async function getMatchTvChannels(matchUrl) {
     return { homeTeam: '', awayTeam: '', tvByRegion: [] };
   }
 
-  // Check cache first
   const cached = readCache(matchUrl);
   if (cached) {
     console.log(`[LiveSoccerTV] Using cached data for ${matchUrl}`);
@@ -348,11 +259,9 @@ async function getMatchTvChannels(matchUrl) {
     const html = await fetchPage(matchUrl);
     const $ = cheerio.load(html);
 
-    // Extract match info
     let homeTeam = '';
     let awayTeam = '';
 
-    // Try to get team names from title or header
     const title = $('h1, .match-title, [class*="match-header"]').first().text().trim();
     const vsMatch = title.match(/^(.+?)\s+(?:vs?\.?|–|-)\s+(.+)$/i);
     if (vsMatch) {
@@ -360,7 +269,6 @@ async function getMatchTvChannels(matchUrl) {
       awayTeam = vsMatch[2].trim();
     }
 
-    // Parse TV channels
     const tvByRegion = parseTvChannels(html);
 
     const result = {
@@ -371,7 +279,6 @@ async function getMatchTvChannels(matchUrl) {
       url: matchUrl
     };
 
-    // Cache the result
     writeCache(matchUrl, result);
 
     return result;
@@ -381,208 +288,25 @@ async function getMatchTvChannels(matchUrl) {
   }
 }
 
-// ---------- Puppeteer-based Scraper (advanced) ----------
-
-let puppeteer = null;
-
-/**
- * Lazy-load puppeteer-core.
- * @returns {Object|null} Puppeteer module or null if not available
- */
-function loadPuppeteer() {
-  if (puppeteer === null) {
-    try {
-      puppeteer = require('puppeteer-core');
-    } catch (err) {
-      puppeteer = false;
-      console.log('[LiveSoccerTV] puppeteer-core not available, using HTTP fallback');
-    }
-  }
-  return puppeteer || null;
-}
-
-/**
- * Find a Chrome/Chromium executable on the system.
- * @returns {string|null} Path to Chrome executable
- */
-function findChromePath() {
-  const possiblePaths = [
-    // Linux
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/snap/bin/chromium',
-    // macOS
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    // Windows
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-  ];
-
-  for (const chromePath of possiblePaths) {
-    if (fs.existsSync(chromePath)) {
-      return chromePath;
-    }
-  }
-
-  return process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || null;
-}
-
-/**
- * Fetch a page using Puppeteer with stealth mode.
- * This helps bypass Cloudflare and other bot protection.
- * @param {string} url
- * @returns {Promise<string>} HTML content
- */
-async function fetchPageWithPuppeteer(url) {
-  const pptr = loadPuppeteer();
-  if (!pptr) {
-    throw new Error('Puppeteer not available');
-  }
-
-  const chromePath = findChromePath();
-  if (!chromePath) {
-    throw new Error('Chrome/Chromium not found. Set CHROME_PATH environment variable.');
-  }
-
-  let browser = null;
-  try {
-    browser = await pptr.launch({
-      executablePath: chromePath,
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--window-size=1920,1080'
-      ]
-    });
-
-    const page = await browser.newPage();
-
-    // Set viewport to look like a real browser
-    await page.setViewport({
-      width: 1920,
-      height: 1080,
-      deviceScaleFactor: 1
-    });
-
-    // Set realistic user agent
-    await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
-
-    // Set extra headers
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': BROWSER_HEADERS['Accept-Language']
-    });
-
-    // Navigate to the page
-    await page.goto(url, {
-      waitUntil: 'networkidle2',
-      timeout: DEFAULT_TIMEOUT
-    });
-
-    // Wait for Cloudflare challenge to complete (if any)
-    // This waits for the challenge to finish or times out after 10 seconds
-    try {
-      await page.waitForFunction(
-        () => !document.querySelector('#challenge-running'),
-        { timeout: 10000 }
-      );
-    } catch (e) {
-      // Challenge might not exist, continue
-    }
-
-    // Wait a bit more for dynamic content
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Get the page content
-    const html = await page.content();
-
-    return html;
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-}
-
-/**
- * Fetch TV channels for a match using Puppeteer (for Cloudflare bypass).
- * Falls back to HTTP method if Puppeteer is not available.
- * @param {string} matchUrl
- * @returns {Promise<{homeTeam: string, awayTeam: string, tvByRegion: Array<{region: string, channel: string}>}>}
- */
-async function getMatchTvChannelsWithPuppeteer(matchUrl) {
-  if (!matchUrl) {
-    return { homeTeam: '', awayTeam: '', tvByRegion: [] };
-  }
-
-  // Check cache first
-  const cached = readCache(matchUrl);
-  if (cached) {
-    console.log(`[LiveSoccerTV] Using cached data for ${matchUrl}`);
-    return cached;
-  }
-
-  try {
-    console.log(`[LiveSoccerTV] Fetching match page with Puppeteer: ${matchUrl}`);
-    const html = await fetchPageWithPuppeteer(matchUrl);
-    const $ = cheerio.load(html);
-
-    // Extract match info
-    let homeTeam = '';
-    let awayTeam = '';
-
-    const title = $('h1, .match-title, [class*="match-header"]').first().text().trim();
-    const vsMatch = title.match(/^(.+?)\s+(?:vs?\.?|–|-)\s+(.+)$/i);
-    if (vsMatch) {
-      homeTeam = vsMatch[1].trim();
-      awayTeam = vsMatch[2].trim();
-    }
-
-    const tvByRegion = parseTvChannels(html);
-
-    const result = {
-      homeTeam,
-      awayTeam,
-      tvByRegion,
-      source: 'livesoccertv',
-      url: matchUrl
-    };
-
-    writeCache(matchUrl, result);
-
-    return result;
-  } catch (err) {
-    console.log(`[LiveSoccerTV] Puppeteer error: ${err.message}, falling back to HTTP`);
-    // Fall back to simple HTTP request
-    return getMatchTvChannels(matchUrl);
-  }
-}
-
-// ---------- Main API Functions ----------
+// ---------- Main API Functions (reference implementation) ----------
 
 /**
  * Find and get TV channels for a match by team names and date.
- * Searches LiveSoccerTV for the match and extracts TV channel info.
+ * DEPRECATED: Use scrapers/lstv.js fetchLSTV() instead for production use.
  * 
  * @param {string} homeTeam - Home team name
  * @param {string} awayTeam - Away team name
  * @param {Date|string} matchDate - Match date
  * @param {Object} options - Options
- * @param {boolean} options.usePuppeteer - Whether to try Puppeteer first (default: false)
  * @returns {Promise<{tvByRegion: Array<{region: string, channel: string}>, source: string}>}
  */
 async function getTvChannelsForMatch(homeTeam, awayTeam, matchDate, options = {}) {
+  console.warn('[LiveSoccerTV] DEPRECATED: Use scrapers/lstv.js fetchLSTV() instead');
+  
   if (!homeTeam || !awayTeam) {
     return { tvByRegion: [], source: 'none' };
   }
 
-  // Check cache first using match key
   const cacheKey = getMatchCacheKey(homeTeam, awayTeam, matchDate);
   const cached = readCache(cacheKey);
   if (cached) {
@@ -590,80 +314,53 @@ async function getTvChannelsForMatch(homeTeam, awayTeam, matchDate, options = {}
     return cached;
   }
 
-  // Try to search for the match
-  const teamName = homeTeam; // Search by home team first
+  const normalizeForUrl = (name) => name.toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
   
-  try {
-    // Build the search URL for LiveSoccerTV
-    // Format: /match/{id}/{team1-vs-team2}/
-    // We need to try to find the match page
-    
-    // Normalize team names for URL
-    const normalizeForUrl = (name) => name.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-    
-    const homeSlug = normalizeForUrl(homeTeam);
-    const awaySlug = normalizeForUrl(awayTeam);
-    
-    // Country paths to try for team pages
-    const countryPaths = ['england', 'spain', 'germany', 'italy', 'france', 'scotland', 'wales'];
-    
-    // Build possible URLs - direct match URLs first, then team pages
-    const possibleUrls = [
-      `${BASE_URL}/match/${homeSlug}-vs-${awaySlug}/`,
-      `${BASE_URL}/match/${homeSlug}-v-${awaySlug}/`
-    ];
-    
-    // Add team page URLs for each country
-    for (const country of countryPaths) {
-      possibleUrls.push(`${BASE_URL}/teams/${country}/${homeSlug}/`);
-    }
+  const homeSlug = normalizeForUrl(homeTeam);
+  const awaySlug = normalizeForUrl(awayTeam);
+  
+  const possibleUrls = [
+    `${BASE_URL}/match/${homeSlug}-vs-${awaySlug}/`,
+    `${BASE_URL}/match/${homeSlug}-v-${awaySlug}/`
+  ];
 
-    let result = { tvByRegion: [], source: 'livesoccertv' };
-    
-    for (const url of possibleUrls) {
-      try {
-        if (options.usePuppeteer) {
-          result = await getMatchTvChannelsWithPuppeteer(url);
-        } else {
-          result = await getMatchTvChannels(url);
-        }
-        
-        if (result.tvByRegion && result.tvByRegion.length > 0) {
-          break;
-        }
-      } catch (err) {
-        // Try next URL
-        continue;
+  let result = { tvByRegion: [], source: 'livesoccertv' };
+  
+  for (const url of possibleUrls) {
+    try {
+      result = await getMatchTvChannels(url);
+      if (result.tvByRegion && result.tvByRegion.length > 0) {
+        break;
       }
+    } catch (err) {
+      continue;
     }
-
-    // Cache the result
-    if (result.tvByRegion && result.tvByRegion.length > 0) {
-      writeCache(cacheKey, result);
-    }
-
-    return result;
-  } catch (err) {
-    console.log(`[LiveSoccerTV] Error getting TV channels: ${err.message}`);
-    return { tvByRegion: [], source: 'livesoccertv', error: err.message };
   }
+
+  if (result.tvByRegion && result.tvByRegion.length > 0) {
+    writeCache(cacheKey, result);
+  }
+
+  return result;
 }
 
 /**
- * Enrich a fixture object with TV channel information from LiveSoccerTV.
+ * Enrich a fixture object with TV channel information.
+ * DEPRECATED: Use the TV aggregator in aggregators/tv_channels.js instead.
  * 
  * @param {Object} fixture - Fixture object with homeTeam, awayTeam, date/start
- * @param {Object} options - Options to pass to getTvChannelsForMatch
+ * @param {Object} options - Options
  * @returns {Promise<Object>} Fixture with tvByRegion populated
  */
 async function enrichFixtureWithTvInfo(fixture, options = {}) {
+  console.warn('[LiveSoccerTV] DEPRECATED: Use aggregators/tv_channels.js getTvDataForFixture() instead');
+  
   if (!fixture) {
     return fixture;
   }
 
-  // Skip if already has TV info
   if (fixture.tvByRegion && fixture.tvByRegion.length > 0) {
     return fixture;
   }
@@ -684,7 +381,6 @@ async function enrichFixtureWithTvInfo(fixture, options = {}) {
       fixture.tvSource = tvInfo.source;
     }
   } catch (err) {
-    // Don't fail the fixture, just log
     console.log(`[LiveSoccerTV] Warning: Could not enrich fixture: ${err.message}`);
   }
 
@@ -693,16 +389,16 @@ async function enrichFixtureWithTvInfo(fixture, options = {}) {
 
 /**
  * Batch enrich multiple fixtures with TV info.
- * Includes rate limiting to be polite to the server.
+ * DEPRECATED: Use the TV aggregator instead.
  * 
  * @param {Array<Object>} fixtures - Array of fixture objects
  * @param {Object} options - Options
- * @param {number} options.delayMs - Delay between requests (default 1000)
- * @param {boolean} options.usePuppeteer - Whether to use Puppeteer (default false)
  * @returns {Promise<Array<Object>>} Enriched fixtures
  */
 async function enrichFixturesWithTvInfo(fixtures, options = {}) {
-  const { delayMs = 1000, usePuppeteer = false } = options;
+  console.warn('[LiveSoccerTV] DEPRECATED: Use aggregators/tv_channels.js instead');
+  
+  const { delayMs = 1000 } = options;
   
   if (!fixtures || !fixtures.length) {
     return fixtures || [];
@@ -712,16 +408,81 @@ async function enrichFixturesWithTvInfo(fixtures, options = {}) {
   
   for (let i = 0; i < fixtures.length; i++) {
     const fixture = fixtures[i];
-    const enrichedFixture = await enrichFixtureWithTvInfo(fixture, { usePuppeteer });
+    const enrichedFixture = await enrichFixtureWithTvInfo(fixture, options);
     enriched.push(enrichedFixture);
     
-    // Rate limiting - wait between requests
     if (i < fixtures.length - 1 && delayMs > 0) {
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }
 
   return enriched;
+}
+
+/**
+ * Search for a team's upcoming matches on LiveSoccerTV.
+ * This is a reference implementation for the VPS service.
+ * @param {string} teamName - Team name to search for
+ * @returns {Promise<Array>}
+ */
+async function searchTeamMatches(teamName) {
+  if (!teamName) {
+    return [];
+  }
+
+  const searchSlug = teamName.toLowerCase().trim().replace(/\s+/g, '-');
+  const countryPaths = ['england', 'spain', 'germany', 'italy', 'france', 'scotland', 'wales'];
+  
+  for (const country of countryPaths) {
+    const searchUrl = `${BASE_URL}/teams/${country}/${searchSlug}/`;
+
+    try {
+      const html = await fetchPage(searchUrl);
+      const $ = cheerio.load(html);
+
+      const matches = [];
+
+      $('table.schedules tbody tr').each((i, row) => {
+        const $row = $(row);
+        const matchLink = $row.find('a[href*="/match/"]').first();
+        
+        if (matchLink.length) {
+          const url = BASE_URL + matchLink.attr('href');
+          const matchText = matchLink.text().trim();
+          
+          const vsMatch = matchText.match(/^(.+?)\s+(?:vs?\.?|–|-)\s+(.+)$/i);
+          let homeTeam = '';
+          let awayTeam = '';
+          
+          if (vsMatch) {
+            homeTeam = vsMatch[1].trim();
+            awayTeam = vsMatch[2].trim();
+          }
+
+          const dateCell = $row.find('td').first().text().trim();
+          const timeCell = $row.find('td:nth-child(2)').text().trim();
+
+          matches.push({
+            url,
+            homeTeam,
+            awayTeam,
+            date: dateCell,
+            time: timeCell,
+            raw: matchText
+          });
+        }
+      });
+
+      if (matches.length > 0) {
+        return matches;
+      }
+    } catch (err) {
+      continue;
+    }
+  }
+
+  console.log(`[LiveSoccerTV] No team page found for "${teamName}" in any league`);
+  return [];
 }
 
 /**
@@ -741,17 +502,20 @@ function clearCache() {
 }
 
 // ---------- Module Exports ----------
+// NOTE: These functions are DEPRECATED for direct use on Plesk.
+// Use scrapers/lstv.js for production LiveSoccerTV data fetching.
 
 module.exports = {
-  // Main API
+  // Main API (DEPRECATED - use scrapers/lstv.js instead)
   getTvChannelsForMatch,
   enrichFixtureWithTvInfo,
   enrichFixturesWithTvInfo,
   
-  // Lower-level functions
+  // Lower-level functions (reference implementations for VPS)
   searchTeamMatches,
   getMatchTvChannels,
-  getMatchTvChannelsWithPuppeteer,
+  parseTvChannels,
+  fetchPage,
   
   // Utilities
   clearCache,

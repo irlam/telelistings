@@ -1,7 +1,11 @@
 // scrapers/wiki_broadcasters.js
 // Wikipedia broadcaster scraper for football league TV rights information.
+// NOTE: This is an HTTP scraper that runs directly on Plesk (no Puppeteer needed).
 /**
  * Telegram Sports TV Bot – Wikipedia Broadcaster Scraper
+ *
+ * This is a lightweight HTTP scraper that can run directly on Plesk.
+ * No browser automation required – uses axios + cheerio for HTML parsing.
  *
  * Exports fetchWikiBroadcasters({ leagueName, season, country }) which:
  * - Fetches Wikipedia pages for league broadcasting info

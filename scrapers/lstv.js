@@ -34,12 +34,17 @@ const axios = require('axios');
 // ---------- Configuration ----------
 
 // Remote scraper service configuration
-// NOTE: Default values are provided for development/testing convenience.
-// In production, set these environment variables explicitly in Plesk Node settings or .env file.
+// REQUIRED: These environment variables MUST be set in Plesk Node settings or .env file.
 // The remote VPS service uses HTTP (not HTTPS) as it runs on a private IP.
-// SECURITY: Do not commit actual API keys to source control in production environments.
-const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
-const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY || 'Q0tMx1sJ8nVh3w9L2z';
+// SECURITY: Do not commit actual API keys to source control.
+const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL;
+const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY;
+
+// Log warning if environment variables are not set
+if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
+  console.warn('[LSTV] WARNING: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables are not set.');
+  console.warn('[LSTV] LiveSoccerTV scraping will not work. Set these in Plesk Node settings.');
+}
 
 // Legacy constants kept for backwards compatibility with tests
 const BASE_URL = 'https://www.livesoccertv.com';
@@ -302,6 +307,12 @@ async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null })
     matchScore: null
   };
   
+  // Validate environment variables are set
+  if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
+    log('ERROR: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables must be configured');
+    return emptyResult;
+  }
+  
   // Validate inputs
   if (!home || !away) {
     log(`Missing team names: home="${home}", away="${away}"`);
@@ -377,6 +388,17 @@ function getSystemInfo() {
  */
 async function healthCheck() {
   const startTime = Date.now();
+  
+  // Validate environment variables are set
+  if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
+    const result = {
+      ok: false,
+      latencyMs: 0,
+      error: 'LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables must be configured'
+    };
+    log('[health] FAIL: Environment variables not configured');
+    return result;
+  }
   
   try {
     const response = await axios.get(

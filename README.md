@@ -34,26 +34,32 @@ To enable TV channel information in fixture listings:
 
 ## LiveSoccerTV Integration (Remote Scraper)
 
-The bot can fetch detailed TV channel listings from LiveSoccerTV.com. This integration uses a **remote VPS scraper service** instead of local Puppeteer/Chrome, improving reliability and reducing server resource usage.
+The bot can fetch detailed TV channel listings from LiveSoccerTV.com. This integration uses a **remote VPS scraper service** – **Puppeteer/Chrome is NOT used locally on Plesk**. This improves reliability and reduces server resource usage.
 
-### Environment Variables
+### Required Environment Variables (Plesk Node Settings)
 
-Configure the following environment variables (in Plesk Node settings or a `.env` file):
+The following environment variables **must** be configured in Plesk Node settings for the remote scraper to work:
 
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `LSTV_SCRAPER_URL` | Base URL of the remote LSTV scraper service | Yes |
+| `LSTV_SCRAPER_KEY` | API key for authentication (sent as `x-api-key` header) | Yes |
+| `CRON_SECRET` | Secret key for `/cron/run` endpoint authentication | Yes |
+| `ADMIN_PASSWORD` | Password for admin GUI authentication | Recommended |
+
+Example configuration:
 ```
-LSTV_SCRAPER_URL=http://185.170.113.230:3333
-LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
+LSTV_SCRAPER_URL=http://your-vps-ip:3333
+LSTV_SCRAPER_KEY=your_secret_api_key_here
+CRON_SECRET=your_cron_secret_here
+ADMIN_PASSWORD=your_admin_password_here
 ```
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LSTV_SCRAPER_URL` | Base URL of the remote LSTV scraper service | `http://185.170.113.230:3333` |
-| `LSTV_SCRAPER_KEY` | API key for authentication (sent as `x-api-key` header) | `Q0tMx1sJ8nVh3w9L2z` |
-
-> **Security Note**: The default values are provided for convenience. In production environments:
-> - Set environment variables explicitly rather than relying on defaults
-> - Do not commit actual API keys to source control
-> - The remote service uses HTTP (not HTTPS) as it runs on a private/internal network
+> **Security Note**: 
+> - These environment variables are REQUIRED - no default values are provided
+> - Do not commit actual API keys or credentials to source control
+> - The remote service typically uses HTTP (not HTTPS) as it runs on a private/internal network
+> - Contact your system administrator for the correct LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY values
 
 ### How It Works
 
@@ -62,10 +68,13 @@ LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
 3. TV channel data by region is returned and merged with other data sources
 4. Results are cached for 4 hours to reduce API calls
 
+**Note**: The `livesoccertv.js` file in the root directory is DEPRECATED and kept for reference only. All production scraping uses `scrapers/lstv.js` which calls the remote service.
+
 ### Health Check
 
 - Visit `/health/lstv` on your bot instance to check the remote scraper status
 - The health endpoint proxies to `${LSTV_SCRAPER_URL}/health` on the VPS
+- Visit `/health/tsdb` to check TheSportsDB API connectivity
 
 ## Image-Based Posters
 
@@ -144,3 +153,50 @@ Each channel can be configured with:
 - `useTheFishyMulti: true` - Fetch fixtures from multiple TheFishy team calendars
 - `teams[]` - Array of teams to track
 - `tvChannelOverrides` - Manual TV channel mappings by team/competition name
+
+## Scraper Architecture
+
+The telelistings app uses a **remote scraper service architecture** for data collection:
+
+### Data Sources
+
+| Module | Purpose | Location |
+|--------|---------|----------|
+| `scrapers/lstv.js` | LiveSoccerTV TV channels | Remote VPS (Puppeteer) |
+| `scrapers/thesportsdb.js` | Fixture info, kickoff times | Direct API |
+| `scrapers/wiki_broadcasters.js` | League broadcasting rights | Direct HTTP |
+| `scrapers/bbc_fixtures.js` | BBC Sport fixtures | Direct HTTP |
+| `scrapers/skysports.js` | Sky Sports TV channels | Direct HTTP |
+| `scrapers/tnt.js` | TNT Sports TV channels | Direct HTTP |
+| `scrapers/livefootballontv.js` | UK TV listings | Direct HTTP |
+| `scrapers/footballdata.js` | FootballData.org API | Direct API |
+
+### TV Data Aggregator
+
+The `aggregators/tv_channels.js` module provides a unified `getTvDataForFixture()` function that:
+1. Calls all available data sources
+2. Merges results into a canonical format
+3. Handles errors gracefully (logs warnings but continues)
+4. Deduplicates TV channel data
+
+### Remote VPS Scraper
+
+LiveSoccerTV scraping requires browser automation (Puppeteer/Chrome) which is resource-intensive. To avoid running Chrome on the production Plesk server:
+
+1. A dedicated VPS runs the scraper service
+2. The Plesk app calls the VPS via HTTP API
+3. The VPS handles all browser automation
+4. Results are returned as JSON
+
+**Note**: The `livesoccertv.js` file in the root directory is DEPRECATED – it contains reference implementations only. For production use, always use `scrapers/lstv.js`.
+
+## Dependencies
+
+This project does **not** require Puppeteer to be installed locally. All browser automation is handled by the remote VPS scraper service.
+
+Core dependencies:
+- `express` - Web server and admin GUI
+- `axios` - HTTP client for remote API calls
+- `cheerio` - HTML parsing for HTTP-based scrapers
+- `node-ical` - ICS calendar parsing
+- `@napi-rs/canvas` - Image generation for posters
