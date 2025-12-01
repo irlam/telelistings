@@ -160,7 +160,7 @@ async function fetchTNTFixtures({ teamName, competition }) {
         return result;
       }
     } catch (err) {
-      // Try next URL
+      // Network errors, 404s, or parsing errors - try next URL
       continue;
     }
   }
