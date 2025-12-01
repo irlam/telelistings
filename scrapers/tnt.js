@@ -34,7 +34,13 @@ const path = require('path');
 // ---------- Configuration ----------
 
 const BASE_URL = 'https://www.tntsports.co.uk';
+// Updated URL - TNT Sports has multiple possible schedule pages
 const SCHEDULE_URL = `${BASE_URL}/football/calendar-results.shtml`;
+// Backup URLs to try
+const BACKUP_SCHEDULE_URLS = [
+  `${BASE_URL}/football/blog/2024/calendar-results.shtml`,
+  `${BASE_URL}/football/2024-25/calendar-results.shtml`
+];
 const DEFAULT_TIMEOUT = 15000;
 
 // Known TNT Sports channel names
@@ -144,8 +150,33 @@ async function fetchTNTFixtures({ teamName, competition }) {
   
   log(`Fetching fixtures${teamName ? ` for ${teamName}` : ''}`);
   
+  // Try main URL first, then backup URLs
+  const urlsToTry = [SCHEDULE_URL, ...BACKUP_SCHEDULE_URLS];
+  
+  for (const url of urlsToTry) {
+    try {
+      const result = await fetchFixturesFromUrl(url, { teamName, competition });
+      if (result.fixtures.length > 0) {
+        return result;
+      }
+    } catch (err) {
+      // Network errors, 404s, or parsing errors - try next URL
+      continue;
+    }
+  }
+  
+  return emptyResult;
+}
+
+/**
+ * Fetch fixtures from a specific URL.
+ * @private
+ */
+async function fetchFixturesFromUrl(url, { teamName, competition }) {
+  const emptyResult = { fixtures: [] };
+  
   try {
-    const response = await axios.get(SCHEDULE_URL, {
+    const response = await axios.get(url, {
       timeout: DEFAULT_TIMEOUT,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

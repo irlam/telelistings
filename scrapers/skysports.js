@@ -150,6 +150,8 @@ async function fetchSkyFixtures({ teamName, competition }) {
     
     // Parse fixture elements - Sky Sports uses various formats (updated for 2024-2025 structure)
     const fixtureSelectors = [
+      // Primary selectors for Sky Sports 2024 structure
+      '.matches__item',
       '.fixres__item',
       '.fixture',
       '[class*="fixture"]',
@@ -181,9 +183,9 @@ async function fetchSkyFixtures({ teamName, competition }) {
           let homeTeam = '';
           let awayTeam = '';
           
-          // Try specific selectors first (including swap-text which is used by Sky)
-          homeTeam = $fixture.find('[class*="home"], .team-home, .fixres__team--home, .swap-text__target').first().text().trim();
-          awayTeam = $fixture.find('[class*="away"], .team-away, .fixres__team--away').first().text().trim();
+          // Try specific selectors first - updated for 2024 Sky Sports structure
+          homeTeam = $fixture.find('.matches__participant--side1, [class*="home"], .team-home, .fixres__team--home, .swap-text__target').first().text().trim();
+          awayTeam = $fixture.find('.matches__participant--side2, [class*="away"], .team-away, .fixres__team--away').first().text().trim();
           
           // Try data attributes
           if (!homeTeam || !awayTeam) {
@@ -218,9 +220,9 @@ async function fetchSkyFixtures({ teamName, competition }) {
           
           // Extract kickoff time
           let kickoffUtc = null;
-          const timeEl = $fixture.find('time, [datetime]');
+          const timeEl = $fixture.find('time, [datetime], .matches__date');
           if (timeEl.length) {
-            kickoffUtc = timeEl.attr('datetime') || null;
+            kickoffUtc = timeEl.attr('datetime') || timeEl.text().trim() || null;
           }
           
           // Extract competition
