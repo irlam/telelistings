@@ -178,6 +178,8 @@ function renderLayout(title, bodyHtml) {
     <a href="/admin/channels">Channels</a>
     <a href="/admin/teams">Teams</a>
     <a href="/admin/settings">Settings</a>
+    <a href="/admin/scrapers">Scrapers</a>
+    <a href="/admin/environment">Environment</a>
     <a href="/admin/logs">Logs</a>
     <a href="/admin/test-lstv">Test LSTV</a>
     <a href="/admin/test-fixture">Test Fixture</a>
@@ -1407,6 +1409,689 @@ app.get('/health/tsdb', async (req, res) => {
       error: err.message || String(err)
     });
   }
+});
+
+// --------- Environment Variables Management Page ---------
+
+// Store environment variables in config.json under 'envVars' key
+// These are read at runtime and used to configure scrapers
+
+app.get('/admin/environment', (req, res) => {
+  const cfg = loadConfig();
+  const envVars = cfg.envVars || {};
+  
+  // Define known environment variables that can be configured
+  const knownEnvVars = [
+    {
+      key: 'LSTV_SCRAPER_URL',
+      label: 'LSTV Scraper URL',
+      description: 'Base URL of the remote LiveSoccerTV scraper service (e.g., http://185.170.113.230:3333)',
+      currentValue: envVars.LSTV_SCRAPER_URL || process.env.LSTV_SCRAPER_URL || '',
+      placeholder: 'http://your-vps-ip:3333'
+    },
+    {
+      key: 'LSTV_SCRAPER_KEY',
+      label: 'LSTV Scraper API Key',
+      description: 'API key for authenticating with the remote LSTV scraper service',
+      currentValue: envVars.LSTV_SCRAPER_KEY || process.env.LSTV_SCRAPER_KEY || '',
+      placeholder: 'your-api-key',
+      isSecret: true
+    },
+    {
+      key: 'THESPORTSDB_API_KEY',
+      label: 'TheSportsDB API Key',
+      description: 'API key from thesportsdb.com (use "1" for free tier, or your premium key)',
+      currentValue: envVars.THESPORTSDB_API_KEY || process.env.THESPORTSDB_API_KEY || '',
+      placeholder: '1'
+    },
+    {
+      key: 'CRON_SECRET',
+      label: 'Cron Secret Key',
+      description: 'Secret key required to trigger /cron/run endpoint from scheduled tasks',
+      currentValue: envVars.CRON_SECRET || process.env.CRON_SECRET || '',
+      placeholder: 'your-secret-key',
+      isSecret: true
+    },
+    {
+      key: 'ADMIN_PASSWORD',
+      label: 'Admin Password',
+      description: 'Password for accessing the admin panel (username: admin)',
+      currentValue: envVars.ADMIN_PASSWORD || '',
+      placeholder: 'your-admin-password',
+      isSecret: true
+    }
+  ];
+  
+  const envRows = knownEnvVars.map(ev => {
+    const maskedValue = ev.isSecret && ev.currentValue ? '••••••••' : escapeHtml(ev.currentValue);
+    const statusClass = ev.currentValue ? 'status-configured' : 'status-missing';
+    const statusText = ev.currentValue ? 'Configured' : 'Not set';
+    
+    return `
+    <div class="env-card">
+      <div class="env-header">
+        <code class="env-key">${escapeHtml(ev.key)}</code>
+        <span class="env-status ${statusClass}">${statusText}</span>
+      </div>
+      <p class="env-label">${escapeHtml(ev.label)}</p>
+      <p class="env-desc">${escapeHtml(ev.description)}</p>
+      <div class="env-value">
+        <label>Current Value: <code>${maskedValue || '(empty)'}</code></label>
+      </div>
+    </div>`;
+  }).join('');
+  
+  const body = `
+  <style>
+    .env-card { background:#1e2a38; padding:16px; border-radius:8px; margin-bottom:16px; border-left:4px solid #4a90d9; }
+    .env-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .env-key { font-size:14px; background:#0d1b2a; padding:4px 8px; border-radius:4px; }
+    .env-label { font-weight:bold; margin:8px 0 4px 0; color:#fff; }
+    .env-desc { color:#aaa; font-size:13px; margin:4px 0 12px 0; }
+    .env-value { color:#ccc; font-size:13px; }
+    .env-status { font-size:12px; padding:2px 8px; border-radius:12px; }
+    .status-configured { background:#00b894; color:#000; }
+    .status-missing { background:#e74c3c; color:#fff; }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block; margin-bottom:4px; font-weight:bold; }
+    .form-group .hint { color:#aaa; font-size:12px; margin-top:4px; }
+  </style>
+  
+  <div class="card">
+    <h2>Environment Variables</h2>
+    <p>Manage environment variables used by scrapers and services. These settings are stored in <code>config.json</code> and loaded at runtime.</p>
+    <p class="muted">Note: Some variables may also be set via Plesk Node.js settings or system environment. Values set here will override them.</p>
+  </div>
+  
+  <div class="card">
+    <h3>Current Configuration</h3>
+    ${envRows}
+  </div>
+  
+  <div class="card">
+    <h3>Update Environment Variables</h3>
+    <form method="post" action="/admin/environment">
+      ${knownEnvVars.map(ev => `
+      <div class="form-group">
+        <label>${escapeHtml(ev.label)} (<code>${escapeHtml(ev.key)}</code>)</label>
+        <input type="${ev.isSecret ? 'password' : 'text'}" name="${escapeHtml(ev.key)}" value="${escapeHtml(ev.currentValue)}" placeholder="${escapeHtml(ev.placeholder)}">
+        <p class="hint">${escapeHtml(ev.description)}</p>
+      </div>
+      `).join('')}
+      <p><button type="submit">Save Environment Variables</button></p>
+    </form>
+  </div>
+  
+  <div class="card">
+    <h3>Adding New Environment Variables</h3>
+    <p>To add new environment variables in the future:</p>
+    <ol>
+      <li>Add the variable definition to the <code>knownEnvVars</code> array in <code>app.js</code></li>
+      <li>The variable will automatically appear on this page</li>
+      <li>Access the value using <code>cfg.envVars.YOUR_VAR_NAME</code> or <code>process.env.YOUR_VAR_NAME</code></li>
+    </ol>
+  </div>
+  `;
+  
+  res.send(renderLayout('Environment Variables - Telegram Sports TV Bot', body));
+});
+
+app.post('/admin/environment', (req, res) => {
+  const cfg = loadConfig();
+  cfg.envVars = cfg.envVars || {};
+  
+  // List of known environment variable keys
+  const knownKeys = ['LSTV_SCRAPER_URL', 'LSTV_SCRAPER_KEY', 'THESPORTSDB_API_KEY', 'CRON_SECRET', 'ADMIN_PASSWORD'];
+  
+  for (const key of knownKeys) {
+    if (req.body[key] !== undefined) {
+      cfg.envVars[key] = (req.body[key] || '').trim();
+    }
+  }
+  
+  saveConfig(cfg);
+  res.redirect('/admin/environment');
+});
+
+// --------- Scrapers Dashboard Page ---------
+
+// Import all scrapers for the dashboard
+const bbcFixtures = require('./scrapers/bbc_fixtures');
+const skysports = require('./scrapers/skysports');
+const tntScraper = require('./scrapers/tnt');
+const livefootballontv = require('./scrapers/livefootballontv');
+const fixturesScraper = require('./scrapers/fixtures_scraper');
+const footballdata = require('./scrapers/footballdata');
+
+// Define all available scrapers with metadata
+function getScraperDefinitions() {
+  return [
+    {
+      id: 'lstv',
+      name: 'LiveSoccerTV (LSTV)',
+      description: 'Scrapes TV channel information from LiveSoccerTV.com for worldwide football matches. Provides detailed region-by-region TV broadcaster data.',
+      source: 'https://www.livesoccertv.com',
+      dataProvided: ['TV channels by region', 'Match kickoff times', 'League information'],
+      method: 'Remote VPS scraper with Puppeteer',
+      cacheTime: '4 hours',
+      icon: '📺',
+      color: '#e74c3c',
+      module: lstv,
+      hasHealthCheck: true
+    },
+    {
+      id: 'tsdb',
+      name: 'TheSportsDB (TSDB)',
+      description: 'Uses the TheSportsDB API to fetch fixture information including kickoff times, venues, and sometimes TV stations. A reliable primary source for match data.',
+      source: 'https://www.thesportsdb.com',
+      dataProvided: ['Fixture details', 'League/competition', 'Venue', 'TV stations'],
+      method: 'REST API (no scraping)',
+      cacheTime: 'Per request',
+      icon: '⚽',
+      color: '#3498db',
+      module: tsdb,
+      hasHealthCheck: true
+    },
+    {
+      id: 'wiki',
+      name: 'Wikipedia Broadcasters',
+      description: 'Parses Wikipedia articles for football leagues to extract broadcasting rights information. Provides league-wide broadcaster data by region/country.',
+      source: 'https://en.wikipedia.org',
+      dataProvided: ['League broadcasters by region', 'Broadcasting rights'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: '1 hour',
+      icon: '📖',
+      color: '#9b59b6',
+      module: wiki,
+      hasHealthCheck: false
+    },
+    {
+      id: 'bbc',
+      name: 'BBC Sport Fixtures',
+      description: 'Scrapes the BBC Sport website for fixture information and competition details. Useful for UK-based matches and FA Cup fixtures.',
+      source: 'https://www.bbc.co.uk/sport/football',
+      dataProvided: ['Fixture list', 'Competition names', 'Kickoff times'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: 'Per request',
+      icon: '🇬🇧',
+      color: '#2ecc71',
+      module: bbcFixtures,
+      hasHealthCheck: true
+    },
+    {
+      id: 'sky',
+      name: 'Sky Sports',
+      description: 'Scrapes Sky Sports website for fixture listings with Sky Sports channel information. Primary source for Sky Sports branded channels.',
+      source: 'https://www.skysports.com',
+      dataProvided: ['Sky Sports fixtures', 'Sky channel assignments'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: 'Per request',
+      icon: '📡',
+      color: '#e67e22',
+      module: skysports,
+      hasHealthCheck: true
+    },
+    {
+      id: 'tnt',
+      name: 'TNT Sports',
+      description: 'Scrapes TNT Sports (formerly BT Sport) website for their schedule. Provides TNT Sports channel information for Champions League and other competitions.',
+      source: 'https://www.tntsports.co.uk',
+      dataProvided: ['TNT Sports fixtures', 'TNT channel assignments'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: 'Per request',
+      icon: '🏆',
+      color: '#1abc9c',
+      module: tntScraper,
+      hasHealthCheck: true
+    },
+    {
+      id: 'lfotv',
+      name: 'LiveFootballOnTV',
+      description: 'Scrapes the LiveFootballOnTV website for UK TV listings. Aggregates information from multiple UK broadcasters in one place.',
+      source: 'https://www.live-footballontv.com',
+      dataProvided: ['UK TV channels', 'Match schedule'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: 'Per request',
+      icon: '📺',
+      color: '#f39c12',
+      module: livefootballontv,
+      hasHealthCheck: true
+    }
+  ];
+}
+
+app.get('/admin/scrapers', async (req, res) => {
+  const scrapers = getScraperDefinitions();
+  const cfg = loadConfig();
+  
+  // Run health checks for all scrapers that support it
+  const healthResults = {};
+  
+  for (const scraper of scrapers) {
+    if (scraper.hasHealthCheck && scraper.module && typeof scraper.module.healthCheck === 'function') {
+      try {
+        healthResults[scraper.id] = await scraper.module.healthCheck();
+      } catch (err) {
+        healthResults[scraper.id] = { ok: false, error: err.message };
+      }
+    }
+  }
+  
+  // Build scraper cards
+  const scraperCards = scrapers.map(scraper => {
+    const health = healthResults[scraper.id];
+    let healthHtml = '';
+    
+    if (health) {
+      const statusClass = health.ok ? 'health-ok' : 'health-error';
+      const statusIcon = health.ok ? '✅' : '❌';
+      const latency = health.latencyMs ? `${health.latencyMs}ms` : 'N/A';
+      healthHtml = `
+      <div class="health-status ${statusClass}">
+        <span class="health-icon">${statusIcon}</span>
+        <span class="health-text">${health.ok ? 'Healthy' : 'Error'}</span>
+        <span class="health-latency">${latency}</span>
+        ${health.error ? `<div class="health-error-msg">${escapeHtml(health.error)}</div>` : ''}
+      </div>`;
+    } else {
+      healthHtml = `<div class="health-status health-unknown">⚪ No health check available</div>`;
+    }
+    
+    const dataTags = scraper.dataProvided.map(d => `<span class="data-tag">${escapeHtml(d)}</span>`).join('');
+    
+    return `
+    <div class="scraper-card" style="border-left-color: ${scraper.color};">
+      <div class="scraper-header">
+        <span class="scraper-icon">${scraper.icon}</span>
+        <h3 class="scraper-name">${escapeHtml(scraper.name)}</h3>
+      </div>
+      
+      <p class="scraper-desc">${escapeHtml(scraper.description)}</p>
+      
+      <div class="scraper-meta">
+        <div class="meta-row">
+          <span class="meta-label">Source:</span>
+          <a href="${escapeHtml(scraper.source)}" target="_blank">${escapeHtml(scraper.source)}</a>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Method:</span>
+          <span>${escapeHtml(scraper.method)}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Cache:</span>
+          <span>${escapeHtml(scraper.cacheTime)}</span>
+        </div>
+      </div>
+      
+      <div class="scraper-data">
+        <span class="data-label">Data Provided:</span>
+        <div class="data-tags">${dataTags}</div>
+      </div>
+      
+      ${healthHtml}
+      
+      <div class="scraper-actions">
+        <a href="/admin/scraper/${scraper.id}" class="btn-view">View Details & Test →</a>
+      </div>
+    </div>`;
+  }).join('');
+  
+  const body = `
+  <style>
+    .scraper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-top: 20px; }
+    .scraper-card { background:#1e2a38; padding:20px; border-radius:12px; border-left:5px solid #4a90d9; }
+    .scraper-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+    .scraper-icon { font-size:28px; }
+    .scraper-name { margin:0; font-size:18px; color:#fff; }
+    .scraper-desc { color:#bbb; font-size:13px; line-height:1.5; margin-bottom:16px; }
+    .scraper-meta { background:#0d1b2a; padding:12px; border-radius:8px; margin-bottom:16px; }
+    .meta-row { display:flex; margin-bottom:6px; font-size:13px; }
+    .meta-row:last-child { margin-bottom:0; }
+    .meta-label { color:#888; width:70px; flex-shrink:0; }
+    .meta-row a { color:#80cbc4; }
+    .scraper-data { margin-bottom:16px; }
+    .data-label { color:#888; font-size:12px; display:block; margin-bottom:8px; }
+    .data-tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .data-tag { background:#2d4a6a; color:#8eb5e0; padding:3px 8px; border-radius:4px; font-size:11px; }
+    .health-status { padding:10px; border-radius:6px; display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+    .health-ok { background:#1d4a3a; }
+    .health-error { background:#4a1d1d; }
+    .health-unknown { background:#3a3a1d; }
+    .health-icon { font-size:16px; }
+    .health-text { font-weight:bold; font-size:13px; }
+    .health-latency { color:#888; font-size:12px; margin-left:auto; }
+    .health-error-msg { color:#e74c3c; font-size:11px; width:100%; margin-top:6px; word-break:break-word; }
+    .scraper-actions { margin-top:12px; }
+    .btn-view { display:inline-block; background:#4a90d9; color:#fff; padding:8px 16px; border-radius:6px; text-decoration:none; font-size:13px; }
+    .btn-view:hover { background:#5da0e9; text-decoration:none; }
+    .summary-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:12px; margin-top:16px; }
+    .summary-stat { background:#1e2a38; padding:16px; border-radius:8px; text-align:center; }
+    .stat-value { font-size:28px; font-weight:bold; color:#00b894; }
+    .stat-label { color:#888; font-size:12px; margin-top:4px; }
+  </style>
+  
+  <div class="card">
+    <h2>Scraper Dashboard</h2>
+    <p>Monitor and manage all data scrapers used by the TV listings bot. Each scraper fetches TV channel information from different sources.</p>
+    
+    <div class="summary-grid">
+      <div class="summary-stat">
+        <div class="stat-value">${scrapers.length}</div>
+        <div class="stat-label">Total Scrapers</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value" style="color: ${Object.values(healthResults).filter(h => h && h.ok).length === Object.keys(healthResults).length ? '#00b894' : '#e74c3c'};">${Object.values(healthResults).filter(h => h && h.ok).length}/${Object.keys(healthResults).length}</div>
+        <div class="stat-label">Healthy</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value">${scrapers.filter(s => s.method.includes('HTTP')).length}</div>
+        <div class="stat-label">HTTP Scrapers</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value">${scrapers.filter(s => s.method.includes('API')).length}</div>
+        <div class="stat-label">API Clients</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h3>All Scrapers</h3>
+    <p class="muted">Click on any scraper to view detailed information and test its functionality.</p>
+  </div>
+  
+  <div class="scraper-grid">
+    ${scraperCards}
+  </div>
+  
+  <div class="card" style="margin-top:24px;">
+    <h3>Adding New Scrapers</h3>
+    <p>To add a new scraper to this dashboard:</p>
+    <ol>
+      <li>Create the scraper module in <code>scrapers/</code> directory</li>
+      <li>Export a <code>healthCheck()</code> function that returns <code>{ok: boolean, latencyMs: number, error?: string}</code></li>
+      <li>Add the scraper definition to <code>getScraperDefinitions()</code> in <code>app.js</code></li>
+      <li>The scraper will automatically appear on this dashboard</li>
+    </ol>
+  </div>
+  `;
+  
+  res.send(renderLayout('Scraper Dashboard - Telegram Sports TV Bot', body));
+});
+
+// --------- Individual Scraper Detail Pages ---------
+
+app.get('/admin/scraper/:id', async (req, res) => {
+  const scraperId = req.params.id;
+  const scrapers = getScraperDefinitions();
+  const scraper = scrapers.find(s => s.id === scraperId);
+  
+  if (!scraper) {
+    return res.redirect('/admin/scrapers');
+  }
+  
+  // Run health check
+  let health = null;
+  if (scraper.hasHealthCheck && scraper.module && typeof scraper.module.healthCheck === 'function') {
+    try {
+      health = await scraper.module.healthCheck();
+    } catch (err) {
+      health = { ok: false, error: err.message };
+    }
+  }
+  
+  // Get test parameters from query string
+  const { home, away, date, teamName } = req.query;
+  let testResult = null;
+  let testError = null;
+  
+  // Run test if parameters provided
+  if ((home && away) || teamName) {
+    try {
+      const matchDate = date ? new Date(date) : new Date();
+      
+      switch (scraperId) {
+        case 'lstv':
+          testResult = await lstv.fetchLSTV({
+            home: home?.trim() || '',
+            away: away?.trim() || '',
+            date: matchDate
+          });
+          break;
+        case 'tsdb':
+          testResult = await tsdb.fetchTSDBFixture({
+            home: home?.trim() || '',
+            away: away?.trim() || '',
+            date: matchDate
+          });
+          break;
+        case 'wiki':
+          testResult = await wiki.fetchWikiBroadcasters({
+            leagueName: teamName?.trim() || 'Premier League',
+            season: null,
+            country: 'UK'
+          });
+          break;
+        case 'bbc':
+          testResult = await bbcFixtures.fetchBBCFixtures({
+            teamName: teamName?.trim() || home?.trim()
+          });
+          break;
+        case 'sky':
+          testResult = await skysports.fetchSkyFixtures({
+            teamName: teamName?.trim() || home?.trim()
+          });
+          break;
+        case 'tnt':
+          testResult = await tntScraper.fetchTNTFixtures({
+            teamName: teamName?.trim() || home?.trim()
+          });
+          break;
+        case 'lfotv':
+          testResult = await livefootballontv.fetchLFOTVFixtures({
+            teamName: teamName?.trim() || home?.trim()
+          });
+          break;
+      }
+    } catch (err) {
+      testError = err.message || String(err);
+    }
+  }
+  
+  // Build test result HTML
+  let testResultHtml = '';
+  if (testError) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h4>❌ Test Error</h4>
+      <p>${escapeHtml(testError)}</p>
+    </div>`;
+  } else if (testResult) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #00b894;">
+      <h4>✅ Test Results</h4>
+      <pre>${escapeHtml(JSON.stringify(testResult, null, 2))}</pre>
+    </div>`;
+  }
+  
+  // Build health status HTML
+  let healthHtml = '';
+  if (health) {
+    const statusClass = health.ok ? 'health-ok' : 'health-error';
+    const statusIcon = health.ok ? '✅' : '❌';
+    healthHtml = `
+    <div class="health-banner ${statusClass}">
+      <span class="health-icon">${statusIcon}</span>
+      <div class="health-info">
+        <strong>${health.ok ? 'Service Healthy' : 'Service Error'}</strong>
+        <span>Latency: ${health.latencyMs || 0}ms</span>
+        ${health.error ? `<p class="error-detail">${escapeHtml(health.error)}</p>` : ''}
+      </div>
+    </div>`;
+  }
+  
+  // Build test form based on scraper type
+  let testFormHtml = '';
+  if (['lstv', 'tsdb'].includes(scraperId)) {
+    testFormHtml = `
+    <form method="get" action="/admin/scraper/${scraperId}">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Home Team</label>
+          <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required>
+        </div>
+        <div class="form-group">
+          <label>Away Team</label>
+          <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required>
+        </div>
+        <div class="form-group">
+          <label>Date (optional)</label>
+          <input type="date" name="date" value="${escapeHtml(date || '')}">
+        </div>
+      </div>
+      <p><button type="submit">Test Scraper</button></p>
+    </form>`;
+  } else if (scraperId === 'wiki') {
+    testFormHtml = `
+    <form method="get" action="/admin/scraper/${scraperId}">
+      <div class="form-group">
+        <label>League Name</label>
+        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Premier League" required>
+      </div>
+      <p><button type="submit">Test Scraper</button></p>
+    </form>`;
+  } else {
+    testFormHtml = `
+    <form method="get" action="/admin/scraper/${scraperId}">
+      <div class="form-group">
+        <label>Team Name</label>
+        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Arsenal" required>
+      </div>
+      <p><button type="submit">Test Scraper</button></p>
+    </form>`;
+  }
+  
+  const dataTags = scraper.dataProvided.map(d => `<span class="data-tag">${escapeHtml(d)}</span>`).join('');
+  
+  const body = `
+  <style>
+    .scraper-detail { margin-bottom:24px; }
+    .scraper-banner { background:#1e2a38; padding:24px; border-radius:12px; border-left:5px solid ${scraper.color}; margin-bottom:24px; }
+    .banner-header { display:flex; align-items:center; gap:16px; margin-bottom:16px; }
+    .banner-icon { font-size:48px; }
+    .banner-title { margin:0; font-size:28px; color:#fff; }
+    .banner-desc { color:#bbb; font-size:14px; line-height:1.6; }
+    .info-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:16px; margin:24px 0; }
+    .info-item { background:#0d1b2a; padding:16px; border-radius:8px; }
+    .info-label { color:#888; font-size:12px; margin-bottom:4px; }
+    .info-value { color:#fff; font-size:14px; }
+    .info-value a { color:#80cbc4; }
+    .data-tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    .data-tag { background:#2d4a6a; color:#8eb5e0; padding:6px 12px; border-radius:6px; font-size:12px; }
+    .health-banner { padding:16px; border-radius:8px; display:flex; align-items:center; gap:16px; margin-bottom:24px; }
+    .health-ok { background:#1d4a3a; }
+    .health-error { background:#4a1d1d; }
+    .health-icon { font-size:32px; }
+    .health-info strong { display:block; font-size:16px; color:#fff; }
+    .health-info span { color:#aaa; font-size:13px; }
+    .health-info .error-detail { color:#e74c3c; font-size:12px; margin-top:8px; }
+    .form-row { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px; }
+    .form-group { margin-bottom:12px; }
+    .form-group label { display:block; margin-bottom:4px; font-size:13px; color:#aaa; }
+  </style>
+  
+  <div class="scraper-banner">
+    <div class="banner-header">
+      <span class="banner-icon">${scraper.icon}</span>
+      <h2 class="banner-title">${escapeHtml(scraper.name)}</h2>
+    </div>
+    <p class="banner-desc">${escapeHtml(scraper.description)}</p>
+    
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Source URL</div>
+        <div class="info-value"><a href="${escapeHtml(scraper.source)}" target="_blank">${escapeHtml(scraper.source)}</a></div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Method</div>
+        <div class="info-value">${escapeHtml(scraper.method)}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Cache Duration</div>
+        <div class="info-value">${escapeHtml(scraper.cacheTime)}</div>
+      </div>
+    </div>
+    
+    <div class="data-tags">
+      <span class="info-label" style="width:100%;margin-bottom:8px;">Data Provided:</span>
+      ${dataTags}
+    </div>
+  </div>
+  
+  ${healthHtml}
+  
+  <div class="card">
+    <h3>Test ${escapeHtml(scraper.name)}</h3>
+    <p class="muted">Enter parameters to test this scraper and see what data it returns.</p>
+    ${testFormHtml}
+  </div>
+  
+  ${testResultHtml}
+  
+  <div class="card">
+    <h3>How ${escapeHtml(scraper.name)} Works</h3>
+    <ol>
+      ${scraperId === 'lstv' ? `
+        <li>The bot sends a request to the remote VPS scraper service</li>
+        <li>The VPS uses Puppeteer to navigate to LiveSoccerTV.com</li>
+        <li>It searches for the match using team names and date</li>
+        <li>TV channel data is extracted from the broadcast table</li>
+        <li>Results are returned with region/channel pairs</li>
+      ` : ''}
+      ${scraperId === 'tsdb' ? `
+        <li>The bot queries TheSportsDB API for the team</li>
+        <li>It fetches upcoming events for that team</li>
+        <li>Matches are filtered by date and opponent</li>
+        <li>Fixture details including kickoff, venue, and league are returned</li>
+        <li>TV listings are fetched separately if available</li>
+      ` : ''}
+      ${scraperId === 'wiki' ? `
+        <li>The bot constructs a Wikipedia article URL for the league/season</li>
+        <li>It fetches the HTML page using HTTP</li>
+        <li>Broadcasting tables are parsed using Cheerio</li>
+        <li>Region/broadcaster pairs are extracted and deduplicated</li>
+        <li>Results are cached for 1 hour</li>
+      ` : ''}
+      ${scraperId === 'bbc' ? `
+        <li>The bot constructs a BBC Sport team fixtures URL</li>
+        <li>It fetches the HTML page using HTTP</li>
+        <li>Fixture cards are parsed using Cheerio</li>
+        <li>Match details including kickoff and competition are extracted</li>
+      ` : ''}
+      ${scraperId === 'sky' ? `
+        <li>The bot fetches the Sky Sports fixtures page</li>
+        <li>Fixture elements are parsed using Cheerio</li>
+        <li>Sky Sports channel information is extracted from text</li>
+        <li>Results are filtered by team if specified</li>
+      ` : ''}
+      ${scraperId === 'tnt' ? `
+        <li>The bot fetches the TNT Sports schedule page</li>
+        <li>Football fixtures are identified and parsed</li>
+        <li>TNT Sports channel assignments are extracted</li>
+        <li>BT Sport references are converted to TNT Sports</li>
+      ` : ''}
+      ${scraperId === 'lfotv' ? `
+        <li>The bot fetches the LiveFootballOnTV homepage</li>
+        <li>Match rows are parsed from the fixture table</li>
+        <li>UK TV channel names are extracted from text</li>
+        <li>Results are filtered by team if specified</li>
+      ` : ''}
+    </ol>
+  </div>
+  
+  <p><a href="/admin/scrapers">← Back to Scrapers Dashboard</a></p>
+  `;
+  
+  res.send(renderLayout(`${scraper.name} - Telegram Sports TV Bot`, body));
 });
 
 // --------- start server ---------
