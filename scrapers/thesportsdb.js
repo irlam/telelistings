@@ -56,6 +56,9 @@ function getApiKey() {
   return '1';
 }
 
+// Alternative API keys to try if default fails
+const FALLBACK_API_KEYS = ['3', '2', '1'];
+
 // ---------- Logging ----------
 
 /**
@@ -230,7 +233,7 @@ async function fetchTSDBFixture({ home, away, date }) {
     return emptyResult;
   }
   
-  const apiKey = getApiKey();
+  let apiKey = getApiKey();
   
   // Parse date for matching
   const matchDate = date instanceof Date ? date : new Date(date || Date.now());
@@ -238,89 +241,107 @@ async function fetchTSDBFixture({ home, away, date }) {
   
   log(`Searching for ${home} vs ${away} on ${matchDateStr}`);
   
-  try {
-    // Search for home team first
-    const homeTeam = await searchTeam(apiKey, home);
-    
-    if (!homeTeam) {
-      log(`Could not find team: ${home}`);
-      return emptyResult;
+  // Build list of API keys to try
+  const keysToTry = [apiKey];
+  for (const fallbackKey of FALLBACK_API_KEYS) {
+    if (!keysToTry.includes(fallbackKey)) {
+      keysToTry.push(fallbackKey);
     }
+  }
+  
+  for (const tryKey of keysToTry) {
+    try {
+      // Search for home team first
+      const homeTeam = await searchTeam(tryKey, home);
+      
+      if (!homeTeam) {
+        log(`Could not find team: ${home}`);
+        return emptyResult;
+      }
     
-    log(`Found team: ${homeTeam.strTeam} (ID: ${homeTeam.idTeam})`);
+      log(`Found team: ${homeTeam.strTeam} (ID: ${homeTeam.idTeam})`);
     
-    // Get upcoming events
-    const events = await getUpcomingEvents(apiKey, homeTeam.idTeam);
+      // Get upcoming events
+      const events = await getUpcomingEvents(tryKey, homeTeam.idTeam);
     
-    if (events.length === 0) {
-      log(`No upcoming events found for ${homeTeam.strTeam}`);
-      return emptyResult;
-    }
+      if (events.length === 0) {
+        log(`No upcoming events found for ${homeTeam.strTeam}`);
+        return emptyResult;
+      }
     
-    // Find matching fixture
-    let bestMatch = null;
+      // Find matching fixture
+      let bestMatch = null;
     
-    for (const event of events) {
-      // Check date match
-      if (event.dateEvent !== matchDateStr) {
+      for (const event of events) {
+        // Check date match
+        if (event.dateEvent !== matchDateStr) {
+          continue;
+        }
+      
+        // Check if away team matches
+        const eventHome = event.strHomeTeam || '';
+        const eventAway = event.strAwayTeam || '';
+      
+        const homeMatches = teamsMatch(eventHome, home) || teamsMatch(eventAway, home);
+        const awayMatches = teamsMatch(eventHome, away) || teamsMatch(eventAway, away);
+      
+        if (homeMatches && awayMatches) {
+          bestMatch = event;
+          break;
+        }
+      }
+    
+      if (!bestMatch) {
+        log(`No matching fixture found for ${home} vs ${away} on ${matchDateStr}`);
+        return emptyResult;
+      }
+    
+      log(`Found fixture: ${bestMatch.strEvent} (ID: ${bestMatch.idEvent})`);
+    
+      // Build kickoff UTC from date and time
+      let kickoffUtc = null;
+      if (bestMatch.dateEvent && bestMatch.strTime) {
+        kickoffUtc = `${bestMatch.dateEvent}T${bestMatch.strTime}`;
+      } else if (bestMatch.strTimestamp) {
+        kickoffUtc = bestMatch.strTimestamp;
+      }
+    
+      // Try to get TV listings
+      let tvStations = [];
+      if (bestMatch.idEvent) {
+        const tvListings = await getTvListings(tryKey, bestMatch.idEvent);
+        tvStations = tvListings.map(tv => tv.strChannel).filter(Boolean);
+      
+        // Remove duplicates
+        tvStations = [...new Set(tvStations)];
+      
+        if (tvStations.length > 0) {
+          log(`Found ${tvStations.length} TV stations`);
+        }
+      }
+    
+      return {
+        matched: true,
+        kickoffUtc,
+        league: bestMatch.strLeague || null,
+        venue: bestMatch.strVenue || null,
+        tvStations,
+        eventId: bestMatch.idEvent || null
+      };
+    
+    } catch (err) {
+      // If it's a 404, try the next API key
+      if (err.response && err.response.status === 404) {
         continue;
       }
-      
-      // Check if away team matches
-      const eventHome = event.strHomeTeam || '';
-      const eventAway = event.strAwayTeam || '';
-      
-      const homeMatches = teamsMatch(eventHome, home) || teamsMatch(eventAway, home);
-      const awayMatches = teamsMatch(eventHome, away) || teamsMatch(eventAway, away);
-      
-      if (homeMatches && awayMatches) {
-        bestMatch = event;
-        break;
-      }
-    }
-    
-    if (!bestMatch) {
-      log(`No matching fixture found for ${home} vs ${away} on ${matchDateStr}`);
+      log(`Error: ${err.message}`);
       return emptyResult;
     }
-    
-    log(`Found fixture: ${bestMatch.strEvent} (ID: ${bestMatch.idEvent})`);
-    
-    // Build kickoff UTC from date and time
-    let kickoffUtc = null;
-    if (bestMatch.dateEvent && bestMatch.strTime) {
-      kickoffUtc = `${bestMatch.dateEvent}T${bestMatch.strTime}`;
-    } else if (bestMatch.strTimestamp) {
-      kickoffUtc = bestMatch.strTimestamp;
-    }
-    
-    // Try to get TV listings
-    let tvStations = [];
-    if (bestMatch.idEvent) {
-      const tvListings = await getTvListings(apiKey, bestMatch.idEvent);
-      tvStations = tvListings.map(tv => tv.strChannel).filter(Boolean);
-      
-      // Remove duplicates
-      tvStations = [...new Set(tvStations)];
-      
-      if (tvStations.length > 0) {
-        log(`Found ${tvStations.length} TV stations`);
-      }
-    }
-    
-    return {
-      matched: true,
-      kickoffUtc,
-      league: bestMatch.strLeague || null,
-      venue: bestMatch.strVenue || null,
-      tvStations,
-      eventId: bestMatch.idEvent || null
-    };
-    
-  } catch (err) {
-    log(`Error: ${err.message}`);
-    return emptyResult;
   }
+  
+  // All API keys failed
+  log(`All API keys failed for ${home} vs ${away}`);
+  return emptyResult;
 }
 
 /**
@@ -332,8 +353,17 @@ async function healthCheck() {
   
   try {
     const apiKey = getApiKey();
-    // Simple query to test API connectivity
-    await apiRequest(apiKey, '/searchteams.php?t=Arsenal');
+    // Simple query to test API connectivity - try default key first
+    try {
+      await apiRequest(apiKey, '/searchteams.php?t=Arsenal');
+    } catch (firstErr) {
+      // If default key fails and it was '1', try '3' as fallback
+      if (apiKey === '1' && firstErr.response && firstErr.response.status === 404) {
+        await apiRequest('3', '/searchteams.php?t=Arsenal');
+      } else {
+        throw firstErr;
+      }
+    }
     
     const latencyMs = Date.now() - startTime;
     log(`[health] OK in ${latencyMs}ms`);
