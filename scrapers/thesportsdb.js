@@ -241,13 +241,9 @@ async function fetchTSDBFixture({ home, away, date }) {
   
   log(`Searching for ${home} vs ${away} on ${matchDateStr}`);
   
-  // Build list of API keys to try
-  const keysToTry = [apiKey];
-  for (const fallbackKey of FALLBACK_API_KEYS) {
-    if (!keysToTry.includes(fallbackKey)) {
-      keysToTry.push(fallbackKey);
-    }
-  }
+  // Build list of API keys to try using Set for O(1) deduplication
+  const keysSet = new Set([apiKey, ...FALLBACK_API_KEYS]);
+  const keysToTry = Array.from(keysSet);
   
   for (const tryKey of keysToTry) {
     try {
