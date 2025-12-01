@@ -34,7 +34,7 @@ const path = require('path');
 // ---------- Configuration ----------
 
 const BASE_URL = 'https://www.skysports.com';
-const FIXTURES_URL = `${BASE_URL}/football/fixtures`;
+const FIXTURES_URL = `${BASE_URL}/football-fixtures`;
 const DEFAULT_TIMEOUT = 15000;
 
 // Known Sky Sports channel names
@@ -148,12 +148,16 @@ async function fetchSkyFixtures({ teamName, competition }) {
     const $ = cheerio.load(response.data);
     const fixtures = [];
     
-    // Parse fixture elements - Sky Sports uses various formats
+    // Parse fixture elements - Sky Sports uses various formats (updated for 2024+ structure)
     const fixtureSelectors = [
       '.fixres__item',
       '.fixture',
       '[class*="fixture"]',
-      '.match-row'
+      '.match-row',
+      // Updated selectors for Sky Sports 2024+ structure
+      '[class*="Match"]',
+      '[class*="Event"]',
+      'article[class*="game"]'
     ];
     
     for (const selector of fixtureSelectors) {
@@ -166,9 +170,15 @@ async function fetchSkyFixtures({ teamName, competition }) {
           let homeTeam = '';
           let awayTeam = '';
           
-          // Try specific selectors first
-          homeTeam = $fixture.find('[class*="home"], .team-home, .fixres__team--home').first().text().trim();
+          // Try specific selectors first (including swap-text which is used by Sky)
+          homeTeam = $fixture.find('[class*="home"], .team-home, .fixres__team--home, .swap-text__target').first().text().trim();
           awayTeam = $fixture.find('[class*="away"], .team-away, .fixres__team--away').first().text().trim();
+          
+          // Try data attributes
+          if (!homeTeam || !awayTeam) {
+            homeTeam = $fixture.attr('data-home') || $fixture.attr('data-home-team') || homeTeam;
+            awayTeam = $fixture.attr('data-away') || $fixture.attr('data-away-team') || awayTeam;
+          }
           
           // Fallback: parse from text
           if (!homeTeam || !awayTeam) {

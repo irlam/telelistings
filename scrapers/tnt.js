@@ -34,7 +34,7 @@ const path = require('path');
 // ---------- Configuration ----------
 
 const BASE_URL = 'https://www.tntsports.co.uk';
-const SCHEDULE_URL = `${BASE_URL}/watch/schedule`;
+const SCHEDULE_URL = `${BASE_URL}/football/calendar-results.shtml`;
 const DEFAULT_TIMEOUT = 15000;
 
 // Known TNT Sports channel names
@@ -157,13 +157,19 @@ async function fetchTNTFixtures({ teamName, competition }) {
     const $ = cheerio.load(response.data);
     const fixtures = [];
     
-    // Parse fixture elements - TNT Sports uses various formats
+    // Parse fixture elements - TNT Sports uses various formats (updated for 2024+ structure)
     const fixtureSelectors = [
       '.schedule-item',
       '.event-item',
       '[class*="fixture"]',
       '[class*="match"]',
-      '.programme-item'
+      '.programme-item',
+      // TNT Sports 2024+ selectors
+      '[class*="Result"]',
+      '[class*="Event"]',
+      '[class*="Calendar"]',
+      'tr[class*="result"]',
+      '.calres'
     ];
     
     for (const selector of fixtureSelectors) {
@@ -179,7 +185,9 @@ async function fetchTNTFixtures({ teamName, competition }) {
               !textLower.includes('champions league') &&
               !textLower.includes('europa league') &&
               !textLower.includes('fa cup') &&
-              !textLower.includes('efl')) {
+              !textLower.includes('efl') &&
+              !textLower.includes('uefa') &&
+              !textLower.includes('league')) {
             // Check if it looks like a football match (contains "v" or "vs")
             if (!textLower.match(/\b(v|vs)\b/)) {
               return;
@@ -193,6 +201,15 @@ async function fetchTNTFixtures({ teamName, competition }) {
           // Try specific selectors first
           homeTeam = $fixture.find('[class*="home"], .team-home').first().text().trim();
           awayTeam = $fixture.find('[class*="away"], .team-away').first().text().trim();
+          
+          // Try team name links
+          if (!homeTeam || !awayTeam) {
+            const teamLinks = $fixture.find('a[href*="team"], .team-name, [class*="TeamName"]');
+            if (teamLinks.length >= 2) {
+              homeTeam = $(teamLinks[0]).text().trim();
+              awayTeam = $(teamLinks[1]).text().trim();
+            }
+          }
           
           // Fallback: parse from text
           if (!homeTeam || !awayTeam) {
