@@ -295,15 +295,17 @@ function parseBroadcasters(html) {
   });
   
   // Strategy 5: Fallback - look for known UK broadcaster names anywhere on the page
+  // Use a single regex pattern for efficiency
   if (broadcasters.length === 0) {
     const pageText = $('body').text();
-    const ukBroadcasters = [
-      'Sky Sports', 'TNT Sports', 'BBC', 'ITV', 'Amazon Prime', 
-      'BT Sport', 'Premier Sports', 'Channel 4', 'BBC One', 'BBC Two'
-    ];
+    // Pattern to match any of the known UK broadcasters
+    const ukBroadcastersPattern = /\b(Sky Sports|TNT Sports|BBC One|BBC Two|BBC|ITV|Amazon Prime|BT Sport|Premier Sports|Channel 4)\b/gi;
+    const matches = pageText.match(ukBroadcastersPattern);
     
-    for (const broadcaster of ukBroadcasters) {
-      if (pageText.includes(broadcaster)) {
+    if (matches) {
+      // Deduplicate matches and add to broadcasters
+      const uniqueMatches = [...new Set(matches)];
+      for (const broadcaster of uniqueMatches) {
         broadcasters.push({
           region: 'United Kingdom',
           channel: broadcaster

@@ -35,6 +35,14 @@ const path = require('path');
 const BASE_URL = 'https://www.bbc.co.uk/sport/football/teams';
 const DEFAULT_TIMEOUT = 15000;
 
+// Fallback parser configuration
+const MAX_TEXT_MATCHES = 10; // Maximum number of matches to extract from raw text
+const MIN_TEAM_NAME_LENGTH = 3; // Minimum length for a valid team name
+
+// Regex to match team names in "Team vs Team" format
+// Captures: Team name optionally followed by common suffixes (FC, AFC, City, United, Town, Rovers)
+const TEAM_VS_TEAM_PATTERN = /([A-Z][a-zA-Z\s]+(?:FC|AFC|City|United|Town|Rovers)?)\s+(?:v|vs|versus)\s+([A-Z][a-zA-Z\s]+(?:FC|AFC|City|United|Town|Rovers)?)/gi;
+
 // Team name to BBC slug mapping
 const TEAM_SLUGS = {
   'arsenal': 'arsenal',
@@ -273,17 +281,16 @@ async function fetchBBCFixtures({ teamName, teamSlug }) {
     // Last resort: Look for any text that looks like a match (Team vs Team pattern)
     if (matches.length === 0) {
       const pageText = $('body').text();
-      // Match patterns like "Arsenal v Chelsea" or "Man City vs Liverpool"
-      const matchPatterns = pageText.match(/([A-Z][a-zA-Z\s]+(?:FC|AFC|City|United|Town|Rovers)?)\s+(?:v|vs|versus)\s+([A-Z][a-zA-Z\s]+(?:FC|AFC|City|United|Town|Rovers)?)/gi);
+      const matchPatterns = pageText.match(TEAM_VS_TEAM_PATTERN);
       
       if (matchPatterns) {
-        for (const pattern of matchPatterns.slice(0, 10)) { // Limit to avoid noise
+        for (const pattern of matchPatterns.slice(0, MAX_TEXT_MATCHES)) {
           const vsMatch = pattern.match(/(.+?)\s+(?:v|vs|versus)\s+(.+)/i);
           if (vsMatch) {
             const home = vsMatch[1].trim();
             const away = vsMatch[2].trim();
-            // Only add if both look like team names (at least 3 chars)
-            if (home.length >= 3 && away.length >= 3) {
+            // Only add if both look like valid team names
+            if (home.length >= MIN_TEAM_NAME_LENGTH && away.length >= MIN_TEAM_NAME_LENGTH) {
               matches.push({
                 home,
                 away,
