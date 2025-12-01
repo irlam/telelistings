@@ -183,8 +183,9 @@ async function runIntegrationTests() {
 // Run integration tests
 runIntegrationTests().then(() => {
   console.log(`\n========================\nTotal: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`);
-  process.exit(failed > 0 ? 1 : 0);
+  // Use process.exitCode for graceful exit (allows cleanup handlers to run)
+  process.exitCode = failed > 0 ? 1 : 0;
 }).catch(err => {
   console.error('Test runner error:', err);
-  process.exit(1);
+  process.exitCode = 1;
 });

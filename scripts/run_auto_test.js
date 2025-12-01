@@ -100,10 +100,11 @@ async function main() {
   console.log(`  ${scrapeStore.AUTO_TESTS_DIR}/`);
   console.log('====================================\n');
   
-  process.exit(summary.allPassed ? 0 : 1);
+  // Use process.exitCode for graceful exit
+  process.exitCode = summary.allPassed ? 0 : 1;
 }
 
 main().catch(err => {
   console.error('Error:', err.message);
-  process.exit(1);
+  process.exitCode = 1;
 });

@@ -25,12 +25,14 @@ async function main() {
       ...status,
       checkDurationMs: duration
     }, null, 2));
-    process.exit(status.allHealthy ? 0 : 1);
+    process.exitCode = status.allHealthy ? 0 : 1;
+    return;
   }
   
   if (quietMode && status.allHealthy) {
     // In quiet mode, don't output anything if all healthy
-    process.exit(0);
+    process.exitCode = 0;
+    return;
   }
   
   // Human-readable output
@@ -46,7 +48,7 @@ async function main() {
     }
   }
   
-  process.exit(status.allHealthy ? 0 : 1);
+  process.exitCode = status.allHealthy ? 0 : 1;
 }
 
 main().catch(err => {
@@ -55,5 +57,5 @@ main().catch(err => {
   } else {
     console.error('Health check error:', err.message);
   }
-  process.exit(1);
+  process.exitCode = 1;
 });
