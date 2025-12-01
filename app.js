@@ -1862,6 +1862,16 @@ app.get('/admin/scraper/:id', async (req, res) => {
   let autoTestMode = auto === '1' || auto === 'true';
   let autoTestInfo = null; // Info about auto-selected fixture
   
+  // Helper function to get a fixture from LFOTV for auto-test mode
+  async function getAutoTestFixture() {
+    const lfotvData = await livefootballontv.fetchLFOTVFixtures({});
+    if (lfotvData.fixtures && lfotvData.fixtures.length > 0) {
+      const fixture = lfotvData.fixtures[0];
+      return { home: fixture.home, away: fixture.away };
+    }
+    return null;
+  }
+  
   // Run test if parameters provided OR auto mode is enabled
   if ((home && away) || teamName || autoTestMode) {
     try {
@@ -1869,49 +1879,36 @@ app.get('/admin/scraper/:id', async (req, res) => {
       
       switch (scraperId) {
         case 'lstv':
+        case 'tsdb':
           // For LSTV/TSDB in auto mode, first get a fixture from LFOTV to use as test data
           if (autoTestMode && !home && !away) {
-            const lfotvData = await livefootballontv.fetchLFOTVFixtures({});
-            if (lfotvData.fixtures && lfotvData.fixtures.length > 0) {
-              const fixture = lfotvData.fixtures[0];
-              autoTestInfo = `Auto-selected: ${fixture.home} vs ${fixture.away}`;
-              testResult = await lstv.fetchLSTV({
-                home: fixture.home,
-                away: fixture.away,
-                date: matchDate
-              });
+            const autoFixture = await getAutoTestFixture();
+            if (autoFixture) {
+              autoTestInfo = `Auto-selected: ${autoFixture.home} vs ${autoFixture.away}`;
+              if (scraperId === 'lstv') {
+                testResult = await lstv.fetchLSTV({
+                  home: autoFixture.home,
+                  away: autoFixture.away,
+                  date: matchDate
+                });
+              } else {
+                testResult = await tsdb.fetchTSDBFixture({
+                  home: autoFixture.home,
+                  away: autoFixture.away,
+                  date: matchDate
+                });
+              }
             } else {
               testError = 'No fixtures found for auto-test. Please enter team names manually.';
             }
           } else {
-            testResult = await lstv.fetchLSTV({
-              home: home?.trim() || '',
-              away: away?.trim() || '',
-              date: matchDate
-            });
-          }
-          break;
-        case 'tsdb':
-          // For TSDB in auto mode, first get a fixture from LFOTV to use as test data
-          if (autoTestMode && !home && !away) {
-            const lfotvData = await livefootballontv.fetchLFOTVFixtures({});
-            if (lfotvData.fixtures && lfotvData.fixtures.length > 0) {
-              const fixture = lfotvData.fixtures[0];
-              autoTestInfo = `Auto-selected: ${fixture.home} vs ${fixture.away}`;
-              testResult = await tsdb.fetchTSDBFixture({
-                home: fixture.home,
-                away: fixture.away,
-                date: matchDate
-              });
+            const homeTeam = home?.trim() || '';
+            const awayTeam = away?.trim() || '';
+            if (scraperId === 'lstv') {
+              testResult = await lstv.fetchLSTV({ home: homeTeam, away: awayTeam, date: matchDate });
             } else {
-              testError = 'No fixtures found for auto-test. Please enter team names manually.';
+              testResult = await tsdb.fetchTSDBFixture({ home: homeTeam, away: awayTeam, date: matchDate });
             }
-          } else {
-            testResult = await tsdb.fetchTSDBFixture({
-              home: home?.trim() || '',
-              away: away?.trim() || '',
-              date: matchDate
-            });
           }
           break;
         case 'wiki':
