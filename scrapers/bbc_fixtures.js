@@ -176,7 +176,7 @@ async function fetchBBCFixtures({ teamName, teamSlug }) {
     const matches = [];
     
     // Parse fixture cards - BBC uses various selectors
-    // Try multiple selectors for robustness (updated for 2024+ BBC Sport structure)
+    // Try multiple selectors for robustness (updated for 2024-2025 BBC Sport structure)
     const fixtureSelectors = [
       '.sp-c-fixture',
       '[class*="fixture"]',
@@ -186,7 +186,16 @@ async function fetchBBCFixtures({ teamName, teamSlug }) {
       '[data-event-type="match"]',
       '.ssrcss-1sxn96w-MatchWrapper',
       '[class*="MatchWrapper"]',
-      '[class*="EventCard"]'
+      '[class*="EventCard"]',
+      // Additional 2024-2025 selectors
+      '.gel-layout__item',
+      '[class*="match"]',
+      '[class*="Match"]',
+      '[data-testid*="match"]',
+      '[data-testid*="fixture"]',
+      '.gel-pica',
+      '.fixture-item',
+      '.event-wrapper'
     ];
     
     for (const selector of fixtureSelectors) {
@@ -259,6 +268,32 @@ async function fetchBBCFixtures({ teamName, teamSlug }) {
           // Skip
         }
       });
+    }
+    
+    // Last resort: Look for any text that looks like a match (Team vs Team pattern)
+    if (matches.length === 0) {
+      const pageText = $('body').text();
+      // Match patterns like "Arsenal v Chelsea" or "Man City vs Liverpool"
+      const matchPatterns = pageText.match(/([A-Z][a-zA-Z\s]+(?:FC|AFC|City|United|Town|Rovers)?)\s+(?:v|vs|versus)\s+([A-Z][a-zA-Z\s]+(?:FC|AFC|City|United|Town|Rovers)?)/gi);
+      
+      if (matchPatterns) {
+        for (const pattern of matchPatterns.slice(0, 10)) { // Limit to avoid noise
+          const vsMatch = pattern.match(/(.+?)\s+(?:v|vs|versus)\s+(.+)/i);
+          if (vsMatch) {
+            const home = vsMatch[1].trim();
+            const away = vsMatch[2].trim();
+            // Only add if both look like team names (at least 3 chars)
+            if (home.length >= 3 && away.length >= 3) {
+              matches.push({
+                home,
+                away,
+                kickoffUtc: null,
+                competition: null
+              });
+            }
+          }
+        }
+      }
     }
     
     log(`Found ${matches.length} fixtures for ${slug}`);
