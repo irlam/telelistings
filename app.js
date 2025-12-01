@@ -1463,7 +1463,7 @@ app.get('/admin/environment', (req, res) => {
   ];
   
   const envRows = knownEnvVars.map(ev => {
-    const maskedValue = ev.isSecret && ev.currentValue ? '••••••••' : escapeHtml(ev.currentValue);
+    const maskedValue = ev.isSecret && ev.currentValue ? '[CONFIGURED]' : escapeHtml(ev.currentValue);
     const statusClass = ev.currentValue ? 'status-configured' : 'status-missing';
     const statusText = ev.currentValue ? 'Configured' : 'Not set';
     
@@ -1540,8 +1540,14 @@ app.post('/admin/environment', (req, res) => {
   const cfg = loadConfig();
   cfg.envVars = cfg.envVars || {};
   
-  // List of known environment variable keys
-  const knownKeys = ['LSTV_SCRAPER_URL', 'LSTV_SCRAPER_KEY', 'THESPORTSDB_API_KEY', 'CRON_SECRET', 'ADMIN_PASSWORD'];
+  // Define known environment variable keys (derived from knownEnvVars pattern)
+  const knownKeys = [
+    'LSTV_SCRAPER_URL',
+    'LSTV_SCRAPER_KEY', 
+    'THESPORTSDB_API_KEY',
+    'CRON_SECRET',
+    'ADMIN_PASSWORD'
+  ];
   
   for (const key of knownKeys) {
     if (req.body[key] !== undefined) {
@@ -1736,6 +1742,13 @@ app.get('/admin/scrapers', async (req, res) => {
     </div>`;
   }).join('');
   
+  // Calculate health statistics
+  const healthyCount = Object.values(healthResults).filter(h => h && h.ok).length;
+  const totalHealthChecks = Object.keys(healthResults).length;
+  const allHealthy = healthyCount === totalHealthChecks;
+  const httpScraperCount = scrapers.filter(s => s.method.includes('HTTP')).length;
+  const apiScraperCount = scrapers.filter(s => s.method.includes('API')).length;
+  
   const body = `
   <style>
     .scraper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-top: 20px; }
@@ -1780,15 +1793,15 @@ app.get('/admin/scrapers', async (req, res) => {
         <div class="stat-label">Total Scrapers</div>
       </div>
       <div class="summary-stat">
-        <div class="stat-value" style="color: ${Object.values(healthResults).filter(h => h && h.ok).length === Object.keys(healthResults).length ? '#00b894' : '#e74c3c'};">${Object.values(healthResults).filter(h => h && h.ok).length}/${Object.keys(healthResults).length}</div>
+        <div class="stat-value" style="color: ${allHealthy ? '#00b894' : '#e74c3c'};">${healthyCount}/${totalHealthChecks}</div>
         <div class="stat-label">Healthy</div>
       </div>
       <div class="summary-stat">
-        <div class="stat-value">${scrapers.filter(s => s.method.includes('HTTP')).length}</div>
+        <div class="stat-value">${httpScraperCount}</div>
         <div class="stat-label">HTTP Scrapers</div>
       </div>
       <div class="summary-stat">
-        <div class="stat-value">${scrapers.filter(s => s.method.includes('API')).length}</div>
+        <div class="stat-value">${apiScraperCount}</div>
         <div class="stat-label">API Clients</div>
       </div>
     </div>
