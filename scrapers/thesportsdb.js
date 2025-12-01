@@ -46,18 +46,20 @@ function getApiKey() {
     const configPath = path.join(__dirname, '..', 'config.json');
     if (fs.existsSync(configPath)) {
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      return cfg.theSportsDbApiKey || '1'; // Free tier key
+      if (cfg.theSportsDbApiKey) {
+        return cfg.theSportsDbApiKey;
+      }
     }
   } catch (err) {
     // Ignore config errors
   }
   
-  // Default to free tier key
-  return '1';
+  // Default to test/free tier key '123'
+  return '123';
 }
 
 // Alternative API keys to try if default fails
-const FALLBACK_API_KEYS = ['3', '2', '1'];
+const FALLBACK_API_KEYS = ['123', '3', '2', '1'];
 
 // ---------- Logging ----------
 
@@ -341,6 +343,129 @@ async function fetchTSDBFixture({ home, away, date }) {
 }
 
 /**
+ * Fetch all fixtures for a given date from TheSportsDB.
+ * This is used for general fixture listing without team-specific filtering.
+ *
+ * @param {Object} params - Parameters
+ * @param {Date|string} [params.date] - Match date (defaults to today)
+ * @param {string} [params.region] - Region filter for TV channels (e.g., 'UK', 'US')
+ * @param {string} [params.leagueId] - Optional league ID to filter
+ * @returns {Promise<{fixtures: Array<{home: string, away: string, kickoffUtc: string|null, league: string|null, venue: string|null, tvStations: Array<{region: string, channel: string}>, eventId: string|null}>}>}
+ */
+async function fetchTSDBFixtures({ date, region, leagueId } = {}) {
+  const emptyResult = { fixtures: [] };
+  
+  // Parse date for matching
+  const matchDate = date instanceof Date ? date : new Date(date || Date.now());
+  const matchDateStr = matchDate.toISOString().slice(0, 10);
+  
+  log(`Fetching all fixtures for ${matchDateStr}${region ? ` (region: ${region})` : ''}`);
+  
+  let apiKey = getApiKey();
+  const keysSet = new Set([apiKey, ...FALLBACK_API_KEYS]);
+  const keysToTry = Array.from(keysSet);
+  
+  // List of popular UK leagues to search
+  const ukLeagues = [
+    { id: '4328', name: 'English Premier League' },
+    { id: '4329', name: 'English League Championship' },
+    { id: '4330', name: 'English League 1' },
+    { id: '4331', name: 'English League 2' },
+    { id: '4346', name: 'Scottish Premiership' },
+    { id: '4424', name: 'FA Cup' },
+    { id: '4425', name: 'EFL Cup' },
+    { id: '4480', name: 'UEFA Champions League' },
+    { id: '4481', name: 'UEFA Europa League' }
+  ];
+  
+  const leagues = leagueId ? [{ id: leagueId, name: 'Custom' }] : ukLeagues;
+  
+  for (const tryKey of keysToTry) {
+    try {
+      const fixtures = [];
+      
+      for (const league of leagues) {
+        try {
+          // Fetch events for the league on the given date
+          const data = await apiRequest(tryKey, `/eventsday.php?d=${matchDateStr}&l=${league.id}`);
+          
+          if (data && data.events && Array.isArray(data.events)) {
+            for (const event of data.events) {
+              // Get TV listings for this event
+              let tvStations = [];
+              if (event.idEvent) {
+                const tvListings = await getTvListings(tryKey, event.idEvent);
+                tvStations = tvListings
+                  .filter(tv => {
+                    // Filter by region if specified
+                    if (region && tv.strCountry) {
+                      const countryLower = tv.strCountry.toLowerCase();
+                      const regionLower = region.toLowerCase();
+                      if (regionLower === 'uk') {
+                        return countryLower.includes('united kingdom') || 
+                               countryLower.includes('uk') || 
+                               countryLower.includes('england') ||
+                               countryLower.includes('scotland') ||
+                               countryLower.includes('wales');
+                      }
+                      return countryLower.includes(regionLower);
+                    }
+                    return true;
+                  })
+                  .map(tv => ({
+                    region: tv.strCountry || 'Unknown',
+                    channel: tv.strChannel
+                  }))
+                  .filter(tv => tv.channel);
+              }
+              
+              // Build kickoff UTC from date and time
+              let kickoffUtc = null;
+              if (event.dateEvent && event.strTime) {
+                kickoffUtc = `${event.dateEvent}T${event.strTime}`;
+              } else if (event.strTimestamp) {
+                kickoffUtc = event.strTimestamp;
+              }
+              
+              fixtures.push({
+                home: event.strHomeTeam || '',
+                away: event.strAwayTeam || '',
+                kickoffUtc,
+                league: event.strLeague || league.name,
+                venue: event.strVenue || null,
+                tvStations,
+                eventId: event.idEvent || null
+              });
+            }
+          }
+        } catch (leagueErr) {
+          // Skip league on error, continue with others
+          continue;
+        }
+        
+        // Small delay between league requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (fixtures.length > 0) {
+        log(`Found ${fixtures.length} fixtures for ${matchDateStr}`);
+        return { fixtures };
+      }
+      
+    } catch (err) {
+      // If it's a 404, try the next API key
+      if (err.response && err.response.status === 404) {
+        continue;
+      }
+      log(`Error: ${err.message}`);
+    }
+  }
+  
+  log(`No fixtures found for ${matchDateStr}`);
+  return emptyResult;
+}
+
+/**
  * Perform a health check on TheSportsDB API.
  * @returns {Promise<{ok: boolean, latencyMs: number, error?: string}>}
  */
@@ -353,9 +478,19 @@ async function healthCheck() {
     try {
       await apiRequest(apiKey, '/searchteams.php?t=Arsenal');
     } catch (firstErr) {
-      // If default key fails and it was '1', try '3' as fallback
-      if (apiKey === '1' && firstErr.response && firstErr.response.status === 404) {
-        await apiRequest('3', '/searchteams.php?t=Arsenal');
+      // If default key fails, try fallback keys
+      if (firstErr.response && firstErr.response.status === 404) {
+        // Try other fallback keys
+        for (const fallbackKey of FALLBACK_API_KEYS) {
+          if (fallbackKey !== apiKey) {
+            try {
+              await apiRequest(fallbackKey, '/searchteams.php?t=Arsenal');
+              break; // Success with fallback key
+            } catch (fallbackErr) {
+              continue; // Try next key
+            }
+          }
+        }
       } else {
         throw firstErr;
       }
@@ -376,6 +511,7 @@ async function healthCheck() {
 
 module.exports = {
   fetchTSDBFixture,
+  fetchTSDBFixtures,
   healthCheck,
   // Export helpers for testing
   searchTeam,

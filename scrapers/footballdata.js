@@ -101,20 +101,17 @@ async function apiRequest(endpoint, apiKey) {
  * Fetch fixture information from FootballData.org.
  *
  * @param {Object} params - Parameters
- * @param {string} params.teamId - FootballData.org team ID
- * @param {Date|string} params.dateUtc - Match date
- * @returns {Promise<{kickoffUtc: string|null, league: string|null}>}
+ * @param {string} [params.teamId] - FootballData.org team ID (optional for general fixtures)
+ * @param {Date|string} [params.dateUtc] - Match date
+ * @param {string} [params.competition] - Competition code (e.g., 'PL' for Premier League)
+ * @returns {Promise<{fixtures: Array<{home: string, away: string, kickoffUtc: string|null, league: string|null}>}|{kickoffUtc: string|null, league: string|null}>}
  */
-async function fetchFootballData({ teamId, dateUtc }) {
+async function fetchFootballData({ teamId, dateUtc, competition } = {}) {
   const emptyResult = {
+    fixtures: [],
     kickoffUtc: null,
     league: null
   };
-  
-  if (!teamId) {
-    log('Missing teamId parameter');
-    return emptyResult;
-  }
   
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -127,24 +124,61 @@ async function fetchFootballData({ teamId, dateUtc }) {
   const dateFrom = matchDate.toISOString().slice(0, 10);
   const dateTo = new Date(matchDate.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   
-  log(`Looking up fixtures for team ${teamId} from ${dateFrom} to ${dateTo}`);
-  
   try {
-    const data = await apiRequest(`/teams/${teamId}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, apiKey);
+    let data;
+    
+    if (teamId) {
+      // Team-specific query
+      log(`Looking up fixtures for team ${teamId} from ${dateFrom} to ${dateTo}`);
+      data = await apiRequest(`/teams/${teamId}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, apiKey);
+    } else if (competition) {
+      // Competition-specific query
+      log(`Looking up fixtures for competition ${competition} from ${dateFrom} to ${dateTo}`);
+      data = await apiRequest(`/competitions/${competition}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, apiKey);
+    } else {
+      // General fixtures for today - query multiple UK competitions
+      log(`Looking up all fixtures from ${dateFrom} to ${dateTo}`);
+      const competitions = ['PL', 'ELC', 'FL1', 'FL2']; // Premier League, Championship, League 1, League 2
+      const allMatches = [];
+      
+      for (const comp of competitions) {
+        try {
+          const compData = await apiRequest(`/competitions/${comp}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, apiKey);
+          if (compData && compData.matches) {
+            allMatches.push(...compData.matches);
+          }
+        } catch (compErr) {
+          // Skip competition on error
+          continue;
+        }
+        // Small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      data = { matches: allMatches };
+    }
     
     if (!data || !data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
-      log(`No fixtures found for team ${teamId} on ${dateFrom}`);
+      log(`No fixtures found for ${dateFrom}`);
       return emptyResult;
     }
     
-    // Get the first match (closest to the date)
-    const match = data.matches[0];
-    
-    log(`Found fixture: ${match.homeTeam?.name || 'unknown'} vs ${match.awayTeam?.name || 'unknown'}`);
-    
-    return {
+    // Build fixtures array
+    const fixtures = data.matches.map(match => ({
+      home: match.homeTeam?.name || 'Unknown',
+      away: match.awayTeam?.name || 'Unknown',
       kickoffUtc: match.utcDate || null,
       league: match.competition?.name || null
+    }));
+    
+    log(`Found ${fixtures.length} fixtures`);
+    
+    // For backwards compatibility, also include first match data at top level
+    const firstMatch = data.matches[0];
+    return {
+      fixtures,
+      kickoffUtc: firstMatch?.utcDate || null,
+      league: firstMatch?.competition?.name || null
     };
     
   } catch (err) {
@@ -153,7 +187,7 @@ async function fetchFootballData({ teamId, dateUtc }) {
       if (err.response.status === 403) {
         log('API key invalid or rate limited');
       } else if (err.response.status === 404) {
-        log(`Team ${teamId} not found`);
+        log(`Resource not found`);
       } else {
         log(`API error: ${err.response.status} ${err.response.statusText}`);
       }
