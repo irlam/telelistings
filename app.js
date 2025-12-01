@@ -1737,7 +1737,8 @@ app.get('/admin/scrapers', async (req, res) => {
       ${healthHtml}
       
       <div class="scraper-actions">
-        <a href="/admin/scraper/${scraper.id}" class="btn-view">View Details & Test →</a>
+        <a href="/admin/scraper/${scraper.id}?auto=1" class="btn-auto">🚀 Auto Test</a>
+        <a href="/admin/scraper/${scraper.id}" class="btn-view">View Details →</a>
       </div>
     </div>`;
   }).join('');
@@ -1774,7 +1775,9 @@ app.get('/admin/scrapers', async (req, res) => {
     .health-text { font-weight:bold; font-size:13px; }
     .health-latency { color:#888; font-size:12px; margin-left:auto; }
     .health-error-msg { color:#e74c3c; font-size:11px; width:100%; margin-top:6px; word-break:break-word; }
-    .scraper-actions { margin-top:12px; }
+    .scraper-actions { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
+    .btn-auto { display:inline-block; background:#00b894; color:#000; padding:8px 16px; border-radius:6px; text-decoration:none; font-size:13px; font-weight:bold; }
+    .btn-auto:hover { background:#00d6aa; text-decoration:none; }
     .btn-view { display:inline-block; background:#4a90d9; color:#fff; padding:8px 16px; border-radius:6px; text-decoration:none; font-size:13px; }
     .btn-view:hover { background:#5da0e9; text-decoration:none; }
     .summary-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:12px; margin-top:16px; }
@@ -1853,55 +1856,114 @@ app.get('/admin/scraper/:id', async (req, res) => {
   }
   
   // Get test parameters from query string
-  const { home, away, date, teamName } = req.query;
+  const { home, away, date, teamName, auto } = req.query;
   let testResult = null;
   let testError = null;
+  let autoTestMode = auto === '1' || auto === 'true';
+  let autoTestInfo = null; // Info about auto-selected fixture
   
-  // Run test if parameters provided
-  if ((home && away) || teamName) {
+  // Run test if parameters provided OR auto mode is enabled
+  if ((home && away) || teamName || autoTestMode) {
     try {
       const matchDate = date ? new Date(date) : new Date();
       
       switch (scraperId) {
         case 'lstv':
-          testResult = await lstv.fetchLSTV({
-            home: home?.trim() || '',
-            away: away?.trim() || '',
-            date: matchDate
-          });
+          // For LSTV/TSDB in auto mode, first get a fixture from LFOTV to use as test data
+          if (autoTestMode && !home && !away) {
+            const lfotvData = await livefootballontv.fetchLFOTVFixtures({});
+            if (lfotvData.fixtures && lfotvData.fixtures.length > 0) {
+              const fixture = lfotvData.fixtures[0];
+              autoTestInfo = `Auto-selected: ${fixture.home} vs ${fixture.away}`;
+              testResult = await lstv.fetchLSTV({
+                home: fixture.home,
+                away: fixture.away,
+                date: matchDate
+              });
+            } else {
+              testError = 'No fixtures found for auto-test. Please enter team names manually.';
+            }
+          } else {
+            testResult = await lstv.fetchLSTV({
+              home: home?.trim() || '',
+              away: away?.trim() || '',
+              date: matchDate
+            });
+          }
           break;
         case 'tsdb':
-          testResult = await tsdb.fetchTSDBFixture({
-            home: home?.trim() || '',
-            away: away?.trim() || '',
-            date: matchDate
-          });
+          // For TSDB in auto mode, first get a fixture from LFOTV to use as test data
+          if (autoTestMode && !home && !away) {
+            const lfotvData = await livefootballontv.fetchLFOTVFixtures({});
+            if (lfotvData.fixtures && lfotvData.fixtures.length > 0) {
+              const fixture = lfotvData.fixtures[0];
+              autoTestInfo = `Auto-selected: ${fixture.home} vs ${fixture.away}`;
+              testResult = await tsdb.fetchTSDBFixture({
+                home: fixture.home,
+                away: fixture.away,
+                date: matchDate
+              });
+            } else {
+              testError = 'No fixtures found for auto-test. Please enter team names manually.';
+            }
+          } else {
+            testResult = await tsdb.fetchTSDBFixture({
+              home: home?.trim() || '',
+              away: away?.trim() || '',
+              date: matchDate
+            });
+          }
           break;
         case 'wiki':
+          // Wiki can use Premier League as default
           testResult = await wiki.fetchWikiBroadcasters({
             leagueName: teamName?.trim() || 'Premier League',
             season: null,
             country: 'UK'
           });
+          if (autoTestMode && !teamName) {
+            autoTestInfo = 'Auto-selected: Premier League';
+          }
           break;
         case 'bbc':
-          testResult = await bbcFixtures.fetchBBCFixtures({
-            teamName: teamName?.trim() || home?.trim()
-          });
+          // BBC can fetch all fixtures or a specific team
+          if (autoTestMode && !teamName && !home) {
+            // In auto mode, use Arsenal as a reliable default team
+            autoTestInfo = 'Auto-selected: Arsenal';
+            testResult = await bbcFixtures.fetchBBCFixtures({
+              teamName: 'Arsenal'
+            });
+          } else {
+            testResult = await bbcFixtures.fetchBBCFixtures({
+              teamName: teamName?.trim() || home?.trim()
+            });
+          }
           break;
         case 'sky':
+          // Sky can fetch all fixtures without a team filter
+          if (autoTestMode && !teamName && !home) {
+            autoTestInfo = 'Auto-test: Fetching all Sky Sports fixtures for today';
+          }
           testResult = await skysports.fetchSkyFixtures({
-            teamName: teamName?.trim() || home?.trim()
+            teamName: teamName?.trim() || home?.trim() || undefined
           });
           break;
         case 'tnt':
+          // TNT can fetch all fixtures without a team filter
+          if (autoTestMode && !teamName && !home) {
+            autoTestInfo = 'Auto-test: Fetching all TNT Sports fixtures for today';
+          }
           testResult = await tntScraper.fetchTNTFixtures({
-            teamName: teamName?.trim() || home?.trim()
+            teamName: teamName?.trim() || home?.trim() || undefined
           });
           break;
         case 'lfotv':
+          // LFOTV can fetch all fixtures without a team filter
+          if (autoTestMode && !teamName && !home) {
+            autoTestInfo = 'Auto-test: Fetching all LiveFootballOnTV fixtures for today';
+          }
           testResult = await livefootballontv.fetchLFOTVFixtures({
-            teamName: teamName?.trim() || home?.trim()
+            teamName: teamName?.trim() || home?.trim() || undefined
           });
           break;
       }
@@ -1922,6 +1984,7 @@ app.get('/admin/scraper/:id', async (req, res) => {
     testResultHtml = `
     <div class="card" style="border-left: 4px solid #00b894;">
       <h4>✅ Test Results</h4>
+      ${autoTestInfo ? `<p class="muted" style="margin-bottom:12px;"><em>${escapeHtml(autoTestInfo)}</em></p>` : ''}
       <pre>${escapeHtml(JSON.stringify(testResult, null, 2))}</pre>
     </div>`;
   }
@@ -1946,15 +2009,20 @@ app.get('/admin/scraper/:id', async (req, res) => {
   let testFormHtml = '';
   if (['lstv', 'tsdb'].includes(scraperId)) {
     testFormHtml = `
+    <div class="auto-test-section" style="margin-bottom:16px;">
+      <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Today's Fixtures)</a>
+      <span class="muted" style="margin-left:8px;">Automatically fetches a fixture from today's schedule</span>
+    </div>
+    <p style="margin:12px 0; color:#888;">— OR enter specific teams below —</p>
     <form method="get" action="/admin/scraper/${scraperId}">
       <div class="form-row">
         <div class="form-group">
           <label>Home Team</label>
-          <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required>
+          <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal">
         </div>
         <div class="form-group">
           <label>Away Team</label>
-          <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required>
+          <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea">
         </div>
         <div class="form-group">
           <label>Date (optional)</label>
@@ -1965,19 +2033,29 @@ app.get('/admin/scraper/:id', async (req, res) => {
     </form>`;
   } else if (scraperId === 'wiki') {
     testFormHtml = `
+    <div class="auto-test-section" style="margin-bottom:16px;">
+      <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Premier League)</a>
+      <span class="muted" style="margin-left:8px;">Fetches broadcasters for Premier League</span>
+    </div>
+    <p style="margin:12px 0; color:#888;">— OR enter a specific league below —</p>
     <form method="get" action="/admin/scraper/${scraperId}">
       <div class="form-group">
         <label>League Name</label>
-        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Premier League" required>
+        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Premier League">
       </div>
       <p><button type="submit">Test Scraper</button></p>
     </form>`;
   } else {
     testFormHtml = `
+    <div class="auto-test-section" style="margin-bottom:16px;">
+      <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Today's Fixtures)</a>
+      <span class="muted" style="margin-left:8px;">Fetches all fixtures for the current day</span>
+    </div>
+    <p style="margin:12px 0; color:#888;">— OR filter by team name below —</p>
     <form method="get" action="/admin/scraper/${scraperId}">
       <div class="form-group">
-        <label>Team Name</label>
-        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Arsenal" required>
+        <label>Team Name (optional)</label>
+        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Arsenal">
       </div>
       <p><button type="submit">Test Scraper</button></p>
     </form>`;
@@ -2010,6 +2088,9 @@ app.get('/admin/scraper/:id', async (req, res) => {
     .form-row { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px; }
     .form-group { margin-bottom:12px; }
     .form-group label { display:block; margin-bottom:4px; font-size:13px; color:#aaa; }
+    .btn-auto-test { display:inline-block; background:#00b894; color:#000; padding:12px 24px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:bold; }
+    .btn-auto-test:hover { background:#00d6aa; text-decoration:none; }
+    .auto-test-section { padding:16px; background:#1a2634; border-radius:8px; }
   </style>
   
   <div class="scraper-banner">
@@ -2044,7 +2125,7 @@ app.get('/admin/scraper/:id', async (req, res) => {
   
   <div class="card">
     <h3>Test ${escapeHtml(scraper.name)}</h3>
-    <p class="muted">Enter parameters to test this scraper and see what data it returns.</p>
+    <p class="muted">Click "Auto Test" to quickly fetch today's fixtures, or enter specific parameters below.</p>
     ${testFormHtml}
   </div>
   
