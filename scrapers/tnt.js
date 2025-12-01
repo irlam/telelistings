@@ -157,19 +157,28 @@ async function fetchTNTFixtures({ teamName, competition }) {
     const $ = cheerio.load(response.data);
     const fixtures = [];
     
-    // Parse fixture elements - TNT Sports uses various formats (updated for 2024+ structure)
+    // Parse fixture elements - TNT Sports uses various formats (updated for 2024-2025 structure)
     const fixtureSelectors = [
       '.schedule-item',
       '.event-item',
       '[class*="fixture"]',
       '[class*="match"]',
       '.programme-item',
-      // TNT Sports 2024+ selectors
+      // TNT Sports 2024-2025 selectors
       '[class*="Result"]',
       '[class*="Event"]',
       '[class*="Calendar"]',
       'tr[class*="result"]',
-      '.calres'
+      '.calres',
+      // Additional selectors
+      '[class*="Match"]',
+      '[class*="Game"]',
+      '[class*="Schedule"]',
+      'li[class*="event"]',
+      'article[class*="fixture"]',
+      '.tv-schedule-item',
+      '.broadcast-item',
+      '[data-event-id]'
     ];
     
     for (const selector of fixtureSelectors) {

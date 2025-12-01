@@ -191,8 +191,12 @@ function parseBroadcasters(html) {
   // Strategy 1: Look for "Broadcasting" or "Television" sections
   // and parse infobox or tables within
   
-  // Find the broadcasting/television section
-  const sectionHeaders = ['Broadcasting', 'Television', 'TV broadcasting', 'Broadcasters', 'Media coverage'];
+  // Find the broadcasting/television section - expanded search terms
+  const sectionHeaders = [
+    'Broadcasting', 'Television', 'TV broadcasting', 'Broadcasters', 
+    'Media coverage', 'Media', 'TV rights', 'Television rights',
+    'International broadcasters', 'Broadcast partners'
+  ];
   
   let broadcastSection = null;
   
@@ -221,13 +225,15 @@ function parseBroadcasters(html) {
     }
   }
   
-  // Strategy 3: Look for infobox with TV/broadcasting info
+  // Strategy 3: Look for infobox with TV/broadcasting info - expanded keywords
   const infobox = $('.infobox, .infobox-body, .vcard');
   infobox.find('tr').each((i, row) => {
     const $row = $(row);
     const header = $row.find('th').text().toLowerCase();
     
-    if (header.includes('television') || header.includes('broadcaster') || header.includes('tv')) {
+    if (header.includes('television') || header.includes('broadcaster') || 
+        header.includes('tv') || header.includes('broadcast') ||
+        header.includes('media') || header.includes('network')) {
       const value = $row.find('td').text().trim();
       if (value) {
         // Try to split by common separators
@@ -287,6 +293,26 @@ function parseBroadcasters(html) {
       });
     }
   });
+  
+  // Strategy 5: Fallback - look for known UK broadcaster names anywhere on the page
+  // Use a single regex pattern for efficiency
+  if (broadcasters.length === 0) {
+    const pageText = $('body').text();
+    // Pattern to match any of the known UK broadcasters
+    const ukBroadcastersPattern = /\b(Sky Sports|TNT Sports|BBC One|BBC Two|BBC|ITV|Amazon Prime|BT Sport|Premier Sports|Channel 4)\b/gi;
+    const matches = pageText.match(ukBroadcastersPattern);
+    
+    if (matches) {
+      // Deduplicate matches and add to broadcasters
+      const uniqueMatches = [...new Set(matches)];
+      for (const broadcaster of uniqueMatches) {
+        broadcasters.push({
+          region: 'United Kingdom',
+          channel: broadcaster
+        });
+      }
+    }
+  }
   
   // Deduplicate
   const seen = new Set();

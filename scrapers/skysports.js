@@ -148,16 +148,27 @@ async function fetchSkyFixtures({ teamName, competition }) {
     const $ = cheerio.load(response.data);
     const fixtures = [];
     
-    // Parse fixture elements - Sky Sports uses various formats (updated for 2024+ structure)
+    // Parse fixture elements - Sky Sports uses various formats (updated for 2024-2025 structure)
     const fixtureSelectors = [
       '.fixres__item',
       '.fixture',
       '[class*="fixture"]',
       '.match-row',
-      // Updated selectors for Sky Sports 2024+ structure
+      // Updated selectors for Sky Sports 2024-2025 structure
       '[class*="Match"]',
       '[class*="Event"]',
-      'article[class*="game"]'
+      'article[class*="game"]',
+      // Additional selectors
+      '.sdc-site-tile',
+      '.sdc-site-tiles__item',
+      '[class*="scores"]',
+      '[class*="Scores"]',
+      '.sdc-article-header',
+      '.sdc-site-fixture',
+      '.fixres__body',
+      'tr[class*="fixture"]',
+      'li[class*="fixture"]',
+      '[data-fixture-id]'
     ];
     
     for (const selector of fixtureSelectors) {
