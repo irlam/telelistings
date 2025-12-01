@@ -170,6 +170,64 @@ The telelistings app uses a **remote scraper service architecture** for data col
 | `scrapers/tnt.js` | TNT Sports TV channels | Direct HTTP |
 | `scrapers/livefootballontv.js` | UK TV listings | Direct HTTP |
 | `scrapers/footballdata.js` | FootballData.org API | Direct API |
+| `scrapers/fixtures_scraper.js` | **Unified fixture scraper** (web scrapers instead of ICS) | Aggregator |
+
+### Unified Fixtures Scraper (Web Scrapers Alternative to ICS)
+
+The `scrapers/fixtures_scraper.js` module provides an alternative to ICS-based fixture discovery, using web scrapers instead:
+
+```javascript
+const fixturesScraper = require('./scrapers/fixtures_scraper');
+
+// Get fixtures for a single team
+const fixtures = await fixturesScraper.getFixturesFromScrapers({
+  teamName: 'Arsenal',
+  daysAhead: 7,
+  useTSDB: true,      // TheSportsDB
+  useBBC: true,       // BBC Sport
+  useLFOTV: true,     // LiveFootballOnTV
+  useSkySports: true, // Sky Sports
+  useTNT: true        // TNT Sports
+});
+
+// Get fixtures for multiple teams
+const allFixtures = await fixturesScraper.getFixturesForTeams({
+  teams: [
+    { label: 'Arsenal', slug: 'arsenal' },
+    { label: 'Liverpool', slug: 'liverpool' }
+  ],
+  daysAhead: 7,
+  maxTeams: 10
+});
+```
+
+**Key Features:**
+- Aggregates fixtures from multiple web sources (TSDB, BBC, LFOTV, Sky, TNT)
+- **Collects ALL TV channels from ALL sources** - each scraper may find different channels
+- Merges and deduplicates results automatically
+- TV channels are stored in both `tvChannels[]` (flat list) and `tvByRegion[]` (with source attribution)
+
+### TV Channel Collection
+
+**Important:** Each scraper may find different TV stations for the same event. The system collects channels from ALL sources:
+
+```javascript
+// Example merged fixture with TV channels from multiple sources
+{
+  homeTeam: 'Arsenal',
+  awayTeam: 'Chelsea',
+  start: Date,
+  competition: 'Premier League',
+  tvChannels: ['Sky Sports Main Event', 'Sky Sports Ultra HD', 'NOW TV'],  // Deduplicated flat list
+  tvByRegion: [
+    { region: 'UK', channel: 'Sky Sports Main Event', source: 'LFOTV' },
+    { region: 'UK', channel: 'Sky Sports Ultra HD', source: 'SKY' },
+    { region: 'UK', channel: 'NOW TV', source: 'TNT' }
+  ]
+}
+```
+
+When posting to Telegram, all collected TV channels are displayed for each event.
 
 ### TV Data Aggregator
 
