@@ -150,24 +150,31 @@ function getTeamSlug(teamName) {
 // ---------- Main Function ----------
 
 /**
- * Fetch fixtures from BBC Sport for a team.
+ * Fetch fixtures from BBC Sport.
+ * Can fetch fixtures for a specific team or all fixtures from the main football page.
  *
  * @param {Object} params - Parameters
  * @param {string} [params.teamName] - Team name (will be converted to slug)
  * @param {string} [params.teamSlug] - Direct BBC team slug
  * @returns {Promise<{matches: Array<{home: string, away: string, kickoffUtc: string|null, competition: string|null}>}>}
  */
-async function fetchBBCFixtures({ teamName, teamSlug }) {
+async function fetchBBCFixtures({ teamName, teamSlug } = {}) {
   const emptyResult = { matches: [] };
   
-  // Determine slug
-  const slug = teamSlug || getTeamSlug(teamName);
-  if (!slug) {
-    log(`Could not determine BBC slug for: ${teamName}`);
-    return emptyResult;
+  // Build URL - either team-specific or general football fixtures
+  let url;
+  if (teamSlug || teamName) {
+    const slug = teamSlug || getTeamSlug(teamName);
+    if (!slug) {
+      log(`Could not determine BBC slug for: ${teamName}`);
+      return emptyResult;
+    }
+    url = `${BASE_URL}/${slug}/scores-fixtures`;
+  } else {
+    // General football fixtures page
+    url = 'https://www.bbc.co.uk/sport/football/scores-fixtures';
   }
   
-  const url = `${BASE_URL}/${slug}/scores-fixtures`;
   log(`Fetching fixtures from: ${url}`);
   
   try {

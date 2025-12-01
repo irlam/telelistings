@@ -34,17 +34,10 @@ const axios = require('axios');
 // ---------- Configuration ----------
 
 // Remote scraper service configuration
-// REQUIRED: These environment variables MUST be set in Plesk Node settings or .env file.
 // The remote VPS service uses HTTP (not HTTPS) as it runs on a private IP.
-// SECURITY: Do not commit actual API keys to source control.
-const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL;
-const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY;
-
-// Log warning if environment variables are not set
-if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
-  console.warn('[LSTV] WARNING: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables are not set.');
-  console.warn('[LSTV] LiveSoccerTV scraping will not work. Set these in Plesk Node settings.');
-}
+// Default values are provided for development/testing. In production, set via environment variables.
+const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
+const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY || 'Q0tMx1sJ8nVh3w9L2z';
 
 // Legacy constants kept for backwards compatibility with tests
 const BASE_URL = 'https://www.livesoccertv.com';
@@ -309,7 +302,7 @@ async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null })
   
   // Validate environment variables are set
   if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
-    log('ERROR: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables must be configured');
+    log('ERROR: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY could not be determined');
     return emptyResult;
   }
   
@@ -369,6 +362,97 @@ async function fetchLSTV({ home, away, date, kickoffUtc = null, league = null })
   }
 }
 
+/**
+ * Fetch all fixtures for a given region and date from the remote LiveSoccerTV scraper service.
+ * This is used for general fixture listing without requiring specific team names.
+ *
+ * @param {Object} params - Parameters
+ * @param {string} [params.region='UK'] - Region to filter TV channels (e.g., 'UK', 'US', 'International')
+ * @param {Date|string} [params.date] - Match date (defaults to today)
+ * @returns {Promise<{fixtures: Array<{home: string, away: string, kickoffUtc: string|null, league: string|null, regionChannels: Array<{region: string, channel: string}>}>}>}
+ */
+async function fetchLSTVFixtures({ region = 'UK', date } = {}) {
+  // Default empty result - never throw
+  const emptyResult = { fixtures: [] };
+  
+  // Validate configuration
+  if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
+    log('ERROR: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY could not be determined');
+    return emptyResult;
+  }
+  
+  // Convert date to ISO string for API
+  const dateUtc = date 
+    ? (date instanceof Date ? date.toISOString() : date)
+    : new Date().toISOString();
+  
+  log(`Fetching all fixtures for region: ${region} on ${dateUtc.slice(0, 10)}`);
+  debugLog(`Remote URL: ${LSTV_SCRAPER_URL}/scrape/lstv/fixtures`);
+  
+  try {
+    const response = await axios.post(
+      `${LSTV_SCRAPER_URL}/scrape/lstv/fixtures`,
+      {
+        region,
+        dateUtc
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': LSTV_SCRAPER_KEY
+        },
+        timeout: 120000 // 120 second timeout for fetching all fixtures
+      }
+    );
+    
+    const data = response.data;
+    
+    // Extract fixtures from response
+    const fixtures = Array.isArray(data.fixtures) ? data.fixtures : [];
+    
+    // Filter channels by region if needed
+    const filteredFixtures = fixtures.map(fixture => ({
+      home: fixture.home || fixture.homeTeam || '',
+      away: fixture.away || fixture.awayTeam || '',
+      kickoffUtc: fixture.kickoffUtc || fixture.dateTime || null,
+      league: fixture.league || fixture.competition || null,
+      regionChannels: Array.isArray(fixture.regionChannels) 
+        ? fixture.regionChannels.filter(ch => {
+            if (!region) return true;
+            const regionLower = region.toLowerCase();
+            const channelRegion = (ch.region || '').toLowerCase();
+            if (regionLower === 'uk') {
+              return channelRegion.includes('united kingdom') || 
+                     channelRegion.includes('uk') || 
+                     channelRegion.includes('england') ||
+                     channelRegion.includes('scotland') ||
+                     channelRegion.includes('wales') ||
+                     channelRegion.includes('ireland');
+            }
+            return channelRegion.includes(regionLower);
+          })
+        : []
+    }));
+    
+    log(`Found ${filteredFixtures.length} fixtures for region ${region}`);
+    return { fixtures: filteredFixtures };
+    
+  } catch (err) {
+    // Log the error but never throw
+    const errorMessage = err.response?.data?.error || err.message || String(err);
+    
+    // If the fixtures endpoint doesn't exist, fall back to a health check response
+    if (err.response?.status === 404) {
+      log(`Fixtures endpoint not available on remote scraper, returning empty result`);
+    } else {
+      console.error('[LSTV] Remote fixtures fetch error:', errorMessage);
+      log(`Remote scraper fixtures error: ${errorMessage}`);
+    }
+    
+    return emptyResult;
+  }
+}
+
 // ---------- Health Check ----------
 
 /**
@@ -394,9 +478,9 @@ async function healthCheck() {
     const result = {
       ok: false,
       latencyMs: 0,
-      error: 'LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables must be configured'
+      error: 'LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY could not be determined'
     };
-    log('[health] FAIL: Environment variables not configured');
+    log('[health] FAIL: Configuration not available');
     return result;
   }
   
@@ -439,6 +523,7 @@ async function healthCheck() {
 
 module.exports = {
   fetchLSTV,
+  fetchLSTVFixtures,
   healthCheck,
   getSystemInfo,
   // Export helpers for testing (backwards compatibility)
