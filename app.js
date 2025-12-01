@@ -179,11 +179,10 @@ function renderLayout(title, bodyHtml) {
     <a href="/admin/teams">Teams</a>
     <a href="/admin/settings">Settings</a>
     <a href="/admin/scrapers">Scrapers</a>
+    <a href="/admin/auto-test">Auto-Test</a>
+    <a href="/admin/results">Results</a>
     <a href="/admin/environment">Environment</a>
     <a href="/admin/logs">Logs</a>
-    <a href="/admin/test-lstv">Test LSTV</a>
-    <a href="/admin/test-fixture">Test Fixture</a>
-    <a href="/admin/test-fixture-tv">Test TV Aggregator</a>
     <a href="/admin/help">Help</a>
   </p>
   ${bodyHtml}
@@ -2183,6 +2182,280 @@ app.get('/admin/scraper/:id', async (req, res) => {
   `;
   
   res.send(renderLayout(`${scraper.name} - Telegram Sports TV Bot`, body));
+});
+
+// --------- Scrape Results Storage Page ---------
+
+// Import storage and auto-tester modules
+const scrapeStore = require('./lib/scrape_store');
+const autoTester = require('./lib/auto_tester');
+
+app.get('/admin/results', (req, res) => {
+  const scrapers = scrapeStore.listStoredScrapers();
+  const { scraperId } = req.query;
+  
+  let selectedResults = null;
+  let selectedScraper = null;
+  
+  if (scraperId) {
+    selectedResults = scrapeStore.getResultHistory(scraperId, 10);
+    selectedScraper = scraperId;
+  }
+  
+  // Build scraper list
+  const scraperList = scrapers.map(s => {
+    const isSelected = s.scraperId === selectedScraper;
+    const timestamp = s.latestTimestamp ? new Date(s.latestTimestamp).toLocaleString() : 'N/A';
+    return `
+    <tr class="${isSelected ? 'selected' : ''}">
+      <td><a href="/admin/results?scraperId=${encodeURIComponent(s.scraperId)}">${escapeHtml(s.scraperId)}</a></td>
+      <td>${timestamp}</td>
+      <td>${s.resultCount}</td>
+    </tr>`;
+  }).join('');
+  
+  // Build results display
+  let resultsHtml = '';
+  if (selectedResults && selectedResults.length > 0) {
+    resultsHtml = selectedResults.map((r, idx) => {
+      const timestamp = new Date(r.timestamp).toLocaleString();
+      const fixtureCount = r.metadata?.fixtureCount || 0;
+      const duration = r.metadata?.duration_ms ? `${r.metadata.duration_ms}ms` : 'N/A';
+      const resultsJson = JSON.stringify(r.results, null, 2);
+      
+      return `
+      <div class="result-card">
+        <div class="result-header">
+          <span class="result-time">${timestamp}</span>
+          <span class="result-meta">Fixtures: ${fixtureCount} | Duration: ${duration}</span>
+        </div>
+        <details ${idx === 0 ? 'open' : ''}>
+          <summary>View Results</summary>
+          <pre class="result-json">${escapeHtml(resultsJson)}</pre>
+        </details>
+      </div>`;
+    }).join('');
+  } else if (selectedScraper) {
+    resultsHtml = '<p>No results stored for this scraper yet.</p>';
+  }
+  
+  const body = `
+  <style>
+    .selected { background: #2a3f5f !important; }
+    .result-card { background:#1e2a38; padding:16px; border-radius:8px; margin-bottom:16px; border-left:4px solid #4a90d9; }
+    .result-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .result-time { font-weight:bold; color:#fff; }
+    .result-meta { color:#888; font-size:12px; }
+    .result-json { max-height:400px; overflow:auto; font-size:11px; background:#0d1b2a; padding:12px; border-radius:4px; }
+    details summary { cursor:pointer; color:#80cbc4; margin-bottom:8px; }
+  </style>
+  
+  <div class="card">
+    <h2>Stored Scrape Results</h2>
+    <p>View historical results from each scraper. Results are stored after each auto-test run and can be used for debugging or integration with the autoposter.</p>
+  </div>
+  
+  <div class="card">
+    <h3>Available Scrapers</h3>
+    ${scrapers.length > 0 ? `
+    <table>
+      <thead>
+        <tr>
+          <th>Scraper ID</th>
+          <th>Last Result</th>
+          <th>Results Stored</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${scraperList}
+      </tbody>
+    </table>
+    ` : '<p>No scraped results stored yet. Run an auto-test to populate data.</p>'}
+    
+    <p style="margin-top:16px;">
+      <a href="/admin/auto-test" class="btn-action">Run Auto-Test Now →</a>
+    </p>
+  </div>
+  
+  ${selectedScraper ? `
+  <div class="card">
+    <h3>Results for ${escapeHtml(selectedScraper)}</h3>
+    ${resultsHtml}
+  </div>
+  ` : ''}
+  `;
+  
+  res.send(renderLayout('Stored Results - Telegram Sports TV Bot', body));
+});
+
+// --------- Auto-Test Runner Page ---------
+
+app.get('/admin/auto-test', async (req, res) => {
+  const scrapers = autoTester.listScrapers();
+  const autoTestResults = scrapeStore.getAllAutoTestResults(7);
+  
+  // Check if we should run a test
+  const { run, scraperId } = req.query;
+  let testResult = null;
+  
+  if (run === '1') {
+    if (scraperId) {
+      // Run single scraper test
+      testResult = await autoTester.runScraperTest(scraperId, { storeResults: true });
+    } else {
+      // Run all tests
+      testResult = await autoTester.runAllTests({ storeResults: true });
+    }
+  }
+  
+  // Build scraper cards
+  const scraperCards = scrapers.map(s => {
+    // Find latest test result for this scraper
+    const latestTest = autoTestResults.find(r => r.scraperId === s.id);
+    const lastStatus = latestTest?.success ? '✅ Pass' : (latestTest ? '❌ Fail' : '○ Not tested');
+    const lastTime = latestTest?.timestamp ? new Date(latestTest.timestamp).toLocaleString() : 'Never';
+    
+    return `
+    <div class="scraper-mini-card">
+      <div class="mini-header">
+        <span class="mini-name">${escapeHtml(s.name)}</span>
+        <span class="mini-status">${lastStatus}</span>
+      </div>
+      <div class="mini-meta">
+        <span>Last tested: ${lastTime}</span>
+        <span>${s.requiresVPS ? '🖥️ VPS' : '☁️ HTTP'}</span>
+      </div>
+      <div class="mini-actions">
+        <a href="/admin/auto-test?run=1&scraperId=${encodeURIComponent(s.id)}">Run Test</a>
+        <a href="/admin/scraper/${encodeURIComponent(s.id)}">Details</a>
+      </div>
+    </div>`;
+  }).join('');
+  
+  // Build test result display
+  let testResultHtml = '';
+  if (testResult) {
+    if (testResult.results) {
+      // All tests result
+      const passCount = testResult.passed || 0;
+      const failCount = testResult.failed || 0;
+      const statusColor = testResult.allPassed ? '#00b894' : '#e74c3c';
+      
+      testResultHtml = `
+      <div class="card" style="border-left: 4px solid ${statusColor};">
+        <h3>${testResult.allPassed ? '✅ All Tests Passed' : '❌ Some Tests Failed'}</h3>
+        <p>Passed: ${passCount} | Failed: ${failCount} | Duration: ${testResult.totalDurationMs}ms</p>
+        <table>
+          <thead><tr><th>Scraper</th><th>Status</th><th>Duration</th></tr></thead>
+          <tbody>
+            ${testResult.results.map(r => `
+              <tr>
+                <td>${escapeHtml(r.name)}</td>
+                <td>${r.success ? '✅ Pass' : '❌ Fail'}</td>
+                <td>${r.totalDurationMs}ms</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    } else {
+      // Single test result
+      const statusColor = testResult.success ? '#00b894' : '#e74c3c';
+      testResultHtml = `
+      <div class="card" style="border-left: 4px solid ${statusColor};">
+        <h3>${testResult.success ? '✅' : '❌'} ${escapeHtml(testResult.name)} Test Result</h3>
+        <p>Duration: ${testResult.totalDurationMs}ms</p>
+        <table>
+          <tr><th>Health Check</th><td>${testResult.health?.ok ? '✅ OK' : '❌ Fail'} ${testResult.health?.latencyMs ? `(${testResult.health.latencyMs}ms)` : ''}</td></tr>
+          <tr><th>Functional Test</th><td>${testResult.functional?.success ? '✅ OK' : '❌ Fail'} ${testResult.functional?.durationMs ? `(${testResult.functional.durationMs}ms)` : ''}</td></tr>
+        </table>
+        ${testResult.functional?.error ? `<p class="error-msg">Error: ${escapeHtml(testResult.functional.error)}</p>` : ''}
+      </div>`;
+    }
+  }
+  
+  const body = `
+  <style>
+    .scraper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin: 20px 0; }
+    .scraper-mini-card { background:#1e2a38; padding:16px; border-radius:8px; border-left:3px solid #4a90d9; }
+    .mini-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .mini-name { font-weight:bold; color:#fff; }
+    .mini-status { font-size:12px; }
+    .mini-meta { color:#888; font-size:11px; display:flex; justify-content:space-between; margin-bottom:12px; }
+    .mini-actions { display:flex; gap:12px; }
+    .mini-actions a { color:#80cbc4; font-size:13px; }
+    .btn-action { display:inline-block; background:#00b894; color:#000; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold; }
+    .btn-action:hover { background:#00d6aa; text-decoration:none; }
+    .error-msg { color:#e74c3c; font-size:13px; margin-top:12px; }
+  </style>
+  
+  <div class="card">
+    <h2>Automated Scraper Testing</h2>
+    <p>Run automated tests on all scrapers to verify they're working correctly. Test results are stored for later analysis.</p>
+    
+    <div style="margin-top:16px;">
+      <a href="/admin/auto-test?run=1" class="btn-action">🚀 Run All Tests</a>
+      <a href="/admin/results" style="margin-left:16px; color:#80cbc4;">View Stored Results →</a>
+    </div>
+  </div>
+  
+  ${testResultHtml}
+  
+  <div class="card">
+    <h3>Individual Scrapers</h3>
+    <p class="muted">Click "Run Test" to test a specific scraper, or "Details" for more information.</p>
+    
+    <div class="scraper-grid">
+      ${scraperCards}
+    </div>
+  </div>
+  
+  <div class="card">
+    <h3>Recent Test History</h3>
+    ${autoTestResults.length > 0 ? `
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Scraper</th>
+          <th>Status</th>
+          <th>Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${autoTestResults.slice(0, 20).map(r => `
+          <tr>
+            <td>${new Date(r.timestamp).toLocaleString()}</td>
+            <td>${escapeHtml(r.scraperId)}</td>
+            <td>${r.success ? '✅ Pass' : '❌ Fail'}</td>
+            <td>${r.totalDurationMs || 0}ms</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    ` : '<p>No test history yet. Run some tests to see results here.</p>'}
+  </div>
+  `;
+  
+  res.send(renderLayout('Auto-Test - Telegram Sports TV Bot', body));
+});
+
+// --------- Health Endpoints ---------
+
+// Unified health endpoint for all scrapers
+app.get('/health', async (req, res) => {
+  const status = await autoTester.getHealthStatus();
+  res.status(status.allHealthy ? 200 : 503).json(status);
+});
+
+// Individual scraper health endpoints
+app.get('/health/:scraperId', async (req, res) => {
+  const { scraperId } = req.params;
+  const result = await autoTester.runHealthCheck(scraperId);
+  res.status(result.ok ? 200 : 503).json({
+    scraperId,
+    ...result
+  });
 });
 
 // --------- start server ---------
