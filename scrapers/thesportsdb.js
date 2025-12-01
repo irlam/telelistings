@@ -478,9 +478,19 @@ async function healthCheck() {
     try {
       await apiRequest(apiKey, '/searchteams.php?t=Arsenal');
     } catch (firstErr) {
-      // If default key fails and it was '1', try '3' as fallback
-      if (apiKey === '1' && firstErr.response && firstErr.response.status === 404) {
-        await apiRequest('3', '/searchteams.php?t=Arsenal');
+      // If default key fails, try fallback keys
+      if (firstErr.response && firstErr.response.status === 404) {
+        // Try other fallback keys
+        for (const fallbackKey of FALLBACK_API_KEYS) {
+          if (fallbackKey !== apiKey) {
+            try {
+              await apiRequest(fallbackKey, '/searchteams.php?t=Arsenal');
+              break; // Success with fallback key
+            } catch (fallbackErr) {
+              continue; // Try next key
+            }
+          }
+        }
       } else {
         throw firstErr;
       }
