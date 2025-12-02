@@ -18,7 +18,7 @@ let browser = null;
  * Get (or launch) a Puppeteer browser.
  */
 async function getBrowser() {
-  if (browser && browser.process && browser.process() && !browser.isClosed) {
+  if (browser && browser.isConnected && browser.isConnected()) {
     return browser;
   }
   browser = await puppeteer.launch({

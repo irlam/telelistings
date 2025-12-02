@@ -10,6 +10,8 @@ vps-scrapers/
 ├── package.json                 # Dependencies and scripts
 ├── .env.example                 # Environment configuration template
 ├── README.md                    # This file
+├── scripts/                     # Utility scripts
+│   └── health.js                # Health check script
 └── scrapers/                    # Additional scrapers
     ├── lstv.js                  # Enhanced LiveSoccerTV scraper
     ├── skysports.js             # Sky Sports scraper (Puppeteer)
@@ -209,6 +211,13 @@ Response:
 ### Test Health Check
 
 ```bash
+# Using the npm script (recommended)
+npm run health
+
+# Or directly
+node scripts/health.js
+
+# Or with curl
 curl http://localhost:3333/health
 ```
 

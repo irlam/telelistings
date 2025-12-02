@@ -11,11 +11,9 @@
     "scraper:bbc": "node scrapers/bbc.js",
     "scraper:lfotv": "node scrapers/livefootballontv.js",
     "scraper:tnt": "node scrapers/tnt.js",
-    "test:health": "curl -s http://localhost:3333/health | node -e \"const r=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(r.ok?'OK':'FAIL',r);\""
+    "health": "node scripts/health.js"
   },
   "dependencies": {
-    "axios": "^1.13.2",
-    "cheerio": "^1.0.0",
     "express": "^4.21.2",
     "puppeteer": "^21.6.1"
   },
