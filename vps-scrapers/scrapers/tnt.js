@@ -56,7 +56,7 @@ function log(msg) {
 // ---------- Browser Management ----------
 
 async function getBrowser() {
-  if (browser && browser.isConnected && browser.isConnected()) {
+  if (browser && browser.isConnected()) {
     return browser;
   }
   browser = await puppeteer.launch({
