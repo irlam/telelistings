@@ -1,0 +1,34 @@
+{
+  "name": "telelistings-vps-scrapers",
+  "version": "1.0.0",
+  "description": "VPS-based scraper microservices for telelistings. Uses Puppeteer for browser automation.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "scraper:lstv": "node server.js",
+    "scraper:sky": "node scrapers/skysports.js",
+    "scraper:bbc": "node scrapers/bbc.js",
+    "scraper:lfotv": "node scrapers/livefootballontv.js",
+    "scraper:tnt": "node scrapers/tnt.js",
+    "test:health": "curl -s http://localhost:3333/health | node -e \"const r=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(r.ok?'OK':'FAIL',r);\""
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "cheerio": "^1.0.0",
+    "express": "^4.21.2",
+    "puppeteer": "^21.6.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "scraper",
+    "puppeteer",
+    "livesoccertv",
+    "tv-listings",
+    "football"
+  ],
+  "author": "",
+  "license": "MIT"
+}
