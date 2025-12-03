@@ -261,7 +261,7 @@ Core dependencies:
 
 ## Remote Scraper Micro-Service
 
-The telelistings app can now query a remote VPS micro-service for multiple TV data sources beyond just LiveSoccerTV. The micro-service (located in `vps-scrapers/`) exposes standardized HTTP endpoints for all scrapers.
+The telelistings app can now query a remote VPS micro-service for multiple TV data sources beyond just LiveSoccerTV. The micro-service (located in `/opt/vps-scrapers/` on your VPS) exposes standardized HTTP endpoints for all scrapers.
 
 ### Available Remote Scrapers
 
@@ -358,4 +358,4 @@ All remote scrapers return a consistent response format:
 
 ### VPS Micro-Service Setup
 
-See `vps-scrapers/README.md` for detailed setup instructions for the remote micro-service.
+See `/opt/vps-scrapers/README.md` (or `vps-scrapers/README.md` in this repo) for detailed setup instructions for the remote micro-service.
