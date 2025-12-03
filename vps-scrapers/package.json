@@ -10,6 +10,7 @@
     "scraper:sky": "node scrapers/skysports.js",
     "scraper:bbc": "node scrapers/bbc.js",
     "scraper:lfotv": "node scrapers/livefootballontv.js",
+    "scraper:liveonsat": "node scrapers/liveonsat.js",
     "scraper:tnt": "node scrapers/tnt.js",
     "scraper:wtm": "node scrapers/wheresthematch.js",
     "scraper:oddalerts": "node scrapers/oddalerts.js",

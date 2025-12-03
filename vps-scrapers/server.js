@@ -9,6 +9,7 @@ const puppeteer = require('puppeteer');
 
 const bbc = require('./scrapers/bbc');
 const livefootballontv = require('./scrapers/livefootballontv');
+const liveonsat = require('./scrapers/liveonsat');
 const lstv = require('./scrapers/lstv');
 const oddalerts = require('./scrapers/oddalerts');
 const prosoccertv = require('./scrapers/prosoccertv');
@@ -36,6 +37,7 @@ if (API_KEY === DEFAULT_API_KEY) {
 const SUPPORTED_SOURCES = [
   { name: 'bbc', path: '/scrape/bbc', description: 'BBC Sport fixtures' },
   { name: 'livefootballontv', path: '/scrape/livefootballontv', description: 'Live Football On TV' },
+  { name: 'liveonsat', path: '/scrape/liveonsat', description: 'LiveOnSat UK Football (daily)' },
   { name: 'lstv', path: '/scrape/lstv', description: 'LiveSoccerTV listings' },
   { name: 'oddalerts', path: '/scrape/oddalerts', description: 'OddAlerts TV Guide' },
   { name: 'prosoccertv', path: '/scrape/prosoccertv', description: 'ProSoccer.TV' },
@@ -115,6 +117,7 @@ function addScrapeRoute(path, scraperModule, sourceName) {
 
 addScrapeRoute('/scrape/bbc', bbc, 'bbc');
 addScrapeRoute('/scrape/livefootballontv', livefootballontv, 'livefootballontv');
+addScrapeRoute('/scrape/liveonsat', liveonsat, 'liveonsat');
 addScrapeRoute('/scrape/lstv', lstv, 'lstv');
 addScrapeRoute('/scrape/oddalerts', oddalerts, 'oddalerts');
 addScrapeRoute('/scrape/prosoccertv', prosoccertv, 'prosoccertv');
@@ -195,6 +198,7 @@ function addHealthRoute(path, scraperModule) {
 // Register health check routes for all scrapers
 addHealthRoute('/health/bbc', bbc);
 addHealthRoute('/health/livefootballontv', livefootballontv);
+addHealthRoute('/health/liveonsat', liveonsat);
 addHealthRoute('/health/lstv', lstv);
 addHealthRoute('/health/oddalerts', oddalerts);
 addHealthRoute('/health/prosoccertv', prosoccertv);

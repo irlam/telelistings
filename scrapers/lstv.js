@@ -370,6 +370,15 @@ async function fetchLiveFootballOnTVRemote(params = {}) {
 }
 
 /**
+ * Fetch LiveOnSat UK fixtures from remote scraper.
+ * @param {Object} params - Parameters (date, teamName)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchLiveOnSatRemote(params = {}) {
+  return callRemoteScraper({ source: 'liveonsat', path: '/scrape/liveonsat', payload: params });
+}
+
+/**
  * Fetch OddAlerts fixtures from remote scraper.
  * @param {Object} params - Parameters (date)
  * @returns {Promise<{fixtures: Array, source: string}>}
@@ -678,6 +687,7 @@ module.exports = {
   fetchSkySportsRemote,
   fetchTNTRemote,
   fetchLiveFootballOnTVRemote,
+  fetchLiveOnSatRemote,
   fetchOddAlertsRemote,
   fetchProSoccerTVRemote,
   fetchSportEventzRemote,

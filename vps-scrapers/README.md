@@ -22,6 +22,7 @@ The default installation path on your VPS is: `/opt/vps-scrapers/`
     ├── skysports.js             # Sky Sports scraper
     ├── tnt.js                   # TNT Sports scraper
     ├── livefootballontv.js      # LiveFootballOnTV scraper
+    ├── liveonsat.js             # LiveOnSat UK Football scraper (daily)
     ├── wheresthematch.js        # Where's The Match UK scraper
     ├── oddalerts.js             # OddAlerts TV Guide scraper
     ├── prosoccertv.js           # ProSoccer.TV scraper
@@ -176,7 +177,7 @@ Main health check - checks if service is running and browser works.
   "ok": true,
   "latencyMs": 1234,
   "title": "Live Soccer TV - TV Guide for Soccer & Football",
-  "sources": ["bbc", "livefootballontv", "lstv", "oddalerts", "prosoccertv", "skysports", "sporteventz", "tnt", "wheresthematch", "worldsoccertalk"]
+  "sources": ["bbc", "livefootballontv", "liveonsat", "lstv", "oddalerts", "prosoccertv", "skysports", "sporteventz", "tnt", "wheresthematch", "worldsoccertalk"]
 }
 ```
 
@@ -189,6 +190,7 @@ Returns list of all supported scraper sources with their paths.
   "sources": [
     { "name": "bbc", "path": "/scrape/bbc", "description": "BBC Sport fixtures" },
     { "name": "livefootballontv", "path": "/scrape/livefootballontv", "description": "Live Football On TV" },
+    { "name": "liveonsat", "path": "/scrape/liveonsat", "description": "LiveOnSat UK Football (daily)" },
     { "name": "lstv", "path": "/scrape/lstv", "description": "LiveSoccerTV listings" },
     { "name": "oddalerts", "path": "/scrape/oddalerts", "description": "OddAlerts TV Guide" },
     { "name": "prosoccertv", "path": "/scrape/prosoccertv", "description": "ProSoccer.TV" },
@@ -291,6 +293,16 @@ Scrape Where's The Match UK.
 }
 ```
 
+#### POST /scrape/liveonsat
+Scrape LiveOnSat UK Football (daily fixtures).
+
+**Request:**
+```json
+{
+  "date": "2024-12-02"
+}
+```
+
 #### POST /scrape/oddalerts
 Scrape OddAlerts TV Guide.
 
@@ -337,6 +349,7 @@ Each scraper has its own health check endpoint:
 
 - `GET /health/bbc`
 - `GET /health/livefootballontv`
+- `GET /health/liveonsat`
 - `GET /health/lstv`
 - `GET /health/oddalerts`
 - `GET /health/prosoccertv`
@@ -388,6 +401,9 @@ node scrapers/bbc.js
 # Test LiveFootballOnTV scraper
 node scrapers/livefootballontv.js
 
+# Test LiveOnSat scraper
+node scrapers/liveonsat.js
+
 # Test TNT Sports scraper
 node scrapers/tnt.js
 
@@ -415,6 +431,7 @@ Or use npm scripts:
 npm run scraper:sky
 npm run scraper:bbc
 npm run scraper:lfotv
+npm run scraper:liveonsat
 npm run scraper:tnt
 npm run scraper:wtm
 npm run scraper:oddalerts

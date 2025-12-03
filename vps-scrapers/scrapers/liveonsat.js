@@ -33,6 +33,9 @@ const BASE_URL = 'https://liveonsat.com';
 const PAGE_URL = `${BASE_URL}/uk-england-all-football.php`;
 const DEFAULT_TIMEOUT = 45000;
 
+// Minimum length for valid text values (team names, channels, etc.)
+const MIN_TEXT_LENGTH = 3;
+
 // Shared browser instance
 let browser = null;
 
@@ -73,12 +76,21 @@ function normalizeTeamName(name) {
     .trim();
 }
 
+function normalizeChannelName(name) {
+  return (name || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
- * Very rough date parser.
+ * Parse kickoff time to UTC ISO string.
  * Input: dateLabel like "Friday, 5th December"
- * timeString: "15:00" (local UK time)
+ * timeString: "15:00" (local UK time - GMT or BST)
  *
  * We assume current season/year and convert to ISO UTC string.
+ * Accounts for British Summer Time (BST) which runs from last Sunday
+ * in March to last Sunday in October.
  * If parsing fails, returns null.
  */
 function parseKickoffUtc(dateLabel, timeString) {
@@ -87,22 +99,54 @@ function parseKickoffUtc(dateLabel, timeString) {
   try {
     const currentYear = new Date().getFullYear();
 
-    // Remove 1st/2nd/3rd/4th etc.
+    // Remove ordinal suffixes (1st/2nd/3rd/4th etc.)
     const cleanedDate = dateLabel.replace(
       /(\d+)(st|nd|rd|th)/i,
       '$1'
     );
 
-    // e.g. "Friday, 5 December 2025 15:00 GMT"
+    // Parse as GMT first, then adjust for BST if applicable
+    // Format: "Friday, 5 December 2025 15:00 GMT"
     const dateString = `${cleanedDate} ${currentYear} ${timeString} GMT`;
 
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return null;
 
+    // Check if date is in BST period (last Sunday March to last Sunday October)
+    // If so, the time shown is BST, so we need to subtract 1 hour for UTC
+    if (isInBST(d)) {
+      d.setHours(d.getHours() - 1);
+    }
+
     return d.toISOString();
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Check if a given date falls within British Summer Time (BST).
+ * BST runs from 01:00 UTC on the last Sunday of March to
+ * 01:00 UTC on the last Sunday of October.
+ * @param {Date} date - Date to check
+ * @returns {boolean} - True if date is in BST period
+ */
+function isInBST(date) {
+  const year = date.getFullYear();
+  
+  // Find last Sunday of March
+  const marchEnd = new Date(year, 2, 31); // March 31
+  const lastSundayMarch = new Date(marchEnd);
+  lastSundayMarch.setDate(31 - ((marchEnd.getDay() + 7) % 7));
+  lastSundayMarch.setHours(1, 0, 0, 0); // BST starts at 01:00 UTC
+  
+  // Find last Sunday of October
+  const octEnd = new Date(year, 9, 31); // October 31
+  const lastSundayOct = new Date(octEnd);
+  lastSundayOct.setDate(31 - ((octEnd.getDay() + 7) % 7));
+  lastSundayOct.setHours(1, 0, 0, 0); // BST ends at 01:00 UTC
+  
+  return date >= lastSundayMarch && date < lastSundayOct;
 }
 
 // ---------- Main Scrape ----------
@@ -118,8 +162,8 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
   log(`Fetching LiveOnSat fixtures${teamName ? ` for ${teamName}` : ''}`);
 
   try {
-    const browser = await getBrowser();
-    const page = await browser.newPage();
+    const browserInstance = await getBrowser();
+    const page = await browserInstance.newPage();
 
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
@@ -143,10 +187,28 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
 
       const fixtures = [];
 
+      // Matches day headers like "Friday, 5th December"
       const dayNameRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
 
-      // Example line:
-      // "English Championship - Week 19 Hull City v Middlesbrough ST: 15:00"
+      /**
+       * Fixture line regex - matches lines like:
+       * "English Championship - Week 19 Hull City v Middlesbrough ST: 15:00"
+       * 
+       * Capture groups:
+       * $1 = Competition + Round info (e.g., "English Championship - Week 19")
+       * $2 = Home team name (e.g., "Hull City")
+       * $3 = Away team name (e.g., "Middlesbrough")
+       * $4 = Kickoff time in HH:MM format (e.g., "15:00")
+       * 
+       * Pattern breakdown:
+       * ^(.*?-\s*.*?)   - Competition with round (non-greedy, must contain "-")
+       * \s+(.+?)        - Home team (non-greedy)
+       * \s+v\s+         - "v" separator with spaces
+       * (.+?)           - Away team (non-greedy)
+       * \s+ST:\s*       - "ST:" marker (Start Time)
+       * ([0-9]{1,2}:[0-9]{2}) - Time in H:MM or HH:MM format
+       * \s*$            - Optional trailing whitespace
+       */
       const fixtureRegex = /^(.*?-\s*.*?)\s+(.+?)\s+v\s+(.+?)\s+ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
 
       let currentDateLabel = null;
@@ -250,8 +312,8 @@ async function healthCheck() {
   const start = Date.now();
 
   try {
-    const browser = await getBrowser();
-    const page = await browser.newPage();
+    const browserInstance = await getBrowser();
+    const page = await browserInstance.newPage();
 
     await page.goto(BASE_URL, {
       waitUntil: 'domcontentloaded',
@@ -271,11 +333,43 @@ async function healthCheck() {
   }
 }
 
+// ---------- Unified Scrape Function ----------
+
+/**
+ * Unified scrape function with consistent signature.
+ * @param {Object} params - Parameters
+ * @param {string} [params.teamName] - Team name to filter by
+ * @param {string} [params.date] - Date to scrape fixtures for (daily)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function scrape(params = {}) {
+  const result = await fetchLiveOnSatFixtures(params);
+  
+  // Normalize to consistent format
+  const fixtures = (result.fixtures || []).map(f => ({
+    homeTeam: f.home || null,
+    awayTeam: f.away || null,
+    kickoffUtc: f.kickoffUtc || null,
+    league: null,
+    competition: f.competition || null,
+    url: null,
+    channels: f.channels || []
+  }));
+  
+  return {
+    fixtures,
+    source: 'liveonsat'
+  };
+}
+
 // ---------- Exports ----------
 
 module.exports = {
+  scrape,
   fetchLiveOnSatFixtures,
   healthCheck,
+  normalizeTeamName,
+  normalizeChannelName,
   BASE_URL
 };
 
@@ -289,6 +383,9 @@ if (require.main === module) {
     console.log('Fetching sample fixtures...');
     const data = await fetchLiveOnSatFixtures({});
     console.log(`Got ${data.fixtures.length} fixtures`);
+    if (data.fixtures.length > 0) {
+      console.log('Sample fixtures:', JSON.stringify(data.fixtures.slice(0, 3), null, 2));
+    }
     process.exit(result.ok ? 0 : 1);
   })();
 }

@@ -31,6 +31,9 @@ const puppeteer = require('puppeteer');
 const BASE_URL = 'https://prosoccer.tv';
 const DEFAULT_TIMEOUT = 30000;
 
+// Minimum length for valid team names (filters out short/invalid text)
+const MIN_TEAM_NAME_LENGTH = 3;
+
 // Known TV channels for football
 const TV_CHANNELS = [
   'Sky Sports Main Event',
@@ -154,88 +157,112 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
     await page.waitForSelector('body', { timeout: 10000 });
     
     // Extract fixtures using page.evaluate
-    const fixtures = await page.evaluate((TV_CHANNELS) => {
+    // Pass constants to page.evaluate since it runs in browser context
+    const fixtures = await page.evaluate((TV_CHANNELS, MIN_LENGTH) => {
       const results = [];
       
-      // Try multiple selectors for fixtures on ProSoccer.TV
-      // Fixtures are grouped by country/league, each row has a "TV" link
-      const fixtureSelectors = [
-        '.match-row',
-        '.fixture-row',
-        '.fixture',
-        '.match',
-        'table tbody tr',
-        '[class*="match"]',
-        '[class*="fixture"]',
-        '.event',
-        '.game-row'
+      // Known competition/league keywords to filter out as team names
+      const competitionKeywords = [
+        'primera', 'clausura', 'apertura', 'league', 'cup', 'championship',
+        'division', 'serie', 'liga', 'bundesliga', 'ligue', 'eredivisie',
+        'premier', 'la liga', 'calcio', 'round', 'matchday', 'group',
+        'stage', 'final', 'semi', 'quarter', 'knockout', 'playoff'
       ];
+      
+      // Function to check if text looks like a competition name rather than team name
+      function looksLikeCompetition(text) {
+        if (!text) return false;
+        const lower = text.toLowerCase().trim();
+        return competitionKeywords.some(kw => lower.includes(kw)) ||
+               /^\d+$/.test(lower) || // Just numbers
+               lower.length < MIN_LENGTH; // Too short
+      }
       
       // Track current competition from group headers
       let currentCompetition = null;
       
-      // First, find competition headers
-      const headers = document.querySelectorAll('.league-header, .competition-header, h2, h3, .group-header, [class*="league-name"]');
+      // ProSoccer.TV typically uses tables with fixtures
+      // Look for table rows that contain match information
+      const tables = document.querySelectorAll('table');
       
-      for (const selector of fixtureSelectors) {
-        const elements = document.querySelectorAll(selector);
+      tables.forEach(table => {
+        const rows = table.querySelectorAll('tr');
         
-        elements.forEach(el => {
+        rows.forEach(row => {
           try {
-            const text = el.innerText || el.textContent || '';
+            const text = row.innerText || row.textContent || '';
+            const cells = row.querySelectorAll('td');
             
-            // Check if this is a header/competition row
-            const isHeader = el.classList.contains('header') || 
-                           el.querySelector('th') ||
-                           el.classList.contains('league');
+            // Skip header rows
+            if (row.querySelector('th')) return;
             
-            if (isHeader) {
-              currentCompetition = text.trim();
+            // Skip rows with too few cells (likely headers or spacers)
+            if (cells.length < 2) {
+              // Could be a competition header row
+              const headerText = text.trim();
+              if (headerText && headerText.length >= MIN_LENGTH && headerText.length < 100) {
+                currentCompetition = headerText;
+              }
               return;
             }
             
-            // Extract teams
+            // Extract teams - look for vs/v pattern first
             let homeTeam = '';
             let awayTeam = '';
             
-            // Try specific selectors
-            const homeEl = el.querySelector('.home-team, .home, [class*="home"], td:nth-child(1)');
-            const awayEl = el.querySelector('.away-team, .away, [class*="away"], td:nth-child(3)');
-            
-            if (homeEl) homeTeam = homeEl.innerText.trim();
-            if (awayEl) awayTeam = awayEl.innerText.trim();
-            
-            // Try team links
-            const teamLinks = el.querySelectorAll('a[href*="team"], .team-name, .team');
-            if (teamLinks.length >= 2 && (!homeTeam || !awayTeam)) {
-              homeTeam = teamLinks[0].innerText.trim();
-              awayTeam = teamLinks[1].innerText.trim();
+            // Try to find match pattern in the row text
+            const vsMatch = text.match(/([A-Za-zÀ-ÿ\s\-'\.0-9]+?)\s+(?:v|vs|versus|–|[-–—])\s+([A-Za-zÀ-ÿ\s\-'\.0-9]+?)(?:\s|$)/i);
+            if (vsMatch) {
+              homeTeam = vsMatch[1].trim();
+              awayTeam = vsMatch[2].trim();
             }
             
-            // Fallback: parse from text for "vs" or "v" or "-" patterns
+            // Alternatively, look for team links
             if (!homeTeam || !awayTeam) {
-              const vsMatch = text.match(/([A-Za-z\s\-'\.0-9]+)\s+(?:v|vs|versus|–|-)\s+([A-Za-z\s\-'\.0-9]+)/i);
-              if (vsMatch) {
-                homeTeam = vsMatch[1].trim();
-                awayTeam = vsMatch[2].trim();
+              const teamLinks = row.querySelectorAll('a');
+              const potentialTeams = [];
+              teamLinks.forEach(link => {
+                const linkText = link.innerText.trim();
+                // Filter out TV/broadcast links and short text
+                if (linkText && 
+                    linkText.length >= MIN_LENGTH && 
+                    !linkText.toLowerCase().includes('tv') &&
+                    !looksLikeCompetition(linkText)) {
+                  potentialTeams.push(linkText);
+                }
+              });
+              if (potentialTeams.length >= 2) {
+                homeTeam = potentialTeams[0];
+                awayTeam = potentialTeams[1];
               }
+            }
+            
+            // Skip if teams look like competition names
+            if (looksLikeCompetition(homeTeam) || looksLikeCompetition(awayTeam)) {
+              return;
             }
             
             // Clean up team names
             homeTeam = homeTeam
               .replace(/\b(fc|afc|cf|sc|ac)\b/gi, '')
               .replace(/\s+/g, ' ')
+              .replace(/^\d+\.\s*/, '') // Remove leading numbers like "1. "
               .trim();
             awayTeam = awayTeam
               .replace(/\b(fc|afc|cf|sc|ac)\b/gi, '')
               .replace(/\s+/g, ' ')
+              .replace(/^\d+\.\s*/, '')
               .trim();
             
-            if (!homeTeam || !awayTeam) return;
+            // Skip if no valid teams found
+            if (!homeTeam || !awayTeam || homeTeam.length < MIN_LENGTH || awayTeam.length < MIN_LENGTH) return;
+            
+            // Skip if home and away are the same
+            if (homeTeam.toLowerCase() === awayTeam.toLowerCase()) return;
             
             // Extract kickoff time/date
             let kickoffUtc = null;
-            const timeEl = el.querySelector('time, [datetime], .time, .kickoff, .date, .ko');
+            const timeEl = row.querySelector('time, [datetime], .time, .kickoff, .date, .ko');
             if (timeEl) {
               kickoffUtc = timeEl.getAttribute('datetime') || timeEl.innerText.trim() || null;
             }
@@ -250,7 +277,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
             
             // Extract competition from row or use tracked competition
             let competition = currentCompetition;
-            const compEl = el.querySelector('.competition, .league, [class*="competition"], [class*="league"]');
+            const compEl = row.querySelector('.competition, .league, [class*="competition"], [class*="league"]');
             if (compEl) {
               competition = compEl.innerText.trim();
             }
@@ -265,7 +292,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
             }
             
             // Look for TV link and extract channel info from it
-            const tvLink = el.querySelector('a[href*="tv"], .tv-link, [class*="tv"], .channels');
+            const tvLink = row.querySelector('a[href*="tv"], .tv-link, [class*="tv"], .channels');
             if (tvLink) {
               const tvText = tvLink.innerText.trim();
               if (tvText && !channels.includes(tvText)) {
@@ -280,7 +307,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
             }
             
             // Also look for channel-specific elements
-            const channelEls = el.querySelectorAll('.channel, .broadcaster, [class*="channel"], [class*="broadcaster"]');
+            const channelEls = row.querySelectorAll('.channel, .broadcaster, [class*="channel"], [class*="broadcaster"]');
             channelEls.forEach(chEl => {
               const chText = chEl.innerText.trim();
               if (chText && !channels.includes(chText)) {
@@ -299,12 +326,92 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
             // Skip malformed fixtures
           }
         });
+      });
+      
+      // If table parsing didn't work, try general element selectors
+      if (results.length === 0) {
+        const fixtureSelectors = [
+          '.match-row',
+          '.fixture-row',
+          '.fixture',
+          '.match',
+          '[class*="match"]',
+          '[class*="fixture"]',
+          '.event',
+          '.game-row'
+        ];
         
-        if (results.length > 0) break;
+        for (const selector of fixtureSelectors) {
+          const elements = document.querySelectorAll(selector);
+          
+          elements.forEach(el => {
+            try {
+              const text = el.innerText || el.textContent || '';
+              
+              // Check if this is a header/competition row
+              const isHeader = el.classList.contains('header') || 
+                             el.querySelector('th') ||
+                             el.classList.contains('league');
+              
+              if (isHeader) {
+                currentCompetition = text.trim();
+                return;
+              }
+              
+              // Extract teams using vs pattern
+              const vsMatch = text.match(/([A-Za-zÀ-ÿ\s\-'\.0-9]+?)\s+(?:v|vs|versus|–|[-–—])\s+([A-Za-zÀ-ÿ\s\-'\.0-9]+?)(?:\s|$)/i);
+              if (!vsMatch) return;
+              
+              let homeTeam = vsMatch[1].trim()
+                .replace(/\b(fc|afc|cf|sc|ac)\b/gi, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+              let awayTeam = vsMatch[2].trim()
+                .replace(/\b(fc|afc|cf|sc|ac)\b/gi, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+              
+              // Skip if teams look like competition names
+              if (looksLikeCompetition(homeTeam) || looksLikeCompetition(awayTeam)) {
+                return;
+              }
+              
+              if (!homeTeam || !awayTeam || homeTeam.length < MIN_LENGTH || awayTeam.length < MIN_LENGTH) return;
+              
+              // Extract kickoff time
+              let kickoffUtc = null;
+              const timeMatch = text.match(/(\d{1,2}[:\.]?\d{2}\s*(am|pm)?)/i);
+              if (timeMatch) {
+                kickoffUtc = timeMatch[1];
+              }
+              
+              // Extract TV channels
+              const channels = [];
+              const textLower = text.toLowerCase();
+              for (const channel of TV_CHANNELS) {
+                if (textLower.includes(channel.toLowerCase())) {
+                  channels.push(channel);
+                }
+              }
+              
+              results.push({
+                home: homeTeam,
+                away: awayTeam,
+                kickoffUtc,
+                competition: currentCompetition,
+                channels: [...new Set(channels)]
+              });
+            } catch (e) {
+              // Skip malformed fixtures
+            }
+          });
+          
+          if (results.length > 0) break;
+        }
       }
       
       return results;
-    }, TV_CHANNELS);
+    }, TV_CHANNELS, MIN_TEAM_NAME_LENGTH);
     
     await page.close();
     page = null;
