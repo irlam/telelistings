@@ -31,6 +31,9 @@ const puppeteer = require('puppeteer');
 const BASE_URL = 'https://prosoccer.tv';
 const DEFAULT_TIMEOUT = 30000;
 
+// Minimum length for valid team names (filters out short/invalid text)
+const MIN_TEAM_NAME_LENGTH = 3;
+
 // Known TV channels for football
 const TV_CHANNELS = [
   'Sky Sports Main Event',
@@ -154,7 +157,8 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
     await page.waitForSelector('body', { timeout: 10000 });
     
     // Extract fixtures using page.evaluate
-    const fixtures = await page.evaluate((TV_CHANNELS) => {
+    // Pass constants to page.evaluate since it runs in browser context
+    const fixtures = await page.evaluate((TV_CHANNELS, MIN_LENGTH) => {
       const results = [];
       
       // Known competition/league keywords to filter out as team names
@@ -171,7 +175,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
         const lower = text.toLowerCase().trim();
         return competitionKeywords.some(kw => lower.includes(kw)) ||
                /^\d+$/.test(lower) || // Just numbers
-               lower.length < 3; // Too short
+               lower.length < MIN_LENGTH; // Too short
       }
       
       // Track current competition from group headers
@@ -196,7 +200,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
             if (cells.length < 2) {
               // Could be a competition header row
               const headerText = text.trim();
-              if (headerText && headerText.length > 2 && headerText.length < 100) {
+              if (headerText && headerText.length >= MIN_LENGTH && headerText.length < 100) {
                 currentCompetition = headerText;
               }
               return;
@@ -221,7 +225,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
                 const linkText = link.innerText.trim();
                 // Filter out TV/broadcast links and short text
                 if (linkText && 
-                    linkText.length > 2 && 
+                    linkText.length >= MIN_LENGTH && 
                     !linkText.toLowerCase().includes('tv') &&
                     !looksLikeCompetition(linkText)) {
                   potentialTeams.push(linkText);
@@ -251,7 +255,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
               .trim();
             
             // Skip if no valid teams found
-            if (!homeTeam || !awayTeam || homeTeam.length < 3 || awayTeam.length < 3) return;
+            if (!homeTeam || !awayTeam || homeTeam.length < MIN_LENGTH || awayTeam.length < MIN_LENGTH) return;
             
             // Skip if home and away are the same
             if (homeTeam.toLowerCase() === awayTeam.toLowerCase()) return;
@@ -372,7 +376,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
                 return;
               }
               
-              if (!homeTeam || !awayTeam || homeTeam.length < 3 || awayTeam.length < 3) return;
+              if (!homeTeam || !awayTeam || homeTeam.length < MIN_LENGTH || awayTeam.length < MIN_LENGTH) return;
               
               // Extract kickoff time
               let kickoffUtc = null;
@@ -407,7 +411,7 @@ async function fetchProSoccerFixtures({ leagueUrl } = {}) {
       }
       
       return results;
-    }, TV_CHANNELS);
+    }, TV_CHANNELS, MIN_TEAM_NAME_LENGTH);
     
     await page.close();
     page = null;
