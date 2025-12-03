@@ -2168,7 +2168,7 @@ app.get('/admin/scrapers', async (req, res) => {
     <h3>Adding New Scrapers</h3>
     <p>To add a new scraper to this dashboard:</p>
     <ol>
-      <li>Create the scraper module in <code>scrapers/</code> directory (local) or <code>vps-scrapers/scrapers/</code> (VPS)</li>
+      <li>Create the scraper module in <code>scrapers/</code> directory (local) or <code>/opt/vps-scrapers/scrapers/</code> (VPS)</li>
       <li>Export a <code>healthCheck()</code> function that returns <code>{ok: boolean, latencyMs: number, error?: string}</code></li>
       <li>Add the scraper definition to <code>getScraperDefinitions()</code> in <code>app.js</code></li>
       <li>The scraper will automatically appear on this dashboard</li>

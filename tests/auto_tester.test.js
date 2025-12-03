@@ -106,7 +106,7 @@ test('VPS scrapers: all marked as requiresVPS', () => {
     assert(scraper.hasHealthCheck === true, `VPS scraper ${scraper.id} should have hasHealthCheck: true`);
     assert(typeof scraper.testMethod === 'string', `VPS scraper ${scraper.id} should have a testMethod`);
     assert(typeof scraper.module === 'string', `VPS scraper ${scraper.id} should have a module path`);
-    assert(scraper.module.startsWith('../vps-scrapers/'), `VPS scraper ${scraper.id} module should be in vps-scrapers directory`);
+    assert(scraper.module.startsWith('/opt/vps-scrapers/'), `VPS scraper ${scraper.id} module should be in /opt/vps-scrapers/ directory`);
   }
 });
 

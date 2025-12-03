@@ -2,10 +2,14 @@
 
 This folder contains Puppeteer-based scrapers designed to run on your VPS. These scrapers are called remotely from your Plesk telelistings app.
 
+## 📁 Default VPS Location
+
+The default installation path on your VPS is: `/opt/vps-scrapers/`
+
 ## 📁 Folder Structure
 
 ```
-vps-scrapers/
+/opt/vps-scrapers/
 ├── server.js                    # Main Express server (scraper microservice)
 ├── package.json                 # Dependencies and scripts
 ├── .env.example                 # Environment configuration template
@@ -29,14 +33,14 @@ vps-scrapers/
 
 ### 1. Transfer Files to VPS
 
-Copy this entire `vps-scrapers` folder to your VPS:
+Copy this entire `vps-scrapers` folder to your VPS at `/opt/vps-scrapers/`:
 
 ```bash
 # Using SCP from your local machine
-scp -r vps-scrapers/ user@your-vps-ip:/opt/lstv-scraper/scrapers/
+scp -r vps-scrapers/ user@your-vps-ip:/opt/vps-scrapers/
 
 # Or using rsync
-rsync -avz vps-scrapers/ user@your-vps-ip:/opt/lstv-scraper/scrapers/
+rsync -avz vps-scrapers/ user@your-vps-ip:/opt/vps-scrapers/
 ```
 
 ### 2. Install Dependencies on VPS
@@ -44,7 +48,7 @@ rsync -avz vps-scrapers/ user@your-vps-ip:/opt/lstv-scraper/scrapers/
 SSH into your VPS and run:
 
 ```bash
-cd /opt/lstv-scraper/scrapers
+cd /opt/vps-scrapers
 npm install
 ```
 
@@ -108,7 +112,7 @@ sudo yum install -y chromium
 ### 4. Configure Environment
 
 ```bash
-cd /opt/lstv-scraper/scrapers
+cd /opt/vps-scrapers
 cp .env.example .env
 
 # Edit .env with your preferred settings
@@ -492,7 +496,7 @@ NODE_OPTIONS="--max-old-space-size=2048" pm2 start server.js --name "lstv-scrape
 pm2 logs lstv-scraper
 
 # Or view log file
-tail -f /opt/lstv-scraper/scrapers/scraper.log
+tail -f /opt/vps-scrapers/scraper.log
 ```
 
 ## 📊 Monitoring
@@ -524,7 +528,7 @@ Add this to cron for automated monitoring:
 To update the scrapers:
 
 ```bash
-cd /opt/lstv-scraper/scrapers
+cd /opt/vps-scrapers
 git pull  # if using git
 npm install
 pm2 restart lstv-scraper
