@@ -24,7 +24,13 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3333;
-const API_KEY = process.env.LSTV_SCRAPER_KEY || process.env.LSTV_API_KEY || 'Subaru5554346';
+const DEFAULT_API_KEY = 'Subaru5554346';
+const API_KEY = process.env.LSTV_SCRAPER_KEY || process.env.LSTV_API_KEY || DEFAULT_API_KEY;
+
+// Warn if using default API key in production
+if (API_KEY === DEFAULT_API_KEY) {
+  console.warn('[WARNING] Using default API key. Set LSTV_SCRAPER_KEY environment variable for production use.');
+}
 
 // List of all supported sources
 const SUPPORTED_SOURCES = [
@@ -68,11 +74,12 @@ async function getBrowser() {
 
 /**
  * Authentication middleware that checks for valid API key.
+ * Returns 403 Forbidden for missing or invalid keys.
  */
 function authMiddleware(req, res, next) {
   const key = req.header('x-api-key') || req.query.key;
   if (!key || key !== API_KEY) {
-    return res.status(401).json({ error: 'unauthorized' });
+    return res.status(403).json({ error: 'forbidden' });
   }
   next();
 }

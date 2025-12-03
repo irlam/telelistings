@@ -604,10 +604,12 @@ async function getTvDataForFixture(baseFixture, options = {}) {
             
             // Find matching fixture
             const matchingFixture = fixtures.find(f => {
-              const homeMatch = normalizeForComparison(f.homeTeam || f.home).includes(normalizeForComparison(homeTeam)) ||
-                               normalizeForComparison(homeTeam).includes(normalizeForComparison(f.homeTeam || f.home));
-              const awayMatch = normalizeForComparison(f.awayTeam || f.away).includes(normalizeForComparison(awayTeam)) ||
-                               normalizeForComparison(awayTeam).includes(normalizeForComparison(f.awayTeam || f.away));
+              const fixtureHome = f.homeTeam || f.home || '';
+              const fixtureAway = f.awayTeam || f.away || '';
+              const homeMatch = normalizeForComparison(fixtureHome).includes(normalizeForComparison(homeTeam)) ||
+                               normalizeForComparison(homeTeam).includes(normalizeForComparison(fixtureHome));
+              const awayMatch = normalizeForComparison(fixtureAway).includes(normalizeForComparison(awayTeam)) ||
+                               normalizeForComparison(awayTeam).includes(normalizeForComparison(fixtureAway));
               return homeMatch && awayMatch;
             });
             
