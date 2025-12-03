@@ -79,6 +79,51 @@ test('SCRAPER_REGISTRY: has expected scrapers', () => {
   assert('lfotv' in registry);
 });
 
+test('SCRAPER_REGISTRY: has VPS scrapers', () => {
+  const registry = autoTester.SCRAPER_REGISTRY;
+  assert('vps-lstv' in registry);
+  assert('vps-bbc' in registry);
+  assert('vps-sky' in registry);
+  assert('vps-tnt' in registry);
+  assert('vps-lfotv' in registry);
+  assert('vps-prosoccertv' in registry);
+  assert('vps-oddalerts' in registry);
+  assert('vps-sporteventz' in registry);
+  assert('vps-wheresthematch' in registry);
+  assert('vps-worldsoccertalk' in registry);
+});
+
+test('VPS scrapers: all marked as requiresVPS', () => {
+  const registry = autoTester.SCRAPER_REGISTRY;
+  const vpsScrapers = Object.values(registry).filter(s => s.id.startsWith('vps-'));
+  
+  // Verify we have the expected number of VPS scrapers
+  assert(vpsScrapers.length === 10, `Expected 10 VPS scrapers, got ${vpsScrapers.length}`);
+  
+  // Verify all VPS scrapers have requiresVPS: true
+  for (const scraper of vpsScrapers) {
+    assert(scraper.requiresVPS === true, `VPS scraper ${scraper.id} should have requiresVPS: true`);
+    assert(scraper.hasHealthCheck === true, `VPS scraper ${scraper.id} should have hasHealthCheck: true`);
+    assert(typeof scraper.testMethod === 'string', `VPS scraper ${scraper.id} should have a testMethod`);
+    assert(typeof scraper.module === 'string', `VPS scraper ${scraper.id} should have a module path`);
+    assert(scraper.module.startsWith('../vps-scrapers/'), `VPS scraper ${scraper.id} module should be in vps-scrapers directory`);
+  }
+});
+
+test('getScraperConfig: returns config for VPS scraper', () => {
+  const config = autoTester.getScraperConfig('vps-lstv');
+  assert(config !== null);
+  assert.strictEqual(config.id, 'vps-lstv');
+  assert.strictEqual(config.name, 'VPS LiveSoccerTV');
+  assert.strictEqual(config.requiresVPS, true);
+});
+
+test('listScrapers: includes VPS scrapers', () => {
+  const scrapers = autoTester.listScrapers();
+  const vpsScrapers = scrapers.filter(s => s.id.startsWith('vps-'));
+  assert(vpsScrapers.length === 10, `Expected 10 VPS scrapers in list, got ${vpsScrapers.length}`);
+});
+
 // ---------- Scrape Store Tests ----------
 
 console.log('\n--- Scrape Store Tests ---\n');
