@@ -1568,9 +1568,109 @@ const livefootballontv = require('./scrapers/livefootballontv');
 const fixturesScraper = require('./scrapers/fixtures_scraper');
 const footballdata = require('./scrapers/footballdata');
 
+// VPS Scraper configuration
+const VPS_SCRAPER_URL = () => process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
+const VPS_SCRAPER_KEY = () => process.env.LSTV_SCRAPER_KEY || '';
+
+/**
+ * Create a VPS scraper health check function that calls the remote VPS endpoint.
+ * @param {string} scraperId - The scraper ID (e.g., 'bbc', 'skysports')
+ * @returns {Function} Health check function
+ */
+function createVpsHealthCheck(scraperId) {
+  return async function healthCheck() {
+    const startTime = Date.now();
+    const scraperUrl = VPS_SCRAPER_URL();
+    const scraperKey = VPS_SCRAPER_KEY();
+    
+    if (!scraperUrl) {
+      return {
+        ok: false,
+        latencyMs: 0,
+        error: 'VPS_SCRAPER_URL not configured'
+      };
+    }
+    
+    try {
+      const response = await axios.get(
+        `${scraperUrl}/health/${scraperId}`,
+        {
+          headers: scraperKey ? { 'x-api-key': scraperKey } : {},
+          timeout: 15000
+        }
+      );
+      
+      const latencyMs = Date.now() - startTime;
+      return {
+        ok: response.data.ok !== false,
+        latencyMs,
+        remote: response.data
+      };
+    } catch (err) {
+      const latencyMs = Date.now() - startTime;
+      return {
+        ok: false,
+        latencyMs,
+        error: err.response?.data?.error || err.message || String(err)
+      };
+    }
+  };
+}
+
+/**
+ * Create a VPS scraper module wrapper that can be used for testing.
+ * @param {string} scraperId - The scraper ID
+ * @param {string} path - The API path (e.g., '/scrape/bbc')
+ * @returns {Object} Module-like object with healthCheck and fetch functions
+ */
+function createVpsScraperModule(scraperId, path) {
+  return {
+    healthCheck: createVpsHealthCheck(scraperId),
+    fetch: async (params = {}) => {
+      const scraperUrl = VPS_SCRAPER_URL();
+      const scraperKey = VPS_SCRAPER_KEY();
+      
+      if (!scraperUrl) {
+        return { fixtures: [], error: 'VPS_SCRAPER_URL not configured' };
+      }
+      
+      try {
+        const response = await axios.post(
+          `${scraperUrl}${path}`,
+          params,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(scraperKey ? { 'x-api-key': scraperKey } : {})
+            },
+            timeout: 60000
+          }
+        );
+        return response.data;
+      } catch (err) {
+        return { fixtures: [], error: err.message };
+      }
+    }
+  };
+}
+
+// Create VPS scraper modules
+const vpsScrapers = {
+  'vps-bbc': createVpsScraperModule('bbc', '/scrape/bbc'),
+  'vps-livefootballontv': createVpsScraperModule('livefootballontv', '/scrape/livefootballontv'),
+  'vps-lstv': createVpsScraperModule('lstv', '/scrape/lstv'),
+  'vps-oddalerts': createVpsScraperModule('oddalerts', '/scrape/oddalerts'),
+  'vps-prosoccertv': createVpsScraperModule('prosoccertv', '/scrape/prosoccertv'),
+  'vps-skysports': createVpsScraperModule('skysports', '/scrape/skysports'),
+  'vps-sporteventz': createVpsScraperModule('sporteventz', '/scrape/sporteventz'),
+  'vps-tnt': createVpsScraperModule('tnt', '/scrape/tnt'),
+  'vps-wheresthematch': createVpsScraperModule('wheresthematch', '/scrape/wheresthematch'),
+  'vps-worldsoccertalk': createVpsScraperModule('worldsoccertalk', '/scrape/worldsoccertalk')
+};
+
 // Define all available scrapers with metadata
 function getScraperDefinitions() {
-  return [
+  const localScrapers = [
     {
       id: 'lstv',
       name: 'LiveSoccerTV (LSTV)',
@@ -1582,7 +1682,8 @@ function getScraperDefinitions() {
       icon: '📺',
       color: '#e74c3c',
       module: lstv,
-      hasHealthCheck: true
+      hasHealthCheck: true,
+      isVps: false
     },
     {
       id: 'tsdb',
@@ -1595,7 +1696,8 @@ function getScraperDefinitions() {
       icon: '⚽',
       color: '#3498db',
       module: tsdb,
-      hasHealthCheck: true
+      hasHealthCheck: true,
+      isVps: false
     },
     {
       id: 'wiki',
@@ -1608,7 +1710,8 @@ function getScraperDefinitions() {
       icon: '📖',
       color: '#9b59b6',
       module: wiki,
-      hasHealthCheck: false
+      hasHealthCheck: false,
+      isVps: false
     },
     {
       id: 'bbc',
@@ -1621,7 +1724,8 @@ function getScraperDefinitions() {
       icon: '🇬🇧',
       color: '#2ecc71',
       module: bbcFixtures,
-      hasHealthCheck: true
+      hasHealthCheck: true,
+      isVps: false
     },
     {
       id: 'sky',
@@ -1634,7 +1738,8 @@ function getScraperDefinitions() {
       icon: '📡',
       color: '#e67e22',
       module: skysports,
-      hasHealthCheck: true
+      hasHealthCheck: true,
+      isVps: false
     },
     {
       id: 'tnt',
@@ -1647,7 +1752,8 @@ function getScraperDefinitions() {
       icon: '🏆',
       color: '#1abc9c',
       module: tntScraper,
-      hasHealthCheck: true
+      hasHealthCheck: true,
+      isVps: false
     },
     {
       id: 'lfotv',
@@ -1660,30 +1766,209 @@ function getScraperDefinitions() {
       icon: '📺',
       color: '#f39c12',
       module: livefootballontv,
-      hasHealthCheck: true
+      hasHealthCheck: true,
+      isVps: false
     }
   ];
+
+  // VPS Scrapers - running on remote VPS at configured URL
+  const vpsScraperDefs = [
+    {
+      id: 'vps-bbc',
+      name: 'BBC Sport (VPS)',
+      description: 'VPS-hosted BBC Sport scraper using Puppeteer for dynamic content. Provides fixture information and competition details.',
+      source: 'https://www.bbc.co.uk/sport/football',
+      dataProvided: ['Fixture list', 'Competition names', 'Kickoff times'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#2ecc71',
+      module: vpsScrapers['vps-bbc'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/bbc'
+    },
+    {
+      id: 'vps-livefootballontv',
+      name: 'LiveFootballOnTV (VPS)',
+      description: 'VPS-hosted LiveFootballOnTV scraper. Aggregates UK TV listings from multiple broadcasters.',
+      source: 'https://www.live-footballontv.com',
+      dataProvided: ['UK TV channels', 'Match schedule'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#f39c12',
+      module: vpsScrapers['vps-livefootballontv'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/livefootballontv'
+    },
+    {
+      id: 'vps-lstv',
+      name: 'LiveSoccerTV (VPS)',
+      description: 'VPS-hosted LiveSoccerTV scraper with Puppeteer. Provides worldwide TV channel data by region.',
+      source: 'https://www.livesoccertv.com',
+      dataProvided: ['TV channels by region', 'Match kickoff times', 'League information'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: '4 hours',
+      icon: '🖥️',
+      color: '#e74c3c',
+      module: vpsScrapers['vps-lstv'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/lstv'
+    },
+    {
+      id: 'vps-oddalerts',
+      name: 'OddAlerts (VPS)',
+      description: 'VPS-hosted OddAlerts TV Guide scraper. Provides betting odds and TV channel information.',
+      source: 'https://oddalerts.com',
+      dataProvided: ['TV channels', 'Betting odds', 'Match schedule'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#9b59b6',
+      module: vpsScrapers['vps-oddalerts'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/oddalerts'
+    },
+    {
+      id: 'vps-prosoccertv',
+      name: 'ProSoccerTV (VPS)',
+      description: 'VPS-hosted ProSoccer.TV scraper. Provides international TV channel listings.',
+      source: 'https://prosoccer.tv',
+      dataProvided: ['International TV channels', 'League schedules'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#3498db',
+      module: vpsScrapers['vps-prosoccertv'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/prosoccertv'
+    },
+    {
+      id: 'vps-skysports',
+      name: 'Sky Sports (VPS)',
+      description: 'VPS-hosted Sky Sports scraper using Puppeteer. Provides Sky Sports channel assignments.',
+      source: 'https://www.skysports.com',
+      dataProvided: ['Sky Sports fixtures', 'Sky channel assignments'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#e67e22',
+      module: vpsScrapers['vps-skysports'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/skysports'
+    },
+    {
+      id: 'vps-sporteventz',
+      name: 'SportEventz (VPS)',
+      description: 'VPS-hosted SportEventz scraper. Provides sports event schedules and TV information.',
+      source: 'https://sporteventz.com',
+      dataProvided: ['Event schedules', 'TV channels'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#1abc9c',
+      module: vpsScrapers['vps-sporteventz'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/sporteventz'
+    },
+    {
+      id: 'vps-tnt',
+      name: 'TNT Sports (VPS)',
+      description: 'VPS-hosted TNT Sports scraper. Provides TNT Sports channel information for Champions League and other competitions.',
+      source: 'https://www.tntsports.co.uk',
+      dataProvided: ['TNT Sports fixtures', 'TNT channel assignments'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#1abc9c',
+      module: vpsScrapers['vps-tnt'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/tnt'
+    },
+    {
+      id: 'vps-wheresthematch',
+      name: "Where's The Match (VPS)",
+      description: "VPS-hosted Where's The Match UK scraper. Provides comprehensive UK TV listings.",
+      source: 'https://www.wheresthematch.com',
+      dataProvided: ['UK TV channels', 'Match schedule', 'Streaming options'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#e74c3c',
+      module: vpsScrapers['vps-wheresthematch'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/wheresthematch'
+    },
+    {
+      id: 'vps-worldsoccertalk',
+      name: 'World Soccer Talk (VPS)',
+      description: 'VPS-hosted World Soccer Talk scraper. Provides US and international TV schedules.',
+      source: 'https://worldsoccertalk.com',
+      dataProvided: ['US TV channels', 'International schedules', 'Streaming platforms'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#3498db',
+      module: vpsScrapers['vps-worldsoccertalk'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/worldsoccertalk'
+    }
+  ];
+
+  return [...localScrapers, ...vpsScraperDefs];
 }
 
 app.get('/admin/scrapers', async (req, res) => {
   const scrapers = getScraperDefinitions();
   const cfg = loadConfig();
   
-  // Run health checks for all scrapers that support it
+  // Run health checks for all scrapers in parallel with timeout
   const healthResults = {};
+  const HEALTH_CHECK_TIMEOUT = 5000; // 5 second timeout per scraper
   
-  for (const scraper of scrapers) {
-    if (scraper.hasHealthCheck && scraper.module && typeof scraper.module.healthCheck === 'function') {
-      try {
-        healthResults[scraper.id] = await scraper.module.healthCheck();
-      } catch (err) {
-        healthResults[scraper.id] = { ok: false, error: err.message };
-      }
+  // Helper to wrap health check with timeout
+  async function healthCheckWithTimeout(scraper) {
+    if (!scraper.hasHealthCheck || !scraper.module || typeof scraper.module.healthCheck !== 'function') {
+      return { scraperId: scraper.id, result: null };
+    }
+    
+    try {
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Health check timeout')), HEALTH_CHECK_TIMEOUT)
+      );
+      const result = await Promise.race([
+        scraper.module.healthCheck(),
+        timeoutPromise
+      ]);
+      return { scraperId: scraper.id, result };
+    } catch (err) {
+      return { scraperId: scraper.id, result: { ok: false, error: err.message } };
     }
   }
   
-  // Build scraper cards
-  const scraperCards = scrapers.map(scraper => {
+  // Run all health checks in parallel
+  const healthCheckPromises = scrapers.map(healthCheckWithTimeout);
+  const healthCheckResults = await Promise.all(healthCheckPromises);
+  
+  // Populate healthResults object
+  for (const { scraperId, result } of healthCheckResults) {
+    if (result) {
+      healthResults[scraperId] = result;
+    }
+  }
+  
+  // Build scraper card HTML
+  function buildScraperCard(scraper) {
     const health = healthResults[scraper.id];
     let healthHtml = '';
     
@@ -1703,12 +1988,14 @@ app.get('/admin/scrapers', async (req, res) => {
     }
     
     const dataTags = scraper.dataProvided.map(d => `<span class="data-tag">${escapeHtml(d)}</span>`).join('');
+    const vpsBadge = scraper.isVps ? '<span class="vps-badge">VPS</span>' : '';
     
     return `
-    <div class="scraper-card" style="border-left-color: ${scraper.color};">
+    <div class="scraper-card ${scraper.isVps ? 'vps-scraper' : ''}" style="border-left-color: ${scraper.color};">
       <div class="scraper-header">
         <span class="scraper-icon">${scraper.icon}</span>
         <h3 class="scraper-name">${escapeHtml(scraper.name)}</h3>
+        ${vpsBadge}
       </div>
       
       <p class="scraper-desc">${escapeHtml(scraper.description)}</p>
@@ -1726,6 +2013,12 @@ app.get('/admin/scrapers', async (req, res) => {
           <span class="meta-label">Cache:</span>
           <span>${escapeHtml(scraper.cacheTime)}</span>
         </div>
+        ${scraper.vpsEndpoint ? `
+        <div class="meta-row">
+          <span class="meta-label">Endpoint:</span>
+          <code>${escapeHtml(scraper.vpsEndpoint)}</code>
+        </div>
+        ` : ''}
       </div>
       
       <div class="scraper-data">
@@ -1740,7 +2033,14 @@ app.get('/admin/scrapers', async (req, res) => {
         <a href="/admin/scraper/${scraper.id}" class="btn-view">View Details →</a>
       </div>
     </div>`;
-  }).join('');
+  }
+  
+  // Separate local and VPS scrapers
+  const localScrapers = scrapers.filter(s => !s.isVps);
+  const vpsScrapersList = scrapers.filter(s => s.isVps);
+  
+  const localScraperCards = localScrapers.map(buildScraperCard).join('');
+  const vpsScraperCards = vpsScrapersList.map(buildScraperCard).join('');
   
   // Calculate health statistics
   const healthyCount = Object.values(healthResults).filter(h => h && h.ok).length;
@@ -1748,12 +2048,17 @@ app.get('/admin/scrapers', async (req, res) => {
   const allHealthy = healthyCount === totalHealthChecks;
   const httpScraperCount = scrapers.filter(s => s.method.includes('HTTP')).length;
   const apiScraperCount = scrapers.filter(s => s.method.includes('API')).length;
+  const vpsScraperCount = vpsScrapersList.length;
+  
+  // Get VPS URL for display
+  const vpsUrl = VPS_SCRAPER_URL();
   
   const body = `
   <style>
     .scraper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-top: 20px; }
     .scraper-card { background:#1e2a38; padding:20px; border-radius:12px; border-left:5px solid #4a90d9; }
-    .scraper-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+    .scraper-card.vps-scraper { background:#1a2535; }
+    .scraper-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
     .scraper-icon { font-size:28px; }
     .scraper-name { margin:0; font-size:18px; color:#fff; }
     .scraper-desc { color:#bbb; font-size:13px; line-height:1.5; margin-bottom:16px; }
@@ -1762,11 +2067,12 @@ app.get('/admin/scrapers', async (req, res) => {
     .meta-row:last-child { margin-bottom:0; }
     .meta-label { color:#888; width:70px; flex-shrink:0; }
     .meta-row a { color:#80cbc4; }
+    .meta-row code { background:#1e2a38; padding:2px 6px; border-radius:4px; font-size:12px; }
     .scraper-data { margin-bottom:16px; }
     .data-label { color:#888; font-size:12px; display:block; margin-bottom:8px; }
     .data-tags { display:flex; flex-wrap:wrap; gap:6px; }
     .data-tag { background:#2d4a6a; color:#8eb5e0; padding:3px 8px; border-radius:4px; font-size:11px; }
-    .health-status { padding:10px; border-radius:6px; display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+    .health-status { padding:10px; border-radius:6px; display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
     .health-ok { background:#1d4a3a; }
     .health-error { background:#4a1d1d; }
     .health-unknown { background:#3a3a1d; }
@@ -1779,10 +2085,15 @@ app.get('/admin/scrapers', async (req, res) => {
     .btn-auto:hover { background:#00d6aa; text-decoration:none; }
     .btn-view { display:inline-block; background:#4a90d9; color:#fff; padding:8px 16px; border-radius:6px; text-decoration:none; font-size:13px; }
     .btn-view:hover { background:#5da0e9; text-decoration:none; }
-    .summary-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:12px; margin-top:16px; }
+    .summary-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:12px; margin-top:16px; }
     .summary-stat { background:#1e2a38; padding:16px; border-radius:8px; text-align:center; }
     .stat-value { font-size:28px; font-weight:bold; color:#00b894; }
     .stat-label { color:#888; font-size:12px; margin-top:4px; }
+    .vps-badge { background:#9b59b6; color:#fff; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:bold; }
+    .section-header { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+    .section-icon { font-size:24px; }
+    .vps-info { background:#2d1a4a; padding:12px 16px; border-radius:8px; margin-top:12px; }
+    .vps-info code { background:#1a0d2e; padding:2px 8px; border-radius:4px; }
   </style>
   
   <div class="card">
@@ -1799,8 +2110,16 @@ app.get('/admin/scrapers', async (req, res) => {
         <div class="stat-label">Healthy</div>
       </div>
       <div class="summary-stat">
+        <div class="stat-value">${localScrapers.length}</div>
+        <div class="stat-label">Local Scrapers</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value">${vpsScraperCount}</div>
+        <div class="stat-label">VPS Scrapers</div>
+      </div>
+      <div class="summary-stat">
         <div class="stat-value">${httpScraperCount}</div>
-        <div class="stat-label">HTTP Scrapers</div>
+        <div class="stat-label">HTTP Based</div>
       </div>
       <div class="summary-stat">
         <div class="stat-value">${apiScraperCount}</div>
@@ -1810,23 +2129,43 @@ app.get('/admin/scrapers', async (req, res) => {
   </div>
   
   <div class="card">
-    <h3>All Scrapers</h3>
-    <p class="muted">Click on any scraper to view detailed information and test its functionality.</p>
+    <div class="section-header">
+      <span class="section-icon">🏠</span>
+      <h3>Local Scrapers</h3>
+    </div>
+    <p class="muted">Scrapers running on the Plesk server using HTTP/Cheerio or direct API calls.</p>
   </div>
   
   <div class="scraper-grid">
-    ${scraperCards}
+    ${localScraperCards}
+  </div>
+  
+  <div class="card" style="margin-top:24px;">
+    <div class="section-header">
+      <span class="section-icon">🖥️</span>
+      <h3>VPS Scrapers</h3>
+    </div>
+    <p class="muted">Scrapers running on the remote VPS server using Puppeteer for dynamic content scraping.</p>
+    <div class="vps-info">
+      <strong>VPS Server URL:</strong> <code>${escapeHtml(vpsUrl)}</code>
+      <br><span class="muted" style="font-size:12px;">Configure via <a href="/admin/environment">Environment Variables</a> (LSTV_SCRAPER_URL)</span>
+    </div>
+  </div>
+  
+  <div class="scraper-grid">
+    ${vpsScraperCards}
   </div>
   
   <div class="card" style="margin-top:24px;">
     <h3>Adding New Scrapers</h3>
     <p>To add a new scraper to this dashboard:</p>
     <ol>
-      <li>Create the scraper module in <code>scrapers/</code> directory</li>
+      <li>Create the scraper module in <code>scrapers/</code> directory (local) or <code>vps-scrapers/scrapers/</code> (VPS)</li>
       <li>Export a <code>healthCheck()</code> function that returns <code>{ok: boolean, latencyMs: number, error?: string}</code></li>
       <li>Add the scraper definition to <code>getScraperDefinitions()</code> in <code>app.js</code></li>
       <li>The scraper will automatically appear on this dashboard</li>
     </ol>
+    <p class="muted">VPS scrapers use the same base URL configured via LSTV_SCRAPER_URL environment variable.</p>
   </div>
   `;
   
@@ -1962,6 +2301,29 @@ app.get('/admin/scraper/:id', async (req, res) => {
             teamName: teamName?.trim() || home?.trim() || undefined
           });
           break;
+        default:
+          // Handle VPS scrapers
+          if (scraperId.startsWith('vps-')) {
+            const vpsModule = vpsScrapers[scraperId];
+            if (vpsModule && vpsModule.fetch) {
+              if (autoTestMode) {
+                autoTestInfo = `Auto-test: Fetching fixtures from VPS ${scraperId.replace('vps-', '')} scraper`;
+              }
+              // Build parameters based on scraper type
+              const params = {};
+              if (home) params.home = home.trim();
+              if (away) params.away = away.trim();
+              if (teamName) params.teamName = teamName.trim();
+              if (date) params.date = date;
+              
+              testResult = await vpsModule.fetch(params);
+            } else {
+              testError = `VPS scraper module not found for ${scraperId}`;
+            }
+          } else {
+            testError = `Unknown scraper: ${scraperId}`;
+          }
+          break;
       }
     } catch (err) {
       testError = err.message || String(err);
@@ -2003,7 +2365,7 @@ app.get('/admin/scraper/:id', async (req, res) => {
   
   // Build test form based on scraper type
   let testFormHtml = '';
-  if (['lstv', 'tsdb'].includes(scraperId)) {
+  if (['lstv', 'tsdb'].includes(scraperId) || scraperId === 'vps-lstv') {
     testFormHtml = `
     <div class="auto-test-section" style="margin-bottom:16px;">
       <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Today's Fixtures)</a>
@@ -2042,10 +2404,12 @@ app.get('/admin/scraper/:id', async (req, res) => {
       <p><button type="submit">Test Scraper</button></p>
     </form>`;
   } else {
+    // Default form for other scrapers (including VPS scrapers)
+    const isVpsScraper = scraperId.startsWith('vps-');
     testFormHtml = `
     <div class="auto-test-section" style="margin-bottom:16px;">
       <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Today's Fixtures)</a>
-      <span class="muted" style="margin-left:8px;">Fetches all fixtures for the current day</span>
+      <span class="muted" style="margin-left:8px;">Fetches all fixtures for the current day${isVpsScraper ? ' from VPS' : ''}</span>
     </div>
     <p style="margin:12px 0; color:#888;">— OR filter by team name below —</p>
     <form method="get" action="/admin/scraper/${scraperId}">
@@ -2058,6 +2422,7 @@ app.get('/admin/scraper/:id', async (req, res) => {
   }
   
   const dataTags = scraper.dataProvided.map(d => `<span class="data-tag">${escapeHtml(d)}</span>`).join('');
+  const vpsBadge = scraper.isVps ? '<span class="vps-badge">VPS</span>' : '';
   
   const body = `
   <style>
@@ -2087,12 +2452,16 @@ app.get('/admin/scraper/:id', async (req, res) => {
     .btn-auto-test { display:inline-block; background:#00b894; color:#000; padding:12px 24px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:bold; }
     .btn-auto-test:hover { background:#00d6aa; text-decoration:none; }
     .auto-test-section { padding:16px; background:#1a2634; border-radius:8px; }
+    .vps-badge { background:#9b59b6; color:#fff; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:12px; }
+    .vps-info-box { background:#2d1a4a; padding:12px 16px; border-radius:8px; margin-top:16px; }
+    .vps-info-box code { background:#1a0d2e; padding:2px 8px; border-radius:4px; }
   </style>
   
   <div class="scraper-banner">
     <div class="banner-header">
       <span class="banner-icon">${scraper.icon}</span>
       <h2 class="banner-title">${escapeHtml(scraper.name)}</h2>
+      ${vpsBadge}
     </div>
     <p class="banner-desc">${escapeHtml(scraper.description)}</p>
     
@@ -2109,7 +2478,20 @@ app.get('/admin/scraper/:id', async (req, res) => {
         <div class="info-label">Cache Duration</div>
         <div class="info-value">${escapeHtml(scraper.cacheTime)}</div>
       </div>
+      ${scraper.vpsEndpoint ? `
+      <div class="info-item">
+        <div class="info-label">VPS Endpoint</div>
+        <div class="info-value"><code>${escapeHtml(scraper.vpsEndpoint)}</code></div>
+      </div>
+      ` : ''}
     </div>
+    
+    ${scraper.isVps ? `
+    <div class="vps-info-box">
+      <strong>VPS Server:</strong> <code>${escapeHtml(VPS_SCRAPER_URL())}</code>
+      <br><span class="muted" style="font-size:12px;">This scraper runs on the remote VPS using Puppeteer. Configure via <a href="/admin/environment">Environment Variables</a>.</span>
+    </div>
+    ` : ''}
     
     <div class="data-tags">
       <span class="info-label" style="width:100%;margin-bottom:8px;">Data Provided:</span>
@@ -2174,6 +2556,14 @@ app.get('/admin/scraper/:id', async (req, res) => {
         <li>Match rows are parsed from the fixture table</li>
         <li>UK TV channel names are extracted from text</li>
         <li>Results are filtered by team if specified</li>
+      ` : ''}
+      ${scraperId.startsWith('vps-') ? `
+        <li>The Plesk app sends an HTTP POST request to the VPS scraper service at <code>${escapeHtml(VPS_SCRAPER_URL())}</code></li>
+        <li>The VPS service launches a Puppeteer browser instance</li>
+        <li>Puppeteer navigates to the target website and waits for dynamic content to load</li>
+        <li>Page content is parsed and TV channel data is extracted</li>
+        <li>Results are returned to the Plesk app in JSON format</li>
+        <li>The VPS endpoint used is: <code>${escapeHtml(scraper.vpsEndpoint || '')}</code></li>
       ` : ''}
     </ol>
   </div>
