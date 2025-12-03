@@ -33,10 +33,10 @@ Copy this entire `vps-scrapers` folder to your VPS:
 
 ```bash
 # Using SCP from your local machine
-scp -r vps-scrapers/ user@your-vps-ip:/home/user/
+scp -r vps-scrapers/ user@your-vps-ip:/opt/lstv-scraper/scrapers/
 
 # Or using rsync
-rsync -avz vps-scrapers/ user@your-vps-ip:/home/user/vps-scrapers/
+rsync -avz vps-scrapers/ user@your-vps-ip:/opt/lstv-scraper/scrapers/
 ```
 
 ### 2. Install Dependencies on VPS
@@ -44,7 +44,7 @@ rsync -avz vps-scrapers/ user@your-vps-ip:/home/user/vps-scrapers/
 SSH into your VPS and run:
 
 ```bash
-cd /home/user/vps-scrapers
+cd /opt/lstv-scraper/scrapers
 npm install
 ```
 
@@ -108,7 +108,7 @@ sudo yum install -y chromium
 ### 4. Configure Environment
 
 ```bash
-cd /home/user/vps-scrapers
+cd /opt/lstv-scraper/scrapers
 cp .env.example .env
 
 # Edit .env with your preferred settings
@@ -492,7 +492,7 @@ NODE_OPTIONS="--max-old-space-size=2048" pm2 start server.js --name "lstv-scrape
 pm2 logs lstv-scraper
 
 # Or view log file
-tail -f /home/user/vps-scrapers/scraper.log
+tail -f /opt/lstv-scraper/scrapers/scraper.log
 ```
 
 ## 📊 Monitoring
@@ -524,7 +524,7 @@ Add this to cron for automated monitoring:
 To update the scrapers:
 
 ```bash
-cd /home/user/vps-scrapers
+cd /opt/lstv-scraper/scrapers
 git pull  # if using git
 npm install
 pm2 restart lstv-scraper
