@@ -201,7 +201,7 @@ async function fetchOddAlertsFixtures({ date } = {}) {
             
             // Fallback: parse from text for "vs" or "v" patterns
             if (!homeTeam || !awayTeam) {
-              const vsMatch = text.match(/([A-Za-z\s\-'\.]+)\s+(?:v|vs|versus|–|-)\s+([A-Za-z\s\-'\.]+)/i);
+              const vsMatch = text.match(/([A-Za-z\s\-'\.0-9]+)\s+(?:v|vs|versus|–|-)\s+([A-Za-z\s\-'\.0-9]+)/i);
               if (vsMatch) {
                 homeTeam = vsMatch[1].trim();
                 awayTeam = vsMatch[2].trim();

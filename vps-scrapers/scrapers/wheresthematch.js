@@ -196,7 +196,7 @@ async function fetchWheresTheMatchFixtures({ date } = {}) {
             
             // Fallback: parse from text for "vs" or "v" patterns
             if (!homeTeam || !awayTeam) {
-              const vsMatch = text.match(/([A-Za-z\s\-'\.]+)\s+(?:v|vs|versus|–|-)\s+([A-Za-z\s\-'\.]+)/i);
+              const vsMatch = text.match(/([A-Za-z\s\-'\.0-9]+)\s+(?:v|vs|versus|–|-)\s+([A-Za-z\s\-'\.0-9]+)/i);
               if (vsMatch) {
                 homeTeam = vsMatch[1].trim();
                 awayTeam = vsMatch[2].trim();
@@ -313,7 +313,7 @@ async function healthCheck() {
     page = null;
     
     const latencyMs = Date.now() - startTime;
-    log(`[health] OK in ${latencyMs}ms`);
+    log(`[health] ${hasExpectedContent ? 'OK' : 'WARN'} in ${latencyMs}ms`);
     return { ok: hasExpectedContent, latencyMs, title };
     
   } catch (err) {
