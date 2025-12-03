@@ -308,9 +308,39 @@ async function healthCheck() {
   }
 }
 
+// ---------- Unified Scrape Function ----------
+
+/**
+ * Unified scrape function with consistent signature.
+ * @param {Object} params - Parameters
+ * @param {string} [params.teamName] - Team name to filter by
+ * @param {string} [params.competition] - Competition to filter by
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function scrape(params = {}) {
+  const result = await fetchTNTFixtures(params);
+  
+  // Normalize to consistent format
+  const fixtures = (result.fixtures || []).map(f => ({
+    homeTeam: f.home || null,
+    awayTeam: f.away || null,
+    kickoffUtc: f.kickoffUtc || null,
+    league: null,
+    competition: f.competition || null,
+    url: null,
+    channels: f.channels || []
+  }));
+  
+  return {
+    fixtures,
+    source: 'tnt'
+  };
+}
+
 // ---------- Module Exports ----------
 
 module.exports = {
+  scrape,
   fetchTNTFixtures,
   healthCheck,
   extractChannels,

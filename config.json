@@ -4,6 +4,18 @@
   "icsUrl": "https://thefishy.co.uk/calendar/Man+Utd",
   "icsDaysAhead": 7,
   "theSportsDbApiKey": "",
+  "remoteScrapers": {
+    "enabled": false,
+    "enableBBC": false,
+    "enableSkySports": false,
+    "enableTNT": false,
+    "enableLiveFootballOnTV": false,
+    "enableOddAlerts": false,
+    "enableProSoccerTV": false,
+    "enableSportEventz": false,
+    "enableWheresTheMatch": false,
+    "enableWorldSoccerTalk": false
+  },
   "channels": [
     {
       "id": "@FootballOnTvUK",

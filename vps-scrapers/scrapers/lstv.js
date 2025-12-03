@@ -466,9 +466,72 @@ async function healthCheck() {
   }
 }
 
+// ---------- Unified Scrape Function ----------
+
+/**
+ * Unified scrape function with consistent signature.
+ * @param {Object} params - Parameters
+ * @param {string} [params.home] - Home team name
+ * @param {string} [params.away] - Away team name
+ * @param {string} [params.dateUtc] - Match date UTC
+ * @param {string} [params.leagueHint] - League hint
+ * @param {string} [params.kickoffUtc] - Kickoff time UTC
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function scrape(params = {}) {
+  // If home and away are provided, scrape specific match
+  if (params.home && params.away) {
+    const result = await scrapeLSTV({
+      home: params.home,
+      away: params.away,
+      dateUtc: params.dateUtc || params.kickoffUtc,
+      leagueHint: params.leagueHint || params.league
+    });
+    
+    // Normalize to consistent format
+    const fixtures = [{
+      homeTeam: params.home,
+      awayTeam: params.away,
+      kickoffUtc: result.kickoffUtc || params.dateUtc || params.kickoffUtc || null,
+      league: result.league || params.leagueHint || null,
+      competition: result.league || null,
+      url: result.url || null,
+      regionChannels: result.regionChannels || [],
+      matchScore: result.matchScore
+    }];
+    
+    return {
+      fixtures,
+      source: 'lstv'
+    };
+  }
+  
+  // Otherwise, scrape all fixtures
+  const result = await scrapeLSTVFixtures({
+    region: params.region,
+    dateUtc: params.dateUtc || params.date
+  });
+  
+  const fixtures = (result.fixtures || []).map(f => ({
+    homeTeam: f.home || null,
+    awayTeam: f.away || null,
+    kickoffUtc: f.kickoffUtc || null,
+    league: f.league || null,
+    competition: f.league || null,
+    url: f.url || null,
+    regionChannels: f.regionChannels || []
+  }));
+  
+  return {
+    fixtures,
+    source: 'lstv'
+  };
+}
+
 // ---------- Module Exports ----------
 
 module.exports = {
+  scrape,
   scrapeLSTV,
   scrapeLSTVFixtures,
   healthCheck,

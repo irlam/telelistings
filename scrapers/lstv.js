@@ -272,6 +272,148 @@ function findChromePath() {
   return null;
 }
 
+// ---------- Generic Remote Scraper Client ----------
+
+/**
+ * Generic helper to call any remote scraper endpoint.
+ * Handles timeouts and non-2xx responses gracefully (logs + returns empty fixtures).
+ *
+ * @param {Object} params - Parameters
+ * @param {string} params.source - Source name for logging (e.g., 'lstv', 'bbc')
+ * @param {string} params.path - API path (e.g., '/scrape/lstv')
+ * @param {Object} [params.payload={}] - JSON body to send
+ * @param {number} [params.timeout=60000] - Request timeout in ms
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function callRemoteScraper({ source, path, payload = {}, timeout = 60000 }) {
+  const emptyResult = { fixtures: [], source };
+  
+  // Validate configuration
+  if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
+    log(`[${source.toUpperCase()}] ERROR: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY not configured`);
+    return emptyResult;
+  }
+  
+  const url = `${LSTV_SCRAPER_URL}${path}`;
+  debugLog(`[${source.toUpperCase()}] Calling: ${url}`);
+  
+  try {
+    const response = await axios.post(
+      url,
+      payload,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': LSTV_SCRAPER_KEY
+        },
+        timeout
+      }
+    );
+    
+    const data = response.data;
+    
+    // Handle both new unified format and legacy format
+    const fixtures = Array.isArray(data.fixtures) 
+      ? data.fixtures 
+      : (data.data?.fixtures || []);
+    
+    debugLog(`[${source.toUpperCase()}] Received ${fixtures.length} fixtures`);
+    
+    return {
+      fixtures,
+      source: data.source || source
+    };
+    
+  } catch (err) {
+    const errorMessage = err.response?.data?.error || err.message || String(err);
+    log(`[${source.toUpperCase()}] Remote call error: ${errorMessage}`);
+    return emptyResult;
+  }
+}
+
+// ---------- Remote Scraper Wrappers ----------
+
+/**
+ * Fetch BBC Sport fixtures from remote scraper.
+ * @param {Object} params - Parameters (teamName, teamSlug)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchBBCRemote(params = {}) {
+  return callRemoteScraper({ source: 'bbc', path: '/scrape/bbc', payload: params });
+}
+
+/**
+ * Fetch Sky Sports fixtures from remote scraper.
+ * @param {Object} params - Parameters (teamName, competition)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchSkySportsRemote(params = {}) {
+  return callRemoteScraper({ source: 'skysports', path: '/scrape/skysports', payload: params });
+}
+
+/**
+ * Fetch TNT Sports fixtures from remote scraper.
+ * @param {Object} params - Parameters (teamName, competition)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchTNTRemote(params = {}) {
+  return callRemoteScraper({ source: 'tnt', path: '/scrape/tnt', payload: params });
+}
+
+/**
+ * Fetch LiveFootballOnTV fixtures from remote scraper.
+ * @param {Object} params - Parameters (teamName, competition)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchLiveFootballOnTVRemote(params = {}) {
+  return callRemoteScraper({ source: 'livefootballontv', path: '/scrape/livefootballontv', payload: params });
+}
+
+/**
+ * Fetch OddAlerts fixtures from remote scraper.
+ * @param {Object} params - Parameters (date)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchOddAlertsRemote(params = {}) {
+  return callRemoteScraper({ source: 'oddalerts', path: '/scrape/oddalerts', payload: params });
+}
+
+/**
+ * Fetch ProSoccerTV fixtures from remote scraper.
+ * @param {Object} params - Parameters (leagueUrl)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchProSoccerTVRemote(params = {}) {
+  return callRemoteScraper({ source: 'prosoccertv', path: '/scrape/prosoccertv', payload: params });
+}
+
+/**
+ * Fetch SportEventz fixtures from remote scraper.
+ * @param {Object} params - Parameters (date)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchSportEventzRemote(params = {}) {
+  return callRemoteScraper({ source: 'sporteventz', path: '/scrape/sporteventz', payload: params });
+}
+
+/**
+ * Fetch Where's The Match fixtures from remote scraper.
+ * @param {Object} params - Parameters (date)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchWheresTheMatchRemote(params = {}) {
+  return callRemoteScraper({ source: 'wheresthematch', path: '/scrape/wheresthematch', payload: params });
+}
+
+/**
+ * Fetch World Soccer Talk fixtures from remote scraper.
+ * @param {Object} params - Parameters (scheduleUrl)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchWorldSoccerTalkRemote(params = {}) {
+  return callRemoteScraper({ source: 'worldsoccertalk', path: '/scrape/worldsoccertalk', payload: params });
+}
+
 // ---------- Main Remote Scraper Function ----------
 
 /**
@@ -522,10 +664,26 @@ async function healthCheck() {
 // ---------- Module Exports ----------
 
 module.exports = {
+  // Main LSTV functions
   fetchLSTV,
   fetchLSTVFixtures,
   healthCheck,
   getSystemInfo,
+  
+  // Generic remote scraper client
+  callRemoteScraper,
+  
+  // Remote scraper wrappers for all sources
+  fetchBBCRemote,
+  fetchSkySportsRemote,
+  fetchTNTRemote,
+  fetchLiveFootballOnTVRemote,
+  fetchOddAlertsRemote,
+  fetchProSoccerTVRemote,
+  fetchSportEventzRemote,
+  fetchWheresTheMatchRemote,
+  fetchWorldSoccerTalkRemote,
+  
   // Export helpers for testing (backwards compatibility)
   normalizeTeamName,
   normalizeForComparison,

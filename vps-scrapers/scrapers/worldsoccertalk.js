@@ -340,9 +340,38 @@ async function healthCheck() {
   }
 }
 
+// ---------- Unified Scrape Function ----------
+
+/**
+ * Unified scrape function with consistent signature.
+ * @param {Object} params - Parameters
+ * @param {string} [params.scheduleUrl] - Schedule URL to scrape
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function scrape(params = {}) {
+  const result = await fetchWorldSoccerTalkFixtures(params);
+  
+  // Normalize to consistent format
+  const fixtures = (result.fixtures || []).map(f => ({
+    homeTeam: f.home || null,
+    awayTeam: f.away || null,
+    kickoffUtc: f.kickoffUtc || null,
+    league: null,
+    competition: f.competition || null,
+    url: null,
+    channels: f.channels || []
+  }));
+  
+  return {
+    fixtures,
+    source: 'worldsoccertalk'
+  };
+}
+
 // ---------- Module Exports ----------
 
 module.exports = {
+  scrape,
   fetchWorldSoccerTalkFixtures,
   healthCheck,
   normalizeTeamName,

@@ -258,3 +258,104 @@ Core dependencies:
 - `cheerio` - HTML parsing for HTTP-based scrapers
 - `node-ical` - ICS calendar parsing
 - `@napi-rs/canvas` - Image generation for posters
+
+## Remote Scraper Micro-Service
+
+The telelistings app can now query a remote VPS micro-service for multiple TV data sources beyond just LiveSoccerTV. The micro-service (located in `vps-scrapers/`) exposes standardized HTTP endpoints for all scrapers.
+
+### Available Remote Scrapers
+
+| Source | Endpoint | Description |
+|--------|----------|-------------|
+| LiveSoccerTV | `/scrape/lstv` | TV listings by region |
+| BBC Sport | `/scrape/bbc` | BBC fixtures |
+| Sky Sports | `/scrape/skysports` | Sky Sports fixtures and channels |
+| TNT Sports | `/scrape/tnt` | TNT Sports fixtures and channels |
+| LiveFootballOnTV | `/scrape/livefootballontv` | UK TV listings |
+| Where's The Match | `/scrape/wheresthematch` | UK TV guide |
+| OddAlerts | `/scrape/oddalerts` | OddAlerts TV guide |
+| ProSoccerTV | `/scrape/prosoccertv` | ProSoccer.TV listings |
+| World Soccer Talk | `/scrape/worldsoccertalk` | US TV schedule |
+| SportEventz | `/scrape/sporteventz` | SportEventz listings |
+
+### Configuration
+
+Remote scrapers are configured in `config.json`:
+
+```json
+{
+  "remoteScrapers": {
+    "enabled": false,
+    "enableBBC": false,
+    "enableSkySports": false,
+    "enableTNT": false,
+    "enableLiveFootballOnTV": false,
+    "enableOddAlerts": false,
+    "enableProSoccerTV": false,
+    "enableSportEventz": false,
+    "enableWheresTheMatch": false,
+    "enableWorldSoccerTalk": false
+  }
+}
+```
+
+Set `enabled: true` to enable all remote scrapers, or enable individual sources with their specific flags.
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `LSTV_SCRAPER_URL` | Base URL of the remote micro-service (e.g., `http://your-vps:3333`) |
+| `LSTV_SCRAPER_KEY` | API key for authentication |
+
+### Client API (scrapers/lstv.js)
+
+The `scrapers/lstv.js` module provides a generic client for calling any remote scraper:
+
+```javascript
+const lstv = require('./scrapers/lstv');
+
+// Generic client
+const result = await lstv.callRemoteScraper({
+  source: 'skysports',
+  path: '/scrape/skysports',
+  payload: { teamName: 'Arsenal' }
+});
+
+// Convenience wrappers
+const bbcData = await lstv.fetchBBCRemote({ teamName: 'Arsenal' });
+const skyData = await lstv.fetchSkySportsRemote({ teamName: 'Arsenal' });
+const tntData = await lstv.fetchTNTRemote({ teamName: 'Arsenal' });
+const lfotvData = await lstv.fetchLiveFootballOnTVRemote({ teamName: 'Arsenal' });
+const oddData = await lstv.fetchOddAlertsRemote({ date: '2024-12-02' });
+const proData = await lstv.fetchProSoccerTVRemote({});
+const seData = await lstv.fetchSportEventzRemote({ date: '2024-12-02' });
+const wtmData = await lstv.fetchWheresTheMatchRemote({ date: '2024-12-02' });
+const wstData = await lstv.fetchWorldSoccerTalkRemote({});
+```
+
+### Response Format
+
+All remote scrapers return a consistent response format:
+
+```json
+{
+  "fixtures": [
+    {
+      "homeTeam": "Arsenal",
+      "awayTeam": "Chelsea",
+      "kickoffUtc": "2024-12-02T15:00:00Z",
+      "league": "Premier League",
+      "competition": "Premier League",
+      "url": "https://...",
+      "channels": ["Sky Sports Main Event", "Sky Sports Premier League"],
+      "regionChannels": [{ "region": "UK", "channel": "Sky Sports" }]
+    }
+  ],
+  "source": "skysports"
+}
+```
+
+### VPS Micro-Service Setup
+
+See `vps-scrapers/README.md` for detailed setup instructions for the remote micro-service.
