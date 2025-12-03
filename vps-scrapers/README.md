@@ -6,7 +6,7 @@ This folder contains Puppeteer-based scrapers designed to run on your VPS. These
 
 ```
 vps-scrapers/
-├── server.js                    # Main Express server (LiveSoccerTV scraper microservice)
+├── server.js                    # Main Express server (scraper microservice)
 ├── package.json                 # Dependencies and scripts
 ├── .env.example                 # Environment configuration template
 ├── README.md                    # This file
@@ -17,7 +17,12 @@ vps-scrapers/
     ├── skysports.js             # Sky Sports scraper (Puppeteer)
     ├── bbc.js                   # BBC Sport scraper (Puppeteer)
     ├── livefootballontv.js      # LiveFootballOnTV scraper (Puppeteer)
-    └── tnt.js                   # TNT Sports scraper (Puppeteer)
+    ├── tnt.js                   # TNT Sports scraper (Puppeteer)
+    ├── wheresthematch.js        # Where's The Match UK scraper
+    ├── oddalerts.js             # OddAlerts TV Guide scraper
+    ├── prosoccertv.js           # ProSoccer.TV scraper
+    ├── worldsoccertalk.js       # World Soccer Talk scraper
+    └── sporteventz.js           # SportEventz scraper
 ```
 
 ## 🚀 Quick Start
@@ -159,7 +164,12 @@ LSTV_SCRAPER_KEY=your-secure-api-key
 ### Health Check
 
 ```bash
-GET /health
+GET /health                        # Main health check (LiveSoccerTV)
+GET /health/wheresthematch         # Where's The Match health check
+GET /health/oddalerts              # OddAlerts health check
+GET /health/prosoccertv            # ProSoccer.TV health check
+GET /health/worldsoccertalk        # World Soccer Talk health check
+GET /health/sporteventz            # SportEventz health check
 ```
 
 Response:
@@ -206,6 +216,34 @@ Response:
 }
 ```
 
+### Additional Scrape Endpoints
+
+| Endpoint | Body Parameters | Description |
+|----------|-----------------|-------------|
+| `POST /scrape/wheresthematch` | `{ "date": "2024-12-02" }` | Scrape Where's The Match UK |
+| `POST /scrape/oddalerts` | `{ "date": "2024-12-02" }` | Scrape OddAlerts TV Guide |
+| `POST /scrape/prosoccertv` | `{ "leagueUrl": "https://prosoccer.tv/england" }` | Scrape ProSoccer.TV |
+| `POST /scrape/worldsoccertalk` | `{ "scheduleUrl": "https://worldsoccertalk.com/tv-schedule/english-premier-league-tv-schedule/" }` | Scrape World Soccer Talk |
+| `POST /scrape/sporteventz` | `{ "date": "2024-12-02" }` | Scrape SportEventz |
+
+All endpoints return fixtures in this format:
+```json
+{
+  "ok": true,
+  "data": {
+    "fixtures": [
+      {
+        "home": "Arsenal",
+        "away": "Chelsea",
+        "kickoffUtc": "2024-12-02T15:00:00Z",
+        "competition": "Premier League",
+        "channels": ["Sky Sports Main Event", "Sky Sports Premier League"]
+      }
+    ]
+  }
+}
+```
+
 ## 🧪 Testing
 
 ### Test Health Check
@@ -247,6 +285,34 @@ node scrapers/tnt.js
 
 # Test LSTV scraper
 node scrapers/lstv.js
+
+# Test Where's The Match scraper
+node scrapers/wheresthematch.js
+
+# Test OddAlerts scraper
+node scrapers/oddalerts.js
+
+# Test ProSoccer.TV scraper
+node scrapers/prosoccertv.js
+
+# Test World Soccer Talk scraper
+node scrapers/worldsoccertalk.js
+
+# Test SportEventz scraper
+node scrapers/sporteventz.js
+```
+
+Or use npm scripts:
+```bash
+npm run scraper:sky
+npm run scraper:bbc
+npm run scraper:lfotv
+npm run scraper:tnt
+npm run scraper:wtm
+npm run scraper:oddalerts
+npm run scraper:prosoccertv
+npm run scraper:wst
+npm run scraper:sporteventz
 ```
 
 ## 🔒 Security
