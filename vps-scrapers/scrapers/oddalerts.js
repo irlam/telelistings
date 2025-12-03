@@ -153,6 +153,19 @@ async function fetchOddAlertsFixtures({ date } = {}) {
     // Wait for content to load - OddAlerts dynamically updates every 15 minutes
     await page.waitForSelector('body', { timeout: 10000 });
     
+    // Check if we hit Cloudflare protection
+    const title = await page.title();
+    const isCloudflareBlocked = title.toLowerCase().includes('cloudflare') ||
+                                 title.toLowerCase().includes('attention required') ||
+                                 title.toLowerCase().includes('just a moment');
+    
+    if (isCloudflareBlocked) {
+      log(`Blocked by Cloudflare - cannot fetch fixtures`);
+      await page.close();
+      page = null;
+      return { fixtures: [], blocked: true, error: 'Blocked by Cloudflare protection' };
+    }
+    
     // Give extra time for dynamic content
     await new Promise(resolve => setTimeout(resolve, 2000));
     
@@ -308,12 +321,32 @@ async function healthCheck() {
     
     const title = await page.title();
     
+    // Check for Cloudflare challenge page
+    const isCloudflareBlocked = title.toLowerCase().includes('cloudflare') ||
+                                 title.toLowerCase().includes('attention required') ||
+                                 title.toLowerCase().includes('just a moment');
+    
+    if (isCloudflareBlocked) {
+      await page.close();
+      page = null;
+      const latencyMs = Date.now() - startTime;
+      log(`[health] BLOCKED by Cloudflare in ${latencyMs}ms`);
+      return { 
+        ok: false, 
+        latencyMs, 
+        title,
+        error: 'Blocked by Cloudflare protection. Site requires browser challenge bypass.',
+        blocked: true
+      };
+    }
+    
     // Check for expected heading "Live Football TV Guide"
     const hasExpectedContent = await page.evaluate(() => {
       const text = document.body.innerText.toLowerCase();
       return text.includes('live football tv guide') || 
              text.includes('tv guide') || 
-             text.includes('football on tv');
+             text.includes('football on tv') ||
+             text.includes('oddalerts');
     });
     
     await page.close();

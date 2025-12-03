@@ -272,6 +272,7 @@ The telelistings app can now query a remote VPS micro-service for multiple TV da
 | Sky Sports | `/scrape/skysports` | Sky Sports fixtures and channels |
 | TNT Sports | `/scrape/tnt` | TNT Sports fixtures and channels |
 | LiveFootballOnTV | `/scrape/livefootballontv` | UK TV listings |
+| LiveOnSat | `/scrape/liveonsat` | LiveOnSat UK football (daily) |
 | Where's The Match | `/scrape/wheresthematch` | UK TV guide |
 | OddAlerts | `/scrape/oddalerts` | OddAlerts TV guide |
 | ProSoccerTV | `/scrape/prosoccertv` | ProSoccer.TV listings |
@@ -290,6 +291,7 @@ Remote scrapers are configured in `config.json`:
     "enableSkySports": false,
     "enableTNT": false,
     "enableLiveFootballOnTV": false,
+    "enableLiveOnSat": false,
     "enableOddAlerts": false,
     "enableProSoccerTV": false,
     "enableSportEventz": false,
@@ -327,6 +329,7 @@ const bbcData = await lstv.fetchBBCRemote({ teamName: 'Arsenal' });
 const skyData = await lstv.fetchSkySportsRemote({ teamName: 'Arsenal' });
 const tntData = await lstv.fetchTNTRemote({ teamName: 'Arsenal' });
 const lfotvData = await lstv.fetchLiveFootballOnTVRemote({ teamName: 'Arsenal' });
+const losData = await lstv.fetchLiveOnSatRemote({ date: '2024-12-02' });
 const oddData = await lstv.fetchOddAlertsRemote({ date: '2024-12-02' });
 const proData = await lstv.fetchProSoccerTVRemote({});
 const seData = await lstv.fetchSportEventzRemote({ date: '2024-12-02' });
