@@ -5,6 +5,13 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
 
+// Import scrapers
+const { fetchWheresTheMatchFixtures, healthCheck: wtmHealthCheck } = require('./scrapers/wheresthematch');
+const { fetchOddAlertsFixtures, healthCheck: oddAlertsHealthCheck } = require('./scrapers/oddalerts');
+const { fetchProSoccerFixtures, healthCheck: proSoccerHealthCheck } = require('./scrapers/prosoccertv');
+const { fetchWorldSoccerTalkFixtures, healthCheck: wstHealthCheck } = require('./scrapers/worldsoccertalk');
+const { fetchSportEventzFixtures, healthCheck: sportEventzHealthCheck } = require('./scrapers/sporteventz');
+
 const app = express();
 app.use(express.json());
 
@@ -132,6 +139,151 @@ app.post('/scrape/lstv', requireApiKey, async (req, res) => {
       ok: false,
       error: err.message || String(err)
     });
+  }
+});
+
+// ============ Where's The Match ============
+app.post('/scrape/wheresthematch', requireApiKey, async (req, res) => {
+  const { date } = req.body || {};
+  console.log('[WTM-SERVICE] Request:', { date });
+
+  try {
+    const result = await fetchWheresTheMatchFixtures({ date });
+    return res.json({
+      ok: true,
+      data: result
+    });
+  } catch (err) {
+    console.error('[WTM-SERVICE] scrape error:', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || String(err)
+    });
+  }
+});
+
+app.get('/health/wheresthematch', async (req, res) => {
+  try {
+    const result = await wtmHealthCheck();
+    res.status(result.ok ? 200 : 500).json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ============ OddAlerts ============
+app.post('/scrape/oddalerts', requireApiKey, async (req, res) => {
+  const { date } = req.body || {};
+  console.log('[ODDALERTS-SERVICE] Request:', { date });
+
+  try {
+    const result = await fetchOddAlertsFixtures({ date });
+    return res.json({
+      ok: true,
+      data: result
+    });
+  } catch (err) {
+    console.error('[ODDALERTS-SERVICE] scrape error:', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || String(err)
+    });
+  }
+});
+
+app.get('/health/oddalerts', async (req, res) => {
+  try {
+    const result = await oddAlertsHealthCheck();
+    res.status(result.ok ? 200 : 500).json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ============ ProSoccer.TV ============
+app.post('/scrape/prosoccertv', requireApiKey, async (req, res) => {
+  const { leagueUrl } = req.body || {};
+  console.log('[PROSOCCERTV-SERVICE] Request:', { leagueUrl });
+
+  try {
+    const result = await fetchProSoccerFixtures({ leagueUrl });
+    return res.json({
+      ok: true,
+      data: result
+    });
+  } catch (err) {
+    console.error('[PROSOCCERTV-SERVICE] scrape error:', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || String(err)
+    });
+  }
+});
+
+app.get('/health/prosoccertv', async (req, res) => {
+  try {
+    const result = await proSoccerHealthCheck();
+    res.status(result.ok ? 200 : 500).json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ============ World Soccer Talk ============
+app.post('/scrape/worldsoccertalk', requireApiKey, async (req, res) => {
+  const { scheduleUrl } = req.body || {};
+  console.log('[WST-SERVICE] Request:', { scheduleUrl });
+
+  try {
+    const result = await fetchWorldSoccerTalkFixtures({ scheduleUrl });
+    return res.json({
+      ok: true,
+      data: result
+    });
+  } catch (err) {
+    console.error('[WST-SERVICE] scrape error:', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || String(err)
+    });
+  }
+});
+
+app.get('/health/worldsoccertalk', async (req, res) => {
+  try {
+    const result = await wstHealthCheck();
+    res.status(result.ok ? 200 : 500).json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ============ SportEventz ============
+app.post('/scrape/sporteventz', requireApiKey, async (req, res) => {
+  const { date } = req.body || {};
+  console.log('[SPORTEVENTZ-SERVICE] Request:', { date });
+
+  try {
+    const result = await fetchSportEventzFixtures({ date });
+    return res.json({
+      ok: true,
+      data: result
+    });
+  } catch (err) {
+    console.error('[SPORTEVENTZ-SERVICE] scrape error:', err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || String(err)
+    });
+  }
+});
+
+app.get('/health/sporteventz', async (req, res) => {
+  try {
+    const result = await sportEventzHealthCheck();
+    res.status(result.ok ? 200 : 500).json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

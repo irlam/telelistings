@@ -11,6 +11,11 @@
     "scraper:bbc": "node scrapers/bbc.js",
     "scraper:lfotv": "node scrapers/livefootballontv.js",
     "scraper:tnt": "node scrapers/tnt.js",
+    "scraper:wtm": "node scrapers/wheresthematch.js",
+    "scraper:oddalerts": "node scrapers/oddalerts.js",
+    "scraper:prosoccertv": "node scrapers/prosoccertv.js",
+    "scraper:wst": "node scrapers/worldsoccertalk.js",
+    "scraper:sporteventz": "node scrapers/sporteventz.js",
     "health": "node scripts/health.js"
   },
   "dependencies": {
