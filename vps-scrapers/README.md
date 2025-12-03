@@ -12,12 +12,12 @@ vps-scrapers/
 ├── README.md                    # This file
 ├── scripts/                     # Utility scripts
 │   └── health.js                # Health check script
-└── scrapers/                    # Additional scrapers
-    ├── lstv.js                  # Enhanced LiveSoccerTV scraper
-    ├── skysports.js             # Sky Sports scraper (Puppeteer)
-    ├── bbc.js                   # BBC Sport scraper (Puppeteer)
-    ├── livefootballontv.js      # LiveFootballOnTV scraper (Puppeteer)
-    ├── tnt.js                   # TNT Sports scraper (Puppeteer)
+└── scrapers/                    # Individual scrapers (all export unified scrape() function)
+    ├── lstv.js                  # LiveSoccerTV scraper
+    ├── bbc.js                   # BBC Sport scraper
+    ├── skysports.js             # Sky Sports scraper
+    ├── tnt.js                   # TNT Sports scraper
+    ├── livefootballontv.js      # LiveFootballOnTV scraper
     ├── wheresthematch.js        # Where's The Match UK scraper
     ├── oddalerts.js             # OddAlerts TV Guide scraper
     ├── prosoccertv.js           # ProSoccer.TV scraper
@@ -115,7 +115,7 @@ cp .env.example .env
 nano .env
 ```
 
-**Important:** Change the `LSTV_API_KEY` to a secure random key!
+**Important:** Change the `LSTV_SCRAPER_KEY` to a secure random key!
 
 ### 5. Start the Server
 
@@ -147,7 +147,7 @@ pm2 logs lstv-scraper
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3333` | Port the server listens on |
-| `LSTV_API_KEY` | `Subaru5554346` | API key for authentication |
+| `LSTV_SCRAPER_KEY` | `Subaru5554346` | API key for authentication (change this!) |
 | `DEBUG` | `false` | Enable debug logging |
 
 ### Plesk Client Configuration
@@ -161,33 +161,70 @@ LSTV_SCRAPER_KEY=your-secure-api-key
 
 ## 🌐 API Endpoints
 
-### Health Check
+### Service Discovery
 
-```bash
-GET /health                        # Main health check (LiveSoccerTV)
-GET /health/wheresthematch         # Where's The Match health check
-GET /health/oddalerts              # OddAlerts health check
-GET /health/prosoccertv            # ProSoccer.TV health check
-GET /health/worldsoccertalk        # World Soccer Talk health check
-GET /health/sporteventz            # SportEventz health check
-```
+#### GET /health
+Main health check - checks if service is running and browser works.
 
-Response:
+**Response:**
 ```json
 {
   "ok": true,
   "latencyMs": 1234,
-  "title": "Live Soccer TV - TV Guide for Soccer & Football"
+  "title": "Live Soccer TV - TV Guide for Soccer & Football",
+  "sources": ["bbc", "livefootballontv", "lstv", "oddalerts", "prosoccertv", "skysports", "sporteventz", "tnt", "wheresthematch", "worldsoccertalk"]
 }
 ```
 
-### Scrape Fixture TV Listings
+#### GET /sources
+Returns list of all supported scraper sources with their paths.
 
-```bash
-POST /scrape/lstv
-Headers:
-  x-api-key: your-api-key
-Body:
+**Response:**
+```json
+{
+  "sources": [
+    { "name": "bbc", "path": "/scrape/bbc", "description": "BBC Sport fixtures" },
+    { "name": "livefootballontv", "path": "/scrape/livefootballontv", "description": "Live Football On TV" },
+    { "name": "lstv", "path": "/scrape/lstv", "description": "LiveSoccerTV listings" },
+    { "name": "oddalerts", "path": "/scrape/oddalerts", "description": "OddAlerts TV Guide" },
+    { "name": "prosoccertv", "path": "/scrape/prosoccertv", "description": "ProSoccer.TV" },
+    { "name": "skysports", "path": "/scrape/skysports", "description": "Sky Sports fixtures" },
+    { "name": "sporteventz", "path": "/scrape/sporteventz", "description": "SportEventz" },
+    { "name": "tnt", "path": "/scrape/tnt", "description": "TNT Sports fixtures" },
+    { "name": "wheresthematch", "path": "/scrape/wheresthematch", "description": "Where's The Match UK" },
+    { "name": "worldsoccertalk", "path": "/scrape/worldsoccertalk", "description": "World Soccer Talk" }
+  ]
+}
+```
+
+### Scrape Endpoints
+
+All scrape endpoints require the `x-api-key` header for authentication and accept POST requests with JSON body.
+
+**Common Response Format:**
+```json
+{
+  "fixtures": [
+    {
+      "homeTeam": "Arsenal",
+      "awayTeam": "Chelsea",
+      "kickoffUtc": "2024-12-02T15:00:00Z",
+      "league": "Premier League",
+      "competition": "Premier League",
+      "url": "https://...",
+      "channels": ["Sky Sports Main Event", "Sky Sports Premier League"],
+      "regionChannels": [{ "region": "UK", "channel": "Sky Sports" }]
+    }
+  ],
+  "source": "lstv"
+}
+```
+
+#### POST /scrape/lstv
+Scrape LiveSoccerTV for TV listings.
+
+**Request:**
+```json
 {
   "home": "Arsenal",
   "away": "Chelsea",
@@ -196,53 +233,114 @@ Body:
 }
 ```
 
-Response:
+#### POST /scrape/bbc
+Scrape BBC Sport fixtures.
+
+**Request:**
 ```json
 {
-  "ok": true,
-  "data": {
-    "url": "https://www.livesoccertv.com/match/...",
-    "kickoffUtc": "2024-12-02T15:00:00Z",
-    "league": "Premier League",
-    "regionChannels": [
-      { "region": "United Kingdom", "channel": "Sky Sports Main Event" },
-      { "region": "United States", "channel": "NBC Sports" }
-    ],
-    "meta": {
-      "title": "Arsenal vs Chelsea - Match Details",
-      "latencyMs": 2341
-    }
-  }
+  "teamName": "Arsenal",
+  "teamSlug": "arsenal"
 }
 ```
 
-### Additional Scrape Endpoints
+#### POST /scrape/skysports
+Scrape Sky Sports fixtures.
 
-| Endpoint | Body Parameters | Description |
-|----------|-----------------|-------------|
-| `POST /scrape/wheresthematch` | `{ "date": "2024-12-02" }` | Scrape Where's The Match UK |
-| `POST /scrape/oddalerts` | `{ "date": "2024-12-02" }` | Scrape OddAlerts TV Guide |
-| `POST /scrape/prosoccertv` | `{ "leagueUrl": "https://prosoccer.tv/england" }` | Scrape ProSoccer.TV |
-| `POST /scrape/worldsoccertalk` | `{ "scheduleUrl": "https://worldsoccertalk.com/tv-schedule/english-premier-league-tv-schedule/" }` | Scrape World Soccer Talk |
-| `POST /scrape/sporteventz` | `{ "date": "2024-12-02" }` | Scrape SportEventz |
-
-All endpoints return fixtures in this format:
+**Request:**
 ```json
 {
-  "ok": true,
-  "data": {
-    "fixtures": [
-      {
-        "home": "Arsenal",
-        "away": "Chelsea",
-        "kickoffUtc": "2024-12-02T15:00:00Z",
-        "competition": "Premier League",
-        "channels": ["Sky Sports Main Event", "Sky Sports Premier League"]
-      }
-    ]
-  }
+  "teamName": "Arsenal",
+  "competition": "Premier League"
 }
 ```
+
+#### POST /scrape/tnt
+Scrape TNT Sports fixtures.
+
+**Request:**
+```json
+{
+  "teamName": "Arsenal",
+  "competition": "Champions League"
+}
+```
+
+#### POST /scrape/livefootballontv
+Scrape Live Football On TV.
+
+**Request:**
+```json
+{
+  "teamName": "Arsenal",
+  "competition": "Premier League"
+}
+```
+
+#### POST /scrape/wheresthematch
+Scrape Where's The Match UK.
+
+**Request:**
+```json
+{
+  "date": "2024-12-02"
+}
+```
+
+#### POST /scrape/oddalerts
+Scrape OddAlerts TV Guide.
+
+**Request:**
+```json
+{
+  "date": "2024-12-02"
+}
+```
+
+#### POST /scrape/prosoccertv
+Scrape ProSoccer.TV.
+
+**Request:**
+```json
+{
+  "leagueUrl": "https://prosoccer.tv/england"
+}
+```
+
+#### POST /scrape/worldsoccertalk
+Scrape World Soccer Talk.
+
+**Request:**
+```json
+{
+  "scheduleUrl": "https://worldsoccertalk.com/tv-schedule/english-premier-league-tv-schedule/"
+}
+```
+
+#### POST /scrape/sporteventz
+Scrape SportEventz.
+
+**Request:**
+```json
+{
+  "date": "2024-12-02"
+}
+```
+
+### Individual Health Checks
+
+Each scraper has its own health check endpoint:
+
+- `GET /health/bbc`
+- `GET /health/livefootballontv`
+- `GET /health/lstv`
+- `GET /health/oddalerts`
+- `GET /health/prosoccertv`
+- `GET /health/skysports`
+- `GET /health/sporteventz`
+- `GET /health/tnt`
+- `GET /health/wheresthematch`
+- `GET /health/worldsoccertalk`
 
 ## 🧪 Testing
 
@@ -266,6 +364,12 @@ curl -X POST http://localhost:3333/scrape/lstv \
   -H "Content-Type: application/json" \
   -H "x-api-key: Subaru5554346" \
   -d '{"home": "Arsenal", "away": "Chelsea"}'
+```
+
+### Test Sources Endpoint
+
+```bash
+curl http://localhost:3333/sources
 ```
 
 ### Run Individual Scrapers

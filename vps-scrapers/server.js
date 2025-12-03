@@ -1,25 +1,49 @@
 // server.js
-// Lightweight LiveSoccerTV scraper microservice.
-// Runs on your VPS and is called remotely from your Plesk telelistings app.
+// VPS Scraper Microservice for Telelistings.
+// Provides unified HTTP endpoints for all TV listing scrapers.
 
 const express = require('express');
 const puppeteer = require('puppeteer');
 
-// Import scrapers
-const { fetchWheresTheMatchFixtures, healthCheck: wtmHealthCheck } = require('./scrapers/wheresthematch');
-const { fetchOddAlertsFixtures, healthCheck: oddAlertsHealthCheck } = require('./scrapers/oddalerts');
-const { fetchProSoccerFixtures, healthCheck: proSoccerHealthCheck } = require('./scrapers/prosoccertv');
-const { fetchWorldSoccerTalkFixtures, healthCheck: wstHealthCheck } = require('./scrapers/worldsoccertalk');
-const { fetchSportEventzFixtures, healthCheck: sportEventzHealthCheck } = require('./scrapers/sporteventz');
+// ---------- Import all scraper modules ----------
+
+const bbc = require('./scrapers/bbc');
+const livefootballontv = require('./scrapers/livefootballontv');
+const lstv = require('./scrapers/lstv');
+const oddalerts = require('./scrapers/oddalerts');
+const prosoccertv = require('./scrapers/prosoccertv');
+const skysports = require('./scrapers/skysports');
+const sporteventz = require('./scrapers/sporteventz');
+const tnt = require('./scrapers/tnt');
+const wheresthematch = require('./scrapers/wheresthematch');
+const worldsoccertalk = require('./scrapers/worldsoccertalk');
+
+// ---------- Configuration ----------
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3333;
-const API_KEY = process.env.LSTV_API_KEY || 'Subaru5554346';
+const API_KEY = process.env.LSTV_SCRAPER_KEY || process.env.LSTV_API_KEY || 'Subaru5554346';
+
+// List of all supported sources
+const SUPPORTED_SOURCES = [
+  { name: 'bbc', path: '/scrape/bbc', description: 'BBC Sport fixtures' },
+  { name: 'livefootballontv', path: '/scrape/livefootballontv', description: 'Live Football On TV' },
+  { name: 'lstv', path: '/scrape/lstv', description: 'LiveSoccerTV listings' },
+  { name: 'oddalerts', path: '/scrape/oddalerts', description: 'OddAlerts TV Guide' },
+  { name: 'prosoccertv', path: '/scrape/prosoccertv', description: 'ProSoccer.TV' },
+  { name: 'skysports', path: '/scrape/skysports', description: 'Sky Sports fixtures' },
+  { name: 'sporteventz', path: '/scrape/sporteventz', description: 'SportEventz' },
+  { name: 'tnt', path: '/scrape/tnt', description: 'TNT Sports fixtures' },
+  { name: 'wheresthematch', path: '/scrape/wheresthematch', description: 'Where\'s The Match UK' },
+  { name: 'worldsoccertalk', path: '/scrape/worldsoccertalk', description: 'World Soccer Talk' }
+];
 
 // Simple in-memory browser instance reuse
 let browser = null;
+
+// ---------- Browser Management ----------
 
 /**
  * Get (or launch) a Puppeteer browser.
@@ -40,60 +64,70 @@ async function getBrowser() {
   return browser;
 }
 
+// ---------- Reusable Auth Middleware ----------
+
 /**
- * Very simple placeholder scraper.
- * At the moment it:
- *  - goes to the LiveSoccerTV homepage
- *  - returns basic info + a dummy regionChannels array
- *
- * Later you can expand this to:
- *  - search for the specific fixture
- *  - open the match page
- *  - scrape the real TV listings table
+ * Authentication middleware that checks for valid API key.
  */
-async function scrapeLSTV({ home, away, dateUtc, leagueHint }) {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-
-  const url = 'https://www.livesoccertv.com/';
-  const started = Date.now();
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  const title = await page.title();
-  const latency = Date.now() - started;
-  await page.close();
-
-  return {
-    url,
-    kickoffUtc: dateUtc || null,
-    league: leagueHint || null,
-    regionChannels: [
-      {
-        region: 'Example Region',
-        channel: 'Example Channel (replace with real data)'
-      }
-    ],
-    meta: {
-      title,
-      latencyMs: latency
-    }
-  };
-}
-
-// Middleware to check API key
-function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'] || req.query.key;
-  if (!API_KEY || key !== API_KEY) {
-    return res.status(403).json({ ok: false, error: 'Forbidden (bad API key)' });
+function authMiddleware(req, res, next) {
+  const key = req.header('x-api-key') || req.query.key;
+  if (!key || key !== API_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
   }
   next();
 }
 
-// Health endpoint (no auth, just to check Chrome works)
+// ---------- Helper to Add Scrape Routes ----------
+
+/**
+ * Add a POST endpoint for a scraper with consistent contract.
+ * @param {string} path - Route path (e.g., '/scrape/lstv')
+ * @param {Object} scraperModule - Scraper module with scrape() function
+ * @param {string} sourceName - Source identifier for logging and response
+ */
+function addScrapeRoute(path, scraperModule, sourceName) {
+  app.post(path, authMiddleware, async (req, res) => {
+    try {
+      const params = req.body || {};
+      console.log(`[${sourceName.toUpperCase()}-SERVICE] Request:`, params);
+      
+      const result = await scraperModule.scrape(params);
+      
+      // Ensure source is set
+      result.source = result.source || sourceName;
+      
+      res.json(result);
+    } catch (err) {
+      console.error(`[${sourceName.toUpperCase()}] error:`, err);
+      res.status(500).json({ error: 'internal_error', source: sourceName });
+    }
+  });
+}
+
+// ---------- Register All Scrape Routes ----------
+
+addScrapeRoute('/scrape/bbc', bbc, 'bbc');
+addScrapeRoute('/scrape/livefootballontv', livefootballontv, 'livefootballontv');
+addScrapeRoute('/scrape/lstv', lstv, 'lstv');
+addScrapeRoute('/scrape/oddalerts', oddalerts, 'oddalerts');
+addScrapeRoute('/scrape/prosoccertv', prosoccertv, 'prosoccertv');
+addScrapeRoute('/scrape/skysports', skysports, 'skysports');
+addScrapeRoute('/scrape/sporteventz', sporteventz, 'sporteventz');
+addScrapeRoute('/scrape/tnt', tnt, 'tnt');
+addScrapeRoute('/scrape/wheresthematch', wheresthematch, 'wheresthematch');
+addScrapeRoute('/scrape/worldsoccertalk', worldsoccertalk, 'worldsoccertalk');
+
+// ---------- Health Endpoints ----------
+
+/**
+ * Main health check endpoint - checks if service is running and browser works.
+ * Also returns list of supported sources.
+ */
 app.get('/health', async (req, res) => {
   const started = Date.now();
   try {
-    const browser = await getBrowser();
-    const page = await browser.newPage();
+    const browserInstance = await getBrowser();
+    const page = await browserInstance.newPage();
     await page.goto('https://www.livesoccertv.com/', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
@@ -105,188 +139,67 @@ app.get('/health', async (req, res) => {
     res.json({
       ok: true,
       latencyMs: latency,
-      title
+      title,
+      sources: SUPPORTED_SOURCES.map(s => s.name)
     });
   } catch (err) {
     const latency = Date.now() - started;
-    console.error('[LSTV-SERVICE][health] error:', err);
+    console.error('[HEALTH] error:', err);
     res.status(500).json({
       ok: false,
       latencyMs: latency,
-      error: err.message || String(err)
+      error: err.message || String(err),
+      sources: SUPPORTED_SOURCES.map(s => s.name)
     });
   }
 });
 
-// Main scrape endpoint (auth required)
-app.post('/scrape/lstv', requireApiKey, async (req, res) => {
-  const { home, away, dateUtc, leagueHint } = req.body || {};
-  console.log('[LSTV-SERVICE] Request:', { home, away, dateUtc, leagueHint });
-
-  if (!home || !away) {
-    return res.status(400).json({ ok: false, error: 'home and away are required' });
-  }
-
-  try {
-    const result = await scrapeLSTV({ home, away, dateUtc, leagueHint });
-    return res.json({
-      ok: true,
-      data: result
-    });
-  } catch (err) {
-    console.error('[LSTV-SERVICE] scrape error:', err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || String(err)
-    });
-  }
+/**
+ * Sources endpoint - returns list of all supported sources with paths.
+ */
+app.get('/sources', (req, res) => {
+  res.json({
+    sources: SUPPORTED_SOURCES
+  });
 });
 
-// ============ Where's The Match ============
-app.post('/scrape/wheresthematch', requireApiKey, async (req, res) => {
-  const { date } = req.body || {};
-  console.log('[WTM-SERVICE] Request:', { date });
+// ---------- Individual Health Check Endpoints ----------
 
-  try {
-    const result = await fetchWheresTheMatchFixtures({ date });
-    return res.json({
-      ok: true,
-      data: result
-    });
-  } catch (err) {
-    console.error('[WTM-SERVICE] scrape error:', err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || String(err)
-    });
-  }
-});
+/**
+ * Helper to add health check endpoint for a scraper.
+ * @param {string} path - Route path (e.g., '/health/bbc')
+ * @param {Object} scraperModule - Scraper module with healthCheck() function
+ */
+function addHealthRoute(path, scraperModule) {
+  app.get(path, async (req, res) => {
+    try {
+      if (typeof scraperModule.healthCheck === 'function') {
+        const result = await scraperModule.healthCheck();
+        res.status(result.ok ? 200 : 500).json(result);
+      } else {
+        res.status(501).json({ ok: false, error: 'Health check not implemented' });
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+}
 
-app.get('/health/wheresthematch', async (req, res) => {
-  try {
-    const result = await wtmHealthCheck();
-    res.status(result.ok ? 200 : 500).json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
+// Register health check routes for all scrapers
+addHealthRoute('/health/bbc', bbc);
+addHealthRoute('/health/livefootballontv', livefootballontv);
+addHealthRoute('/health/lstv', lstv);
+addHealthRoute('/health/oddalerts', oddalerts);
+addHealthRoute('/health/prosoccertv', prosoccertv);
+addHealthRoute('/health/skysports', skysports);
+addHealthRoute('/health/sporteventz', sporteventz);
+addHealthRoute('/health/tnt', tnt);
+addHealthRoute('/health/wheresthematch', wheresthematch);
+addHealthRoute('/health/worldsoccertalk', worldsoccertalk);
 
-// ============ OddAlerts ============
-app.post('/scrape/oddalerts', requireApiKey, async (req, res) => {
-  const { date } = req.body || {};
-  console.log('[ODDALERTS-SERVICE] Request:', { date });
-
-  try {
-    const result = await fetchOddAlertsFixtures({ date });
-    return res.json({
-      ok: true,
-      data: result
-    });
-  } catch (err) {
-    console.error('[ODDALERTS-SERVICE] scrape error:', err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || String(err)
-    });
-  }
-});
-
-app.get('/health/oddalerts', async (req, res) => {
-  try {
-    const result = await oddAlertsHealthCheck();
-    res.status(result.ok ? 200 : 500).json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// ============ ProSoccer.TV ============
-app.post('/scrape/prosoccertv', requireApiKey, async (req, res) => {
-  const { leagueUrl } = req.body || {};
-  console.log('[PROSOCCERTV-SERVICE] Request:', { leagueUrl });
-
-  try {
-    const result = await fetchProSoccerFixtures({ leagueUrl });
-    return res.json({
-      ok: true,
-      data: result
-    });
-  } catch (err) {
-    console.error('[PROSOCCERTV-SERVICE] scrape error:', err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || String(err)
-    });
-  }
-});
-
-app.get('/health/prosoccertv', async (req, res) => {
-  try {
-    const result = await proSoccerHealthCheck();
-    res.status(result.ok ? 200 : 500).json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// ============ World Soccer Talk ============
-app.post('/scrape/worldsoccertalk', requireApiKey, async (req, res) => {
-  const { scheduleUrl } = req.body || {};
-  console.log('[WST-SERVICE] Request:', { scheduleUrl });
-
-  try {
-    const result = await fetchWorldSoccerTalkFixtures({ scheduleUrl });
-    return res.json({
-      ok: true,
-      data: result
-    });
-  } catch (err) {
-    console.error('[WST-SERVICE] scrape error:', err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || String(err)
-    });
-  }
-});
-
-app.get('/health/worldsoccertalk', async (req, res) => {
-  try {
-    const result = await wstHealthCheck();
-    res.status(result.ok ? 200 : 500).json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// ============ SportEventz ============
-app.post('/scrape/sporteventz', requireApiKey, async (req, res) => {
-  const { date } = req.body || {};
-  console.log('[SPORTEVENTZ-SERVICE] Request:', { date });
-
-  try {
-    const result = await fetchSportEventzFixtures({ date });
-    return res.json({
-      ok: true,
-      data: result
-    });
-  } catch (err) {
-    console.error('[SPORTEVENTZ-SERVICE] scrape error:', err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || String(err)
-    });
-  }
-});
-
-app.get('/health/sporteventz', async (req, res) => {
-  try {
-    const result = await sportEventzHealthCheck();
-    res.status(result.ok ? 200 : 500).json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
+// ---------- Start Server ----------
 
 app.listen(PORT, () => {
-  console.log(`LiveSoccerTV scraper service listening on port ${PORT}`);
+  console.log(`VPS Scraper microservice listening on port ${PORT}`);
+  console.log(`Supported sources: ${SUPPORTED_SOURCES.map(s => s.name).join(', ')}`);
 });

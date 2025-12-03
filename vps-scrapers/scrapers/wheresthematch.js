@@ -326,9 +326,38 @@ async function healthCheck() {
   }
 }
 
+// ---------- Unified Scrape Function ----------
+
+/**
+ * Unified scrape function with consistent signature.
+ * @param {Object} params - Parameters
+ * @param {string} [params.date] - Date to scrape fixtures for
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function scrape(params = {}) {
+  const result = await fetchWheresTheMatchFixtures(params);
+  
+  // Normalize to consistent format
+  const fixtures = (result.fixtures || []).map(f => ({
+    homeTeam: f.home || null,
+    awayTeam: f.away || null,
+    kickoffUtc: f.kickoffUtc || null,
+    league: null,
+    competition: f.competition || null,
+    url: null,
+    channels: f.channels || []
+  }));
+  
+  return {
+    fixtures,
+    source: 'wheresthematch'
+  };
+}
+
 // ---------- Module Exports ----------
 
 module.exports = {
+  scrape,
   fetchWheresTheMatchFixtures,
   healthCheck,
   normalizeTeamName,

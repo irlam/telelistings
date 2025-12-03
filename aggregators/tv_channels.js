@@ -5,6 +5,7 @@
  *
  * This module provides a single unified function `getTvDataForFixture()` that:
  * - Calls multiple TV data sources (TSDB, FootballData, LSTV, BBC, Sky, TNT, LFOTV, Wiki)
+ * - Optionally calls remote VPS scrapers for additional data sources
  * - Merges results into a canonical fixture TV data format
  * - Never throws; catches errors and continues with available data
  *
@@ -524,6 +525,129 @@ async function getTvDataForFixture(baseFixture, options = {}) {
     } catch (err) {
       result.sourcesUsed.wiki = false;
       logSourceError('WIKI', err);
+    }
+  }
+  
+  // ---------- 9. Remote VPS Scrapers (optional) ----------
+  // These are called in parallel if useRemoteScrapers is enabled
+  const {
+    useRemoteScrapers = false,
+    enableRemoteBBC = false,
+    enableRemoteSkySports = false,
+    enableRemoteTNT = false,
+    enableRemoteLiveFootballOnTV = false,
+    enableRemoteOddAlerts = false,
+    enableRemoteProSoccerTV = false,
+    enableRemoteSportEventz = false,
+    enableRemoteWheresTheMatch = false,
+    enableRemoteWorldSoccerTalk = false
+  } = options;
+  
+  if (useRemoteScrapers || enableRemoteBBC || enableRemoteSkySports || enableRemoteTNT ||
+      enableRemoteLiveFootballOnTV || enableRemoteOddAlerts || enableRemoteProSoccerTV ||
+      enableRemoteSportEventz || enableRemoteWheresTheMatch || enableRemoteWorldSoccerTalk) {
+    
+    const remotePromises = [];
+    const remoteSourceNames = [];
+    
+    // Build list of remote scrapers to call
+    if (useRemoteScrapers || enableRemoteBBC) {
+      remotePromises.push(lstv.fetchBBCRemote({ teamName: homeTeam }));
+      remoteSourceNames.push('remoteBBC');
+    }
+    if (useRemoteScrapers || enableRemoteSkySports) {
+      remotePromises.push(lstv.fetchSkySportsRemote({ teamName: homeTeam }));
+      remoteSourceNames.push('remoteSkySports');
+    }
+    if (useRemoteScrapers || enableRemoteTNT) {
+      remotePromises.push(lstv.fetchTNTRemote({ teamName: homeTeam }));
+      remoteSourceNames.push('remoteTNT');
+    }
+    if (useRemoteScrapers || enableRemoteLiveFootballOnTV) {
+      remotePromises.push(lstv.fetchLiveFootballOnTVRemote({ teamName: homeTeam }));
+      remoteSourceNames.push('remoteLFOTV');
+    }
+    if (useRemoteScrapers || enableRemoteOddAlerts) {
+      remotePromises.push(lstv.fetchOddAlertsRemote({ date: dateUtc?.toISOString().slice(0, 10) }));
+      remoteSourceNames.push('remoteOddAlerts');
+    }
+    if (useRemoteScrapers || enableRemoteProSoccerTV) {
+      remotePromises.push(lstv.fetchProSoccerTVRemote({}));
+      remoteSourceNames.push('remoteProSoccerTV');
+    }
+    if (useRemoteScrapers || enableRemoteSportEventz) {
+      remotePromises.push(lstv.fetchSportEventzRemote({ date: dateUtc?.toISOString().slice(0, 10) }));
+      remoteSourceNames.push('remoteSportEventz');
+    }
+    if (useRemoteScrapers || enableRemoteWheresTheMatch) {
+      remotePromises.push(lstv.fetchWheresTheMatchRemote({ date: dateUtc?.toISOString().slice(0, 10) }));
+      remoteSourceNames.push('remoteWTM');
+    }
+    if (useRemoteScrapers || enableRemoteWorldSoccerTalk) {
+      remotePromises.push(lstv.fetchWorldSoccerTalkRemote({}));
+      remoteSourceNames.push('remoteWST');
+    }
+    
+    if (remotePromises.length > 0) {
+      // Call all remote scrapers in parallel with Promise.allSettled
+      const remoteResults = await Promise.allSettled(remotePromises);
+      
+      // Process each result
+      remoteResults.forEach((promiseResult, index) => {
+        const sourceName = remoteSourceNames[index];
+        
+        if (promiseResult.status === 'fulfilled') {
+          const { fixtures, source } = promiseResult.value;
+          
+          if (fixtures && fixtures.length > 0) {
+            result.sourcesUsed[sourceName] = true;
+            
+            // Find matching fixture
+            const matchingFixture = fixtures.find(f => {
+              const homeMatch = normalizeForComparison(f.homeTeam || f.home).includes(normalizeForComparison(homeTeam)) ||
+                               normalizeForComparison(homeTeam).includes(normalizeForComparison(f.homeTeam || f.home));
+              const awayMatch = normalizeForComparison(f.awayTeam || f.away).includes(normalizeForComparison(awayTeam)) ||
+                               normalizeForComparison(awayTeam).includes(normalizeForComparison(f.awayTeam || f.away));
+              return homeMatch && awayMatch;
+            });
+            
+            if (matchingFixture) {
+              // Add regionChannels if available
+              if (matchingFixture.regionChannels && matchingFixture.regionChannels.length > 0) {
+                for (const rc of matchingFixture.regionChannels) {
+                  result.tvRegions.push({
+                    region: rc.region || 'UK',
+                    channel: rc.channel,
+                    source: source.toUpperCase()
+                  });
+                }
+              }
+              
+              // Add flat channels if available
+              if (matchingFixture.channels && matchingFixture.channels.length > 0) {
+                for (const channel of matchingFixture.channels) {
+                  result.tvRegions.push({
+                    region: 'UK',
+                    channel,
+                    source: source.toUpperCase()
+                  });
+                }
+                additionalStations.push(...matchingFixture.channels);
+              }
+              
+              if (debug) log(`[${sourceName}] Matched fixture with ${(matchingFixture.regionChannels?.length || 0) + (matchingFixture.channels?.length || 0)} channels`);
+            } else {
+              if (debug) log(`[${sourceName}] No matching fixture found in ${fixtures.length} results`);
+            }
+          } else {
+            result.sourcesUsed[sourceName] = false;
+            if (debug) log(`[${sourceName}] No fixtures returned`);
+          }
+        } else {
+          result.sourcesUsed[sourceName] = false;
+          log(`[${sourceName}] Remote scraper failed: ${promiseResult.reason?.message || 'Unknown error'}`);
+        }
+      });
     }
   }
   
