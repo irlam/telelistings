@@ -1569,8 +1569,17 @@ const fixturesScraper = require('./scrapers/fixtures_scraper');
 const footballdata = require('./scrapers/footballdata');
 
 // VPS Scraper configuration
+// Note: The VPS URL is configurable via LSTV_SCRAPER_URL environment variable.
+// The default IP address is used for backwards compatibility with existing deployments.
+// In production, this should always be set via environment variables.
 const VPS_SCRAPER_URL = () => process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
 const VPS_SCRAPER_KEY = () => process.env.LSTV_SCRAPER_KEY || '';
+
+// Timeout configuration for VPS scrapers (in milliseconds)
+const VPS_TIMEOUTS = {
+  HEALTH_CHECK: 5000,    // 5 seconds for quick health checks
+  SCRAPE_REQUEST: 60000  // 60 seconds for full scrape operations
+};
 
 /**
  * Create a VPS scraper health check function that calls the remote VPS endpoint.
@@ -1596,7 +1605,7 @@ function createVpsHealthCheck(scraperId) {
         `${scraperUrl}/health/${scraperId}`,
         {
           headers: scraperKey ? { 'x-api-key': scraperKey } : {},
-          timeout: 15000
+          timeout: VPS_TIMEOUTS.HEALTH_CHECK
         }
       );
       
@@ -1643,7 +1652,7 @@ function createVpsScraperModule(scraperId, path) {
               'Content-Type': 'application/json',
               ...(scraperKey ? { 'x-api-key': scraperKey } : {})
             },
-            timeout: 60000
+            timeout: VPS_TIMEOUTS.SCRAPE_REQUEST
           }
         );
         return response.data;
@@ -1934,7 +1943,6 @@ app.get('/admin/scrapers', async (req, res) => {
   
   // Run health checks for all scrapers in parallel with timeout
   const healthResults = {};
-  const HEALTH_CHECK_TIMEOUT = 5000; // 5 second timeout per scraper
   
   // Helper to wrap health check with timeout
   async function healthCheckWithTimeout(scraper) {
@@ -1944,7 +1952,7 @@ app.get('/admin/scrapers', async (req, res) => {
     
     try {
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Health check timeout')), HEALTH_CHECK_TIMEOUT)
+        setTimeout(() => reject(new Error('Health check timeout')), VPS_TIMEOUTS.HEALTH_CHECK)
       );
       const result = await Promise.race([
         scraper.module.healthCheck(),
