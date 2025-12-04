@@ -3548,5 +3548,9 @@
       "teams": []
     }
   ],
-  "posterFooterText": "Please support the listings by subscribing."
+  "posterFooterText": "Please support the listings by subscribing.",
+  "envVars": {
+    "LSTV_SCRAPER_URL": "http://185.170.113.230:3333",
+    "LSTV_SCRAPER_KEY": "Q0tMx1sJ8nVh3w9L2z"
+  }
 }

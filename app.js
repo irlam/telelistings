@@ -1572,9 +1572,25 @@ const footballdata = require('./scrapers/footballdata');
 // VPS Scraper configuration
 // Note: The VPS URL is configurable via LSTV_SCRAPER_URL environment variable.
 // The default IP address is used for backwards compatibility with existing deployments.
-// In production, this should always be set via environment variables.
-const VPS_SCRAPER_URL = () => process.env.LSTV_SCRAPER_URL || 'http://185.170.113.230:3333';
-const VPS_SCRAPER_KEY = () => process.env.LSTV_SCRAPER_KEY || '';
+// In production, this should always be set via environment variables or config.json.
+const VPS_SCRAPER_URL = () => {
+  // Try process.env first, then config.json envVars, then fallback default
+  if (process.env.LSTV_SCRAPER_URL) return process.env.LSTV_SCRAPER_URL;
+  try {
+    const cfg = loadConfig();
+    if (cfg.envVars?.LSTV_SCRAPER_URL) return cfg.envVars.LSTV_SCRAPER_URL;
+  } catch (e) { /* ignore */ }
+  return 'http://185.170.113.230:3333';
+};
+const VPS_SCRAPER_KEY = () => {
+  // Try process.env first, then config.json envVars, then fallback default
+  if (process.env.LSTV_SCRAPER_KEY) return process.env.LSTV_SCRAPER_KEY;
+  try {
+    const cfg = loadConfig();
+    if (cfg.envVars?.LSTV_SCRAPER_KEY) return cfg.envVars.LSTV_SCRAPER_KEY;
+  } catch (e) { /* ignore */ }
+  return 'Q0tMx1sJ8nVh3w9L2z';
+};
 
 // Timeout configuration for VPS scrapers (in milliseconds)
 const VPS_TIMEOUTS = {

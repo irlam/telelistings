@@ -48,7 +48,7 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3333;
-const DEFAULT_API_KEY = 'Subaru5554346';
+const DEFAULT_API_KEY = 'Q0tMx1sJ8nVh3w9L2z';
 const API_KEY = process.env.LSTV_SCRAPER_KEY || process.env.LSTV_API_KEY || DEFAULT_API_KEY;
 
 // Warn if using default API key in production
