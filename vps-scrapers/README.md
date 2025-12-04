@@ -153,6 +153,7 @@ sudo chown -R vps-scrapers:vps-scrapers /opt/vps-scrapers
 # Then edit the service file to change User=root to User=vps-scrapers
 
 # Copy the service file to systemd directory
+cd /opt/vps-scrapers
 sudo cp vps-scrapers.service /etc/systemd/system/
 
 # Reload systemd to recognize the new service
