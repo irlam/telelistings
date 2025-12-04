@@ -2039,7 +2039,7 @@ app.get('/admin/scrapers', async (req, res) => {
         </div>
         ${scraper.vpsEndpoint ? `
         <div class="meta-row">
-          <span class="meta-label">Endpoint:</span>
+          <span class="meta-label">API Path:</span>
           <code>${escapeHtml(scraper.vpsEndpoint)}</code>
         </div>
         ` : ''}
@@ -2172,7 +2172,8 @@ app.get('/admin/scrapers', async (req, res) => {
     <p class="muted">Scrapers running on the remote VPS server using Puppeteer for dynamic content scraping.</p>
     <div class="vps-info">
       <strong>VPS Server URL:</strong> <code>${escapeHtml(vpsUrl)}</code>
-      <br><span class="muted" style="font-size:12px;">Configure via <a href="/admin/environment">Environment Variables</a> (LSTV_SCRAPER_URL)</span>
+      <br><strong>Installation Path:</strong> <code>/opt/vps-scrapers/</code>
+      <br><span class="muted" style="font-size:12px;">Configure the VPS URL via <a href="/admin/environment">Environment Variables</a> (LSTV_SCRAPER_URL). API paths like <code>/scrape/livefootballontv</code> are appended to this base URL.</span>
     </div>
   </div>
   
@@ -2505,8 +2506,12 @@ app.get('/admin/scraper/:id', async (req, res) => {
       </div>
       ${scraper.vpsEndpoint ? `
       <div class="info-item">
-        <div class="info-label">VPS Endpoint</div>
+        <div class="info-label">API Path</div>
         <div class="info-value"><code>${escapeHtml(scraper.vpsEndpoint)}</code></div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Full URL</div>
+        <div class="info-value"><code>${escapeHtml(VPS_SCRAPER_URL() + scraper.vpsEndpoint)}</code></div>
       </div>
       ` : ''}
     </div>
@@ -2514,7 +2519,7 @@ app.get('/admin/scraper/:id', async (req, res) => {
     ${scraper.isVps ? `
     <div class="vps-info-box">
       <strong>VPS Server:</strong> <code>${escapeHtml(VPS_SCRAPER_URL())}</code>
-      <br><span class="muted" style="font-size:12px;">This scraper runs on the remote VPS using Puppeteer. Configure via <a href="/admin/environment">Environment Variables</a>.</span>
+      <br><span class="muted" style="font-size:12px;">This scraper runs on the remote VPS at <code>/opt/vps-scrapers/</code>. Configure the VPS URL via <a href="/admin/environment">Environment Variables</a> (LSTV_SCRAPER_URL).</span>
     </div>
     ` : ''}
     
