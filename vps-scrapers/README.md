@@ -149,53 +149,46 @@ pm2 logs vps-scrapers
 
 A `systemd` service can be used to keep the VPS scrapers running in the background and start them automatically on boot.
 
-#### 1. Create the service file
+#### 1. Use the service file
 
-Create the service file in `/opt/vps-scrapers`:
+The `vps-scrapers.service` file is included in this directory. You can view it:
 
 ```bash
-cd /opt/vps-scrapers
-sudo nano vps-scrapers.service
+cat /opt/vps-scrapers/vps-scrapers.service
 ```
 
-Add the following content:
+Or create it manually with the following content:
 
 ```ini
-# File: vps-scrapers.service
-# Description:
-#   Systemd unit file to manage the vps-scrapers service for the telelistings project.
-#   This service runs the scraper process from /opt/vps-scrapers using Node.js,
-#   restarting automatically if it crashes. It is intended to be enabled so
-#   that it starts on boot and can be controlled with systemctl.
-#
-#   Name: vps-scrapers.service
-#
-# Notes:
-#   - Assumes the project is located at /opt/vps-scrapers
-#   - Assumes Node.js is available at /usr/bin/node
-#   - Adjust User=, Group= and ExecStart= if your setup differs.
-
 [Unit]
-Description=Telelistings VPS Scrapers Service
+Description=VPS Scrapers Service for Telelistings
+Documentation=https://github.com/irlam/telelistings
 After=network.target
 
 [Service]
-User=irlam
-Group=irlam
+Type=simple
+# Create a dedicated user: sudo useradd -r -s /bin/false vps-scrapers
+# Change ownership: sudo chown -R vps-scrapers:vps-scrapers /opt/vps-scrapers
+# Or use your own user instead of root
+User=root
 WorkingDirectory=/opt/vps-scrapers
-
-# Update ExecStart if your start command is different (for example: /usr/bin/npm start)
-ExecStart=/usr/bin/node index.js
-
-Restart=always
+# Uses /usr/bin/env to find node in PATH
+ExecStart=/usr/bin/env node server.js
+Restart=on-failure
 RestartSec=10
-
 StandardOutput=journal
 StandardError=journal
+Environment=NODE_ENV=production
+
+# Increase resource limits for Puppeteer
+LimitNOFILE=65536
+LimitNPROC=65536
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+**Note:** Change `User=root` to a dedicated user like `vps-scrapers` for better security in production.
 
 #### 2. Install and enable the service
 
