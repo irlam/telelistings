@@ -163,8 +163,9 @@ async function fetchBBCFixtures({ teamName, teamSlug } = {}) {
   
   // Build URL - either team-specific or general football fixtures
   let url;
+  let slug = null; // Define slug at function scope for use in logging
   if (teamSlug || teamName) {
-    const slug = teamSlug || getTeamSlug(teamName);
+    slug = teamSlug || getTeamSlug(teamName);
     if (!slug) {
       log(`Could not determine BBC slug for: ${teamName}`);
       return emptyResult;
@@ -310,12 +311,12 @@ async function fetchBBCFixtures({ teamName, teamSlug } = {}) {
       }
     }
     
-    log(`Found ${matches.length} fixtures for ${slug}`);
+    log(`Found ${matches.length} fixtures${slug ? ` for ${slug}` : ''}`);
     return { matches };
     
   } catch (err) {
     if (err.response && err.response.status === 404) {
-      log(`Team page not found: ${slug}`);
+      log(`Team page not found: ${slug || url}`);
     } else {
       log(`Error fetching fixtures: ${err.message}`);
     }
