@@ -152,7 +152,7 @@ pm2 logs lstv-scraper
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3333` | Port the server listens on |
-| `LSTV_SCRAPER_KEY` | `Subaru5554346` | API key for authentication (change this!) |
+| `LSTV_SCRAPER_KEY` | `Q0tMx1sJ8nVh3w9L2z` | API key for authentication |
 | `DEBUG` | `false` | Enable debug logging |
 
 ### Plesk Client Configuration
@@ -160,8 +160,8 @@ pm2 logs lstv-scraper
 On your Plesk telelistings app, set these environment variables:
 
 ```bash
-LSTV_SCRAPER_URL=http://YOUR_VPS_IP:3333
-LSTV_SCRAPER_KEY=your-secure-api-key
+LSTV_SCRAPER_URL=http://185.170.113.230:3333
+LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
 ```
 
 ## 🌐 API Endpoints
@@ -379,7 +379,7 @@ curl http://localhost:3333/health
 ```bash
 curl -X POST http://localhost:3333/scrape/lstv \
   -H "Content-Type: application/json" \
-  -H "x-api-key: Subaru5554346" \
+  -H "x-api-key: Q0tMx1sJ8nVh3w9L2z" \
   -d '{"home": "Arsenal", "away": "Chelsea"}'
 ```
 
