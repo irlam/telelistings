@@ -181,6 +181,7 @@ function renderLayout(title, bodyHtml) {
     <a href="/admin/scrapers">Scrapers</a>
     <a href="/admin/auto-test">Auto-Test</a>
     <a href="/admin/results">Results</a>
+    <a href="/admin/vps-debug">VPS Debug</a>
     <a href="/admin/environment">Environment</a>
     <a href="/admin/logs">Logs</a>
     <a href="/admin/help">Help</a>
@@ -2876,6 +2877,261 @@ app.get('/health/:scraperId', async (req, res) => {
     scraperId,
     ...result
   });
+});
+
+// --------- VPS Debug Page ---------
+
+app.get('/admin/vps-debug', async (req, res) => {
+  const vpsUrl = VPS_SCRAPER_URL();
+  const vpsKey = VPS_SCRAPER_KEY();
+  
+  let vpsHealth = null;
+  let vpsSources = null;
+  let vpsDebug = null;
+  let testResult = null;
+  let testError = null;
+  
+  // Always try to fetch VPS status
+  try {
+    // Fetch main health status
+    const healthResponse = await axios.get(`${vpsUrl}/health`, {
+      headers: vpsKey ? { 'x-api-key': vpsKey } : {},
+      timeout: 15000
+    });
+    vpsHealth = healthResponse.data;
+  } catch (err) {
+    vpsHealth = { ok: false, error: err.message, statusCode: err.response?.status };
+  }
+  
+  // Try to fetch sources/debug info (no auth required for these)
+  try {
+    const sourcesResponse = await axios.get(`${vpsUrl}/sources`, { timeout: 10000 });
+    vpsSources = sourcesResponse.data;
+  } catch (err) {
+    vpsSources = { error: err.message, statusCode: err.response?.status };
+  }
+  
+  try {
+    const debugResponse = await axios.get(`${vpsUrl}/debug/routes`, { timeout: 10000 });
+    vpsDebug = debugResponse.data;
+  } catch (err) {
+    vpsDebug = { error: err.message, statusCode: err.response?.status };
+  }
+  
+  // Handle manual test request
+  const { endpoint, method } = req.query;
+  if (endpoint) {
+    const testMethod = method === 'GET' ? 'get' : 'post';
+    const fullUrl = `${vpsUrl}${endpoint}`;
+    
+    try {
+      const config = {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(vpsKey ? { 'x-api-key': vpsKey } : {})
+        },
+        timeout: 60000
+      };
+      
+      const testResponse = testMethod === 'get' 
+        ? await axios.get(fullUrl, config)
+        : await axios.post(fullUrl, {}, config);
+      
+      testResult = {
+        url: fullUrl,
+        method: testMethod.toUpperCase(),
+        status: testResponse.status,
+        data: testResponse.data
+      };
+    } catch (err) {
+      testError = {
+        url: fullUrl,
+        method: testMethod.toUpperCase(),
+        status: err.response?.status || 'N/A',
+        error: err.response?.data?.error || err.message
+      };
+    }
+  }
+  
+  // Build test result HTML
+  let testResultHtml = '';
+  if (testResult) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #00b894;">
+      <h3>✅ Test Successful</h3>
+      <table>
+        <tr><th>URL</th><td><code>${escapeHtml(testResult.url)}</code></td></tr>
+        <tr><th>Method</th><td>${testResult.method}</td></tr>
+        <tr><th>Status</th><td>${testResult.status}</td></tr>
+      </table>
+      <h4>Response Data:</h4>
+      <pre style="max-height:400px; overflow:auto;">${escapeHtml(JSON.stringify(testResult.data, null, 2))}</pre>
+    </div>`;
+  } else if (testError) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>❌ Test Failed</h3>
+      <table>
+        <tr><th>URL</th><td><code>${escapeHtml(testError.url)}</code></td></tr>
+        <tr><th>Method</th><td>${testError.method}</td></tr>
+        <tr><th>Status</th><td>${testError.status}</td></tr>
+        <tr><th>Error</th><td>${escapeHtml(testError.error)}</td></tr>
+      </table>
+    </div>`;
+  }
+  
+  // Build sources table
+  let sourcesTableHtml = '';
+  if (vpsSources && vpsSources.sources) {
+    const rows = vpsSources.sources.map(s => `
+      <tr>
+        <td>${escapeHtml(s.name)}</td>
+        <td><code>${escapeHtml(s.path)}</code></td>
+        <td>${escapeHtml(s.description || '')}</td>
+        <td>
+          <a href="/admin/vps-debug?endpoint=${encodeURIComponent(s.path)}&method=POST">Test POST</a>
+        </td>
+      </tr>
+    `).join('');
+    sourcesTableHtml = `
+    <h4>Supported Sources (from VPS)</h4>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Path</th><th>Description</th><th>Action</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+    
+    // Show registered vs failed routes if available
+    if (vpsSources.registered && vpsSources.registered.length > 0) {
+      sourcesTableHtml += `
+      <h4>Registered Routes (${vpsSources.registered.length})</h4>
+      <pre>${escapeHtml(JSON.stringify(vpsSources.registered, null, 2))}</pre>`;
+    }
+    
+    if (vpsSources.failed && vpsSources.failed.length > 0) {
+      sourcesTableHtml += `
+      <div style="border-left: 4px solid #e74c3c; padding-left: 12px; margin: 12px 0;">
+        <h4>⚠️ Failed Routes (${vpsSources.failed.length})</h4>
+        <p class="muted">These modules failed to load on the VPS server:</p>
+        <pre>${escapeHtml(JSON.stringify(vpsSources.failed, null, 2))}</pre>
+      </div>`;
+    }
+  } else if (vpsSources && vpsSources.error) {
+    sourcesTableHtml = `<p class="error-msg">Failed to fetch sources: ${escapeHtml(vpsSources.error)}</p>`;
+  }
+  
+  // Build health status
+  const healthStatusHtml = vpsHealth ? `
+    <div class="health-banner ${vpsHealth.ok ? 'health-ok' : 'health-error'}">
+      <span class="health-icon">${vpsHealth.ok ? '✅' : '❌'}</span>
+      <div class="health-info">
+        <strong>${vpsHealth.ok ? 'VPS Server Healthy' : 'VPS Server Error'}</strong>
+        <span>Latency: ${vpsHealth.latencyMs || 0}ms</span>
+        ${vpsHealth.error ? `<p class="error-detail">${escapeHtml(vpsHealth.error)}</p>` : ''}
+        ${vpsHealth.statusCode ? `<p class="error-detail">HTTP Status: ${vpsHealth.statusCode}</p>` : ''}
+      </div>
+    </div>
+  ` : '';
+  
+  const body = `
+  <style>
+    .health-banner { padding:16px; border-radius:8px; display:flex; align-items:center; gap:16px; margin-bottom:24px; }
+    .health-ok { background:#1d4a3a; }
+    .health-error { background:#4a1d1d; }
+    .health-icon { font-size:32px; }
+    .health-info strong { display:block; font-size:16px; color:#fff; }
+    .health-info span { color:#aaa; font-size:13px; }
+    .health-info .error-detail { color:#e74c3c; font-size:12px; margin-top:8px; }
+    .error-msg { color:#e74c3c; }
+    .quick-test { display:inline-block; background:#4a90d9; color:#fff; padding:6px 12px; border-radius:4px; text-decoration:none; margin-right:8px; margin-bottom:8px; font-size:13px; }
+    .quick-test:hover { background:#5da0e9; text-decoration:none; }
+  </style>
+  
+  <div class="card">
+    <h2>VPS Debug Console</h2>
+    <p>Use this page to diagnose issues with the VPS scraper service. You can manually test endpoints and view server status.</p>
+    
+    <table>
+      <tr><th>VPS URL</th><td><code>${escapeHtml(vpsUrl)}</code></td></tr>
+      <tr><th>API Key</th><td><code>${vpsKey ? vpsKey.substring(0, 4) + '***' : '(not set)'}</code></td></tr>
+    </table>
+    
+    <div style="margin-top:16px;">
+      <strong>Quick Tests:</strong><br>
+      <a href="/admin/vps-debug?endpoint=/health&method=GET" class="quick-test">GET /health</a>
+      <a href="/admin/vps-debug?endpoint=/sources&method=GET" class="quick-test">GET /sources</a>
+      <a href="/admin/vps-debug?endpoint=/debug/routes&method=GET" class="quick-test">GET /debug/routes</a>
+      <a href="/admin/vps-debug?endpoint=/health/liveonsat&method=GET" class="quick-test">GET /health/liveonsat</a>
+      <a href="/admin/vps-debug?endpoint=/scrape/liveonsat&method=POST" class="quick-test">POST /scrape/liveonsat</a>
+    </div>
+  </div>
+  
+  ${healthStatusHtml}
+  
+  ${testResultHtml}
+  
+  <div class="card">
+    <h3>Manual Endpoint Test</h3>
+    <form method="get" action="/admin/vps-debug">
+      <p>
+        <label>Endpoint Path<br>
+        <input type="text" name="endpoint" value="${escapeHtml(endpoint || '')}" placeholder="/scrape/liveonsat" required></label>
+      </p>
+      <p>
+        <label>Method<br>
+        <select name="method">
+          <option value="POST" ${method === 'POST' ? 'selected' : ''}>POST</option>
+          <option value="GET" ${method === 'GET' ? 'selected' : ''}>GET</option>
+        </select></label>
+      </p>
+      <p><button type="submit">Test Endpoint</button></p>
+    </form>
+  </div>
+  
+  <div class="card">
+    <h3>VPS Server Information</h3>
+    ${sourcesTableHtml}
+    
+    ${vpsDebug && !vpsDebug.error ? `
+    <h4>Server Debug Info</h4>
+    <pre>${escapeHtml(JSON.stringify(vpsDebug, null, 2))}</pre>
+    ` : ''}
+  </div>
+  
+  <div class="card">
+    <h3>Troubleshooting</h3>
+    <p>If you see a 404 error when testing endpoints:</p>
+    <ol>
+      <li><strong>Check if VPS is running:</strong> Test the <code>/health</code> endpoint first.</li>
+      <li><strong>Check registered routes:</strong> Use <code>/debug/routes</code> to see which routes are registered.</li>
+      <li><strong>Check failed modules:</strong> The <code>/sources</code> endpoint now shows failed module loads.</li>
+      <li><strong>Redeploy the VPS:</strong> If routes are missing, the VPS may need to be redeployed with the latest code from this repository's <code>vps-scrapers/</code> directory.</li>
+    </ol>
+    
+    <h4>VPS Deployment Instructions</h4>
+    <pre>
+# SSH to VPS (replace with your VPS IP from LSTV_SCRAPER_URL)
+ssh user@YOUR_VPS_IP
+
+# Navigate to scraper directory
+cd /opt/vps-scrapers
+
+# Pull latest code
+git pull origin main
+
+# Install dependencies
+npm install
+
+# Restart service
+pm2 restart vps-scrapers
+# OR if using systemd:
+sudo systemctl restart vps-scrapers
+    </pre>
+  </div>
+  `;
+  
+  res.send(renderLayout('VPS Debug - Telegram Sports TV Bot', body));
 });
 
 // --------- start server ---------
