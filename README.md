@@ -362,3 +362,100 @@ All remote scrapers return a consistent response format:
 ### VPS Micro-Service Setup
 
 See `/opt/vps-scrapers/README.md` (or `vps-scrapers/README.md` in this repo) for detailed setup instructions for the remote micro-service.
+
+### VPS Scrapers systemd Service
+
+A `systemd` service can be used to keep the VPS scrapers running in the background and start them automatically on boot.
+
+#### 1. Create the service file
+
+Create the service file in `/opt/vps-scrapers`:
+
+```bash
+cd /opt/vps-scrapers
+sudo nano vps-scrapers.service
+```
+
+Add the following content:
+
+```ini
+# File: vps-scrapers.service
+# Description:
+#   Systemd unit file to manage the vps-scrapers service for the telelistings project.
+#   This service runs the scraper process from /opt/vps-scrapers using Node.js,
+#   restarting automatically if it crashes. It is intended to be enabled so
+#   that it starts on boot and can be controlled with systemctl.
+#
+#   Name: vps-scrapers.service
+#
+# Notes:
+#   - Assumes the project is located at /opt/vps-scrapers
+#   - Assumes Node.js is available at /usr/bin/node
+#   - Adjust User=, Group= and ExecStart= if your setup differs.
+
+[Unit]
+Description=Telelistings VPS Scrapers Service
+After=network.target
+
+[Service]
+User=irlam
+Group=irlam
+WorkingDirectory=/opt/vps-scrapers
+
+# Update ExecStart if your start command is different (for example: /usr/bin/npm start)
+ExecStart=/usr/bin/node index.js
+
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### 2. Install and enable the service
+
+Copy the service file into the systemd directory and reload systemd:
+
+```bash
+cd /opt/vps-scrapers
+sudo cp vps-scrapers.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
+Enable the service so it starts on boot, then start it:
+
+```bash
+sudo systemctl enable vps-scrapers.service
+sudo systemctl start vps-scrapers.service
+```
+
+Check the status:
+
+```bash
+sudo systemctl status vps-scrapers.service
+```
+
+You should see the service in the `active (running)` state, with a `node` process such as:
+
+```text
+● vps-scrapers.service - Telelistings VPS Scrapers Service
+     Loaded: loaded (/etc/systemd/system/vps-scrapers.service; enabled; preset: enabled)
+     Active: active (running)
+   Main PID: 95291 (node)
+```
+
+To stop or restart the service:
+
+```bash
+sudo systemctl stop vps-scrapers.service
+sudo systemctl restart vps-scrapers.service
+```
+
+To view logs:
+
+```bash
+sudo journalctl -u vps-scrapers -f
+```
