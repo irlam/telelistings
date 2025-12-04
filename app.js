@@ -3111,8 +3111,8 @@ app.get('/admin/vps-debug', async (req, res) => {
     
     <h4>VPS Deployment Instructions</h4>
     <pre>
-# SSH to VPS
-ssh user@185.170.113.230
+# SSH to VPS (replace with your VPS IP from LSTV_SCRAPER_URL)
+ssh user@YOUR_VPS_IP
 
 # Navigate to scraper directory
 cd /opt/vps-scrapers

@@ -9,12 +9,14 @@ const puppeteer = require('puppeteer');
 // Using safe module loading to prevent server crash if a module fails to load
 
 /**
- * Safely load a scraper module.
- * Returns the module or null if loading fails.
- * Logs any errors for debugging.
- * @param {string} modulePath - Path to the module
- * @param {string} moduleName - Name for logging
- * @returns {Object|null} The loaded module or null
+ * Safely load a scraper module without crashing the server.
+ * If the module fails to load (e.g., missing dependencies, syntax error),
+ * returns null and the corresponding routes will be skipped during registration.
+ * 
+ * @param {string} modulePath - Path to the module (e.g., './scrapers/bbc')
+ * @param {string} moduleName - Name for logging purposes (e.g., 'bbc')
+ * @returns {Object|null} The loaded module object with scrape() and healthCheck() functions,
+ *                        or null if loading failed (error is logged to console)
  */
 function safeRequire(modulePath, moduleName) {
   try {
@@ -148,7 +150,7 @@ function addScrapeRoute(path, scraperModule, sourceName) {
       res.json(result);
     } catch (err) {
       console.error(`[${sourceName.toUpperCase()}] error:`, err);
-      res.status(500).json({ error: 'internal_error', source: sourceName, message: err.message });
+      res.status(500).json({ error: 'internal_error', source: sourceName });
     }
   });
   
