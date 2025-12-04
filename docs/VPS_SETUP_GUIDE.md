@@ -178,7 +178,11 @@ Supported sources: bbc, livefootballontv, liveonsat, lstv, ...
 
 Press `Ctrl+C` to stop the test.
 
-### Step 8: Install PM2 for Production (Recommended)
+### Step 8: Set Up for Production
+
+Choose one of the following options for running the server in production:
+
+#### Option A: Using PM2 (Recommended)
 
 PM2 is a process manager that keeps your server running and restarts it automatically:
 
@@ -198,6 +202,44 @@ pm2 startup
 ```
 
 Follow any instructions PM2 provides (usually a command to copy/paste).
+
+#### Option B: Using systemd
+
+For systems where you prefer systemd service management:
+
+```bash
+# (Optional) Create a dedicated user for better security
+sudo useradd -r -s /bin/false vps-scrapers
+sudo chown -R vps-scrapers:vps-scrapers /opt/vps-scrapers
+# Then edit the service file to change User=root to User=vps-scrapers
+
+# Copy the service file to systemd directory
+sudo cp /opt/vps-scrapers/vps-scrapers.service /etc/systemd/system/
+
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable the service to start on boot
+sudo systemctl enable vps-scrapers
+
+# Start the service
+sudo systemctl start vps-scrapers
+
+# Check service status
+sudo systemctl status vps-scrapers
+```
+
+**Managing with systemd:**
+```bash
+# Restart the service
+sudo systemctl restart vps-scrapers
+
+# Stop the service
+sudo systemctl stop vps-scrapers
+
+# View logs
+sudo journalctl -u vps-scrapers -f
+```
 
 ### Step 9: Verify the Server is Running
 
@@ -406,9 +448,15 @@ Or in `config.json`:
 - [ ] Run `npm install`
 - [ ] Copy `.env.example` to `.env`
 - [ ] Test with `npm start`
-- [ ] Install PM2 (`sudo npm install -g pm2`)
-- [ ] Start with PM2 (`pm2 start server.js --name "vps-scrapers"`)
-- [ ] Enable auto-start (`pm2 startup` and `pm2 save`)
+- [ ] **Option A: PM2**
+  - [ ] Install PM2 (`sudo npm install -g pm2`)
+  - [ ] Start with PM2 (`pm2 start server.js --name "vps-scrapers"`)
+  - [ ] Enable auto-start (`pm2 startup` and `pm2 save`)
+- [ ] **Option B: systemd**
+  - [ ] Copy service file (`sudo cp vps-scrapers.service /etc/systemd/system/`)
+  - [ ] Reload systemd (`sudo systemctl daemon-reload`)
+  - [ ] Enable service (`sudo systemctl enable vps-scrapers`)
+  - [ ] Start service (`sudo systemctl start vps-scrapers`)
 - [ ] Test health endpoint externally
 - [ ] Configure Plesk app with VPS URL and API key
 - [ ] Test from Plesk admin panel (Auto-Test page)
