@@ -135,14 +135,40 @@ npm start
 sudo npm install -g pm2
 
 # Start the server
-pm2 start server.js --name "lstv-scraper"
+pm2 start server.js --name "vps-scrapers"
 
 # Enable auto-start on system reboot
 pm2 startup
 pm2 save
 
 # View logs
-pm2 logs lstv-scraper
+pm2 logs vps-scrapers
+```
+
+**For production (using systemd):**
+```bash
+# (Optional) Create a dedicated user for better security
+sudo useradd -r -s /bin/false vps-scrapers
+sudo chown -R vps-scrapers:vps-scrapers /opt/vps-scrapers
+# Then edit the service file to change User=root to User=vps-scrapers
+
+# Copy the service file to systemd directory
+sudo cp vps-scrapers.service /etc/systemd/system/
+
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable the service to start on boot
+sudo systemctl enable vps-scrapers
+
+# Start the service
+sudo systemctl start vps-scrapers
+
+# Check service status
+sudo systemctl status vps-scrapers
+
+# View logs
+sudo journalctl -u vps-scrapers -f
 ```
 
 ## 🔧 Configuration

@@ -1,0 +1,26 @@
+[Unit]
+Description=VPS Scrapers Service for Telelistings
+Documentation=https://github.com/irlam/telelistings
+After=network.target
+
+[Service]
+Type=simple
+# Create a dedicated user: sudo useradd -r -s /bin/false vps-scrapers
+# Change ownership: sudo chown -R vps-scrapers:vps-scrapers /opt/vps-scrapers
+# Or use your own user instead of root
+User=root
+WorkingDirectory=/opt/vps-scrapers
+# Uses /usr/bin/env to find node in PATH
+ExecStart=/usr/bin/env node server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+
+# Increase resource limits for Puppeteer
+LimitNOFILE=65536
+LimitNPROC=65536
+
+[Install]
+WantedBy=multi-user.target
