@@ -1667,6 +1667,7 @@ function createVpsScraperModule(scraperId, path) {
 const vpsScrapers = {
   'vps-bbc': createVpsScraperModule('bbc', '/scrape/bbc'),
   'vps-livefootballontv': createVpsScraperModule('livefootballontv', '/scrape/livefootballontv'),
+  'vps-liveonsat': createVpsScraperModule('liveonsat', '/scrape/liveonsat'),
   'vps-lstv': createVpsScraperModule('lstv', '/scrape/lstv'),
   'vps-oddalerts': createVpsScraperModule('oddalerts', '/scrape/oddalerts'),
   'vps-prosoccertv': createVpsScraperModule('prosoccertv', '/scrape/prosoccertv'),
@@ -1811,6 +1812,21 @@ function getScraperDefinitions() {
       hasHealthCheck: true,
       isVps: true,
       vpsEndpoint: '/scrape/livefootballontv'
+    },
+    {
+      id: 'vps-liveonsat',
+      name: 'LiveOnSat (VPS)',
+      description: 'VPS-hosted LiveOnSat UK Football scraper. Provides daily TV listings for UK/England football matches.',
+      source: 'https://liveonsat.com',
+      dataProvided: ['UK TV channels', 'Match schedule', 'Competition info'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#16a085',
+      module: vpsScrapers['vps-liveonsat'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/liveonsat'
     },
     {
       id: 'vps-lstv',
@@ -2208,7 +2224,7 @@ app.get('/admin/scraper/:id', async (req, res) => {
   let autoTestMode = auto === '1' || auto === 'true';
   let autoTestInfo = null; // Info about auto-selected fixture
   
-  // Helper function to get a fixture from LFOTV for auto-test mode
+  // Helper function to get a fixture from LFOTV for auto-test mode (used for TSDB)
   async function getAutoTestFixture() {
     const lfotvData = await livefootballontv.fetchLFOTVFixtures({});
     if (lfotvData.fixtures && lfotvData.fixtures.length > 0) {
@@ -2225,36 +2241,34 @@ app.get('/admin/scraper/:id', async (req, res) => {
       
       switch (scraperId) {
         case 'lstv':
+          // For LSTV, we can fetch all fixtures for a region
+          if (autoTestMode && !home && !away) {
+            autoTestInfo = 'Auto-test: Fetching all LiveSoccerTV fixtures for today (UK region)';
+            testResult = await lstv.fetchLSTVFixtures({ region: 'UK', date: matchDate });
+          } else {
+            const homeTeam = home?.trim() || '';
+            const awayTeam = away?.trim() || '';
+            testResult = await lstv.fetchLSTV({ home: homeTeam, away: awayTeam, date: matchDate });
+          }
+          break;
         case 'tsdb':
-          // For LSTV/TSDB in auto mode, first get a fixture from LFOTV to use as test data
+          // For TSDB in auto mode, first get a fixture from LFOTV to use as test data
           if (autoTestMode && !home && !away) {
             const autoFixture = await getAutoTestFixture();
             if (autoFixture) {
-              autoTestInfo = `Auto-selected: ${autoFixture.home} vs ${autoFixture.away}`;
-              if (scraperId === 'lstv') {
-                testResult = await lstv.fetchLSTV({
-                  home: autoFixture.home,
-                  away: autoFixture.away,
-                  date: matchDate
-                });
-              } else {
-                testResult = await tsdb.fetchTSDBFixture({
-                  home: autoFixture.home,
-                  away: autoFixture.away,
-                  date: matchDate
-                });
-              }
+              autoTestInfo = `Auto-test: Using today's fixture ${autoFixture.home} vs ${autoFixture.away}`;
+              testResult = await tsdb.fetchTSDBFixture({
+                home: autoFixture.home,
+                away: autoFixture.away,
+                date: matchDate
+              });
             } else {
               testError = 'No fixtures found for auto-test. Please enter team names manually.';
             }
           } else {
             const homeTeam = home?.trim() || '';
             const awayTeam = away?.trim() || '';
-            if (scraperId === 'lstv') {
-              testResult = await lstv.fetchLSTV({ home: homeTeam, away: awayTeam, date: matchDate });
-            } else {
-              testResult = await tsdb.fetchTSDBFixture({ home: homeTeam, away: awayTeam, date: matchDate });
-            }
+            testResult = await tsdb.fetchTSDBFixture({ home: homeTeam, away: awayTeam, date: matchDate });
           }
           break;
         case 'wiki':
@@ -2269,18 +2283,13 @@ app.get('/admin/scraper/:id', async (req, res) => {
           }
           break;
         case 'bbc':
-          // BBC can fetch all fixtures or a specific team
+          // BBC can fetch all fixtures without a team filter (today's listings)
           if (autoTestMode && !teamName && !home) {
-            // In auto mode, use Arsenal as a reliable default team
-            autoTestInfo = 'Auto-selected: Arsenal';
-            testResult = await bbcFixtures.fetchBBCFixtures({
-              teamName: 'Arsenal'
-            });
-          } else {
-            testResult = await bbcFixtures.fetchBBCFixtures({
-              teamName: teamName?.trim() || home?.trim()
-            });
+            autoTestInfo = 'Auto-test: Fetching all BBC Sport fixtures for today';
           }
+          testResult = await bbcFixtures.fetchBBCFixtures({
+            teamName: teamName?.trim() || home?.trim() || undefined
+          });
           break;
         case 'sky':
           // Sky can fetch all fixtures without a team filter
@@ -2315,9 +2324,10 @@ app.get('/admin/scraper/:id', async (req, res) => {
             const vpsModule = vpsScrapers[scraperId];
             if (vpsModule && vpsModule.fetch) {
               if (autoTestMode) {
-                autoTestInfo = `Auto-test: Fetching fixtures from VPS ${scraperId.replace('vps-', '')} scraper`;
+                const scraperName = scraperId.replace('vps-', '');
+                autoTestInfo = `Auto-test: Fetching today's fixtures from VPS ${scraperName} scraper`;
               }
-              // Build parameters based on scraper type
+              // Build parameters based on scraper type (fetch today's listings with no filters)
               const params = {};
               if (home) params.home = home.trim();
               if (away) params.away = away.trim();
@@ -2325,8 +2335,15 @@ app.get('/admin/scraper/:id', async (req, res) => {
               if (date) params.date = date;
               
               testResult = await vpsModule.fetch(params);
+              
+              // Check if result has an error
+              if (testResult && testResult.error) {
+                testError = testResult.error;
+                testResult = null;
+              }
             } else {
-              testError = `VPS scraper module not found for ${scraperId}`;
+              const vpsUrl = VPS_SCRAPER_URL();
+              testError = `VPS scraper module not found for ${scraperId}. VPS URL: ${vpsUrl || 'not configured'}. Check if the VPS scraper service is running at this URL.`;
             }
           } else {
             testError = `Unknown scraper: ${scraperId}`;
