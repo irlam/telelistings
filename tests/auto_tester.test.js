@@ -81,32 +81,35 @@ test('SCRAPER_REGISTRY: has expected scrapers', () => {
 
 test('SCRAPER_REGISTRY: has VPS scrapers', () => {
   const registry = autoTester.SCRAPER_REGISTRY;
-  assert('vps-lstv' in registry);
   assert('vps-bbc' in registry);
-  assert('vps-sky' in registry);
-  assert('vps-tnt' in registry);
-  assert('vps-lfotv' in registry);
-  assert('vps-prosoccertv' in registry);
+  assert('vps-livefootballontv' in registry);
+  assert('vps-liveonsat' in registry);
+  assert('vps-lstv' in registry);
   assert('vps-oddalerts' in registry);
+  assert('vps-prosoccertv' in registry);
+  assert('vps-skysports' in registry);
   assert('vps-sporteventz' in registry);
+  assert('vps-tnt' in registry);
   assert('vps-wheresthematch' in registry);
   assert('vps-worldsoccertalk' in registry);
 });
 
-test('VPS scrapers: all marked as requiresVPS', () => {
+test('VPS scrapers: all marked as requiresVPS and isVps', () => {
   const registry = autoTester.SCRAPER_REGISTRY;
   const vpsScrapers = Object.values(registry).filter(s => s.id.startsWith('vps-'));
   
-  // Verify we have the expected number of VPS scrapers
-  assert(vpsScrapers.length === 10, `Expected 10 VPS scrapers, got ${vpsScrapers.length}`);
+  // Verify we have the expected number of VPS scrapers (11 including liveonsat)
+  assert(vpsScrapers.length === 11, `Expected 11 VPS scrapers, got ${vpsScrapers.length}`);
   
-  // Verify all VPS scrapers have requiresVPS: true
+  // Verify all VPS scrapers have correct flags and endpoint config
   for (const scraper of vpsScrapers) {
     assert(scraper.requiresVPS === true, `VPS scraper ${scraper.id} should have requiresVPS: true`);
+    assert(scraper.isVps === true, `VPS scraper ${scraper.id} should have isVps: true`);
     assert(scraper.hasHealthCheck === true, `VPS scraper ${scraper.id} should have hasHealthCheck: true`);
-    assert(typeof scraper.testMethod === 'string', `VPS scraper ${scraper.id} should have a testMethod`);
-    assert(typeof scraper.module === 'string', `VPS scraper ${scraper.id} should have a module path`);
-    assert(scraper.module.startsWith('/opt/vps-scrapers/'), `VPS scraper ${scraper.id} module should be in /opt/vps-scrapers/ directory`);
+    assert(typeof scraper.vpsEndpoint === 'string', `VPS scraper ${scraper.id} should have a vpsEndpoint`);
+    assert(typeof scraper.healthEndpoint === 'string', `VPS scraper ${scraper.id} should have a healthEndpoint`);
+    assert(scraper.vpsEndpoint.startsWith('/scrape/'), `VPS scraper ${scraper.id} vpsEndpoint should start with /scrape/`);
+    assert(scraper.healthEndpoint.startsWith('/health/'), `VPS scraper ${scraper.id} healthEndpoint should start with /health/`);
   }
 });
 
@@ -121,7 +124,7 @@ test('getScraperConfig: returns config for VPS scraper', () => {
 test('listScrapers: includes VPS scrapers', () => {
   const scrapers = autoTester.listScrapers();
   const vpsScrapers = scrapers.filter(s => s.id.startsWith('vps-'));
-  assert(vpsScrapers.length === 10, `Expected 10 VPS scrapers in list, got ${vpsScrapers.length}`);
+  assert(vpsScrapers.length === 11, `Expected 11 VPS scrapers in list, got ${vpsScrapers.length}`);
 });
 
 // ---------- Scrape Store Tests ----------
