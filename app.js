@@ -3385,6 +3385,25 @@ app.get('/admin/vps-setup', (req, res) => {
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
             const responseText = await response.text();
+            
+            // Check if it's a Cloudflare error page using case-insensitive matching and multiple indicators
+            const lowerResponseText = responseText.toLowerCase();
+            const isCloudflareError = (
+              (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('504')) ||
+              (lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
+              lowerResponseText.includes('cloudflare ray id')
+            );
+            
+            if (isCloudflareError) {
+              statusEl.innerHTML = '<div class="status-box status-error">❌ Cloudflare Gateway Timeout Error<br><br>' +
+                'The request timed out through Cloudflare proxy. This usually means:<br>' +
+                '• The application server is not responding (may be overloaded or down)<br>' +
+                '• Network connectivity issues between Cloudflare and the server<br>' +
+                '• The request is taking longer than Cloudflare\'s timeout limit<br><br>' +
+                'Please try again in a few minutes or <a href="/admin/server-logs">check server logs</a> for more details.</div>';
+              return;
+            }
+            
             const escapedText = responseText.substring(0, 500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             statusEl.innerHTML = '<div class="status-box status-error">❌ Server returned non-JSON response. <a href="/admin/server-logs">Check server logs</a> for details.<br><br>Response:<pre>' + escapedText + '</pre></div>';
             return;
