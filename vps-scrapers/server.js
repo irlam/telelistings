@@ -194,17 +194,17 @@ function addScrapeInfoRoute(path, sourceName, description) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': 'YOUR_API_KEY'
+          'x-api-key': '<your-api-key-here>'
         },
         body: {
-          teamName: 'Arsenal' // optional parameter example
+          teamName: 'Arsenal' // example parameter - check scraper documentation for supported parameters
         }
       },
       availableEndpoints: {
         scrape: `POST ${path}`,
         health: `GET /health/${sourceName}`,
         sources: 'GET /sources',
-        allHealth: 'GET /health'
+        mainHealth: 'GET /health'
       }
     });
   });
