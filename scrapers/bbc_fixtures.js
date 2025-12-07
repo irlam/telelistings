@@ -32,7 +32,7 @@ const path = require('path');
 
 // ---------- Configuration ----------
 
-const BASE_URL = 'https://www.bbc.co.uk/sport/football/teams';
+const BASE_URL = 'https://www.bbc.co.uk/sport/football/scores-fixtures';
 const DEFAULT_TIMEOUT = 15000;
 
 // Fallback parser configuration
@@ -170,10 +170,10 @@ async function fetchBBCFixtures({ teamName, teamSlug } = {}) {
       log(`Could not determine BBC slug for: ${teamName}`);
       return emptyResult;
     }
-    url = `${BASE_URL}/${slug}/scores-fixtures`;
+    url = `https://www.bbc.co.uk/sport/football/teams/${slug}/scores-fixtures`;
   } else {
     // General football fixtures page
-    url = 'https://www.bbc.co.uk/sport/football/scores-fixtures';
+    url = BASE_URL;
   }
   
   log(`Fetching fixtures from: ${url}`);
@@ -332,7 +332,7 @@ async function healthCheck() {
   const startTime = Date.now();
   
   try {
-    await axios.get(`${BASE_URL}/arsenal`, {
+    await axios.get(BASE_URL, {
       timeout: DEFAULT_TIMEOUT,
       headers: {
         'User-Agent': 'TelegramSportsBot/1.0'

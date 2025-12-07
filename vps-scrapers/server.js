@@ -172,6 +172,49 @@ addScrapeRoute('/scrape/tnt', tnt, 'tnt');
 addScrapeRoute('/scrape/wheresthematch', wheresthematch, 'wheresthematch');
 addScrapeRoute('/scrape/worldsoccertalk', worldsoccertalk, 'worldsoccertalk');
 
+// ---------- Add GET Handlers for Scrape Routes ----------
+// These provide helpful information when accessed with GET instead of POST
+
+/**
+ * Helper to add GET info endpoint for a scraper route.
+ * Returns information about the scraper and how to use it.
+ * @param {string} path - Route path (e.g., '/scrape/liveonsat')
+ * @param {string} sourceName - Source name for display
+ * @param {string} description - Description of the scraper
+ */
+function addScrapeInfoRoute(path, sourceName, description) {
+  app.get(path, (req, res) => {
+    res.json({
+      source: sourceName,
+      description: description,
+      method: 'POST',
+      message: `This endpoint requires POST request. Use POST ${path} with JSON body.`,
+      example: {
+        url: path,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': '<your-api-key-here>'
+        },
+        body: {
+          teamName: 'Arsenal' // example parameter - check scraper documentation for supported parameters
+        }
+      },
+      availableEndpoints: {
+        scrape: `POST ${path}`,
+        health: `GET /health/${sourceName}`,
+        sources: 'GET /sources',
+        mainHealth: 'GET /health'
+      }
+    });
+  });
+}
+
+// Add GET info routes for all scrapers
+SUPPORTED_SOURCES.forEach(source => {
+  addScrapeInfoRoute(source.path, source.name, source.description);
+});
+
 // ---------- Health Endpoints ----------
 
 /**

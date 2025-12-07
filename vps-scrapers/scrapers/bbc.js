@@ -27,7 +27,7 @@ const puppeteer = require('puppeteer');
 
 // ---------- Configuration ----------
 
-const BASE_URL = 'https://www.bbc.co.uk/sport/football/teams';
+const BASE_URL = 'https://www.bbc.co.uk/sport/football/scores-fixtures';
 const DEFAULT_TIMEOUT = 30000;
 
 // Team name to BBC slug mapping
@@ -151,9 +151,9 @@ async function fetchBBCFixtures({ teamName, teamSlug } = {}) {
       log(`Could not determine BBC slug for: ${teamName}`);
       return emptyResult;
     }
-    url = `${BASE_URL}/${slug}/scores-fixtures`;
+    url = `https://www.bbc.co.uk/sport/football/teams/${slug}/scores-fixtures`;
   } else {
-    url = 'https://www.bbc.co.uk/sport/football/scores-fixtures';
+    url = BASE_URL;
   }
   
   log(`Fetching fixtures from: ${url}`);
@@ -275,7 +275,7 @@ async function healthCheck() {
     const browser = await getBrowser();
     const page = await browser.newPage();
     
-    await page.goto(`${BASE_URL}/arsenal`, {
+    await page.goto(BASE_URL, {
       waitUntil: 'domcontentloaded',
       timeout: DEFAULT_TIMEOUT
     });
