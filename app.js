@@ -3565,6 +3565,9 @@ app.post('/admin/vps-setup/save', (req, res) => {
 });
 
 app.post('/admin/vps-setup/test', async (req, res) => {
+  // Explicitly set Content-Type to ensure JSON response
+  res.setHeader('Content-Type', 'application/json');
+  
   const cfg = loadConfig();
   const vpsConfig = cfg.vpsConfig;
   
@@ -3583,6 +3586,9 @@ app.post('/admin/vps-setup/test', async (req, res) => {
 });
 
 app.post('/admin/vps-setup/deploy', async (req, res) => {
+  // Explicitly set Content-Type to ensure JSON response
+  res.setHeader('Content-Type', 'application/json');
+  
   // Ensure we always return JSON, even if there's an unexpected error
   let logOutput = '';
   
