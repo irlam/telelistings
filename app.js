@@ -3495,11 +3495,11 @@ app.get('/admin/vps-setup', (req, res) => {
         
         if (result.success) {
           logEl.textContent += '\n' + result.log;
-          statusEl.innerHTML = '<div class="status-box status-success">✅ Deployment successful!\n\n' + 
-            'Next steps:\n' +
-            '1. VPS scrapers are installed at: ' + result.vpsDirectory + '\n' +
-            '2. Configure environment: Edit .env file on VPS\n' +
-            '3. Start service: sudo systemctl start vps-scrapers\n' +
+          statusEl.innerHTML = '<div class="status-box status-success">✅ Deployment successful!<br><br>' + 
+            'Next steps:<br>' +
+            '1. VPS scrapers are installed at: ' + result.vpsDirectory + '<br>' +
+            '2. Configure environment: Edit .env file on VPS<br>' +
+            '3. Start service: sudo systemctl start vps-scrapers<br>' +
             '4. Enable auto-start: sudo systemctl enable vps-scrapers</div>';
         } else {
           logEl.textContent += '\n' + (result.log || '');
