@@ -3427,8 +3427,15 @@ app.get('/admin/vps-setup', (req, res) => {
             // Try to get the actual response body for debugging
             const responseText = await response.text();
             
-            // Check if it's a Cloudflare error page
-            if (responseText.includes('cloudflare') || responseText.includes('504') || responseText.includes('Gateway time-out')) {
+            // Check if it's a Cloudflare error page using case-insensitive matching and multiple indicators
+            const lowerResponseText = responseText.toLowerCase();
+            const isCloudflareError = (
+              (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('504')) ||
+              (lowerResponseText.includes('gateway') && lowerResponseText.includes('time') && lowerResponseText.includes('out')) ||
+              lowerResponseText.includes('cloudflare ray id')
+            );
+            
+            if (isCloudflareError) {
               logEl.textContent += '\\n\\nCloudflare Gateway Timeout Error Detected\\n';
               throw new Error('The request timed out through Cloudflare proxy. This usually means:\\n' +
                 '• The VPS host is unreachable or not responding\\n' +
