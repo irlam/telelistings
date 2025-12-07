@@ -36,6 +36,31 @@ const DEFAULT_TIMEOUT = 45000;
 // Minimum length for valid text values (team names, channels, etc.)
 const MIN_TEXT_LENGTH = 3;
 
+// Women's football filter terms
+const WOMENS_TERMS = ['women', 'ladies', 'wsl', 'womens'];
+
+// UK competitions to include
+const UK_COMPETITIONS = [
+  'premier league',
+  'english championship',
+  'championship',
+  'english league one',
+  'league one',
+  'english league two',
+  'league two',
+  'fa cup',
+  'efl cup',
+  'carabao cup',
+  'scottish premiership',
+  'scottish championship',
+  'scottish league one',
+  'scottish league two',
+  'scottish cup',
+  'welsh premier league',
+  'northern ireland premiership',
+  'national league'
+];
+
 // Shared browser instance
 let browser = null;
 
@@ -280,6 +305,24 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         competition,
         channels: Array.from(new Set(f.channels))
       };
+    });
+
+    // Filter out women's football and keep only UK teams
+    fixtures = fixtures.filter(f => {
+      const comp = (f.competition || '').toLowerCase();
+      const home = (f.home || '').toLowerCase();
+      const away = (f.away || '').toLowerCase();
+      
+      // Exclude women's football matches
+      const isWomens = WOMENS_TERMS.some(term => 
+        comp.includes(term) || home.includes(term) || away.includes(term)
+      );
+      
+      // Check if competition matches any UK competition
+      const isUkCompetition = UK_COMPETITIONS.some(ukComp => comp.includes(ukComp));
+      
+      // Keep only UK competitions that are not women's football
+      return !isWomens && isUkCompetition;
     });
 
     // Optional team filter
