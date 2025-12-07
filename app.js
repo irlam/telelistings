@@ -3261,6 +3261,7 @@ app.get('/admin/vps-setup', (req, res) => {
     .status-success { background: #1d4a3a; border-left: 4px solid #00b894; }
     .status-error { background: #4a1d1d; border-left: 4px solid #e74c3c; }
     .status-info { background: #1d3a4a; border-left: 4px solid #3498db; }
+    .status-warning { background: #4a3d1d; border-left: 4px solid #f39c12; color: #f9e79f; }
     .help-text { color: #aaa; font-size: 13px; margin-top: 4px; }
     #deployment-log { background: #111; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; display: none; }
   </style>
@@ -3279,7 +3280,7 @@ app.get('/admin/vps-setup', (req, res) => {
       </ul>
     </div>
     
-    <div class="status-box status-warning" style="background-color: #fff3cd; border-color: #ffecb5;">
+    <div class="status-box status-warning">
       <strong>⚠️ Important Configuration Notes:</strong>
       <ul>
         <li><strong>VPS Host:</strong> Use the direct IP address or SSH hostname of your VPS, NOT a web URL or domain proxied through Cloudflare</li>
@@ -3431,7 +3432,7 @@ app.get('/admin/vps-setup', (req, res) => {
             const lowerResponseText = responseText.toLowerCase();
             const isCloudflareError = (
               (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('504')) ||
-              (lowerResponseText.includes('gateway') && lowerResponseText.includes('time') && lowerResponseText.includes('out')) ||
+              (lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
               lowerResponseText.includes('cloudflare ray id')
             );
             
