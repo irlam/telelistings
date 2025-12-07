@@ -28,6 +28,67 @@ const { runOnce, CONFIG_PATH, LOG_PATH } = require('./autopost');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Server log buffer - stores last 500 log entries
+const SERVER_LOG_BUFFER = [];
+const MAX_SERVER_LOG_ENTRIES = 500;
+const SERVER_LOG_PATH = path.join(__dirname, 'logs', 'server.log');
+
+// Ensure logs directory exists
+const LOGS_DIR = path.join(__dirname, 'logs');
+if (!fs.existsSync(LOGS_DIR)) {
+  fs.mkdirSync(LOGS_DIR, { recursive: true });
+}
+
+// Store original console methods before overriding
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+// Function to log to both console and file
+function serverLog(level, ...args) {
+  const timestamp = new Date().toISOString();
+  const message = args.map(arg => {
+    if (typeof arg === 'object') {
+      try {
+        return JSON.stringify(arg);
+      } catch (e) {
+        return '[Object with circular reference]';
+      }
+    }
+    return String(arg);
+  }).join(' ');
+  const logEntry = `[${timestamp}] [${level}] ${message}`;
+  
+  // Add to buffer
+  SERVER_LOG_BUFFER.push(logEntry);
+  if (SERVER_LOG_BUFFER.length > MAX_SERVER_LOG_ENTRIES) {
+    SERVER_LOG_BUFFER.shift();
+  }
+  
+  // Write to file
+  try {
+    fs.appendFileSync(SERVER_LOG_PATH, logEntry + '\n', 'utf8');
+  } catch (err) {
+    // Fallback to original console if file write fails
+    originalConsoleError('Failed to write to server log file:', err.message);
+  }
+  
+  // Also output to original console
+  if (level === 'ERROR') {
+    originalConsoleError(...args);
+  } else {
+    originalConsoleLog(...args);
+  }
+}
+
+// Override console.log and console.error to capture logs
+console.log = function(...args) {
+  serverLog('INFO', ...args);
+};
+
+console.error = function(...args) {
+  serverLog('ERROR', ...args);
+};
+
 // Configure multer for background image upload
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -813,9 +874,27 @@ app.get('/admin/logs', (req, res) => {
       lines.length
     )} lines from <code>autopost.log</code>.</p>
     <pre>${escapeHtml(last)}</pre>
+  </div>
+  <div class="card">
+    <a href="/admin/server-logs" class="btn">📋 View Server Logs (errors, deployment issues)</a>
   </div>`;
 
   res.send(renderLayout('Logs - Telegram Sports TV Bot', body));
+});
+
+app.get('/admin/server-logs', (req, res) => {
+  const body = `
+  <div class="card">
+    <h2>Server Logs</h2>
+    <p class="muted">Showing last ${SERVER_LOG_BUFFER.length} log entries from server console output.</p>
+    <p class="muted">These logs include application errors, deployment issues, and other server events.</p>
+    <pre>${escapeHtml(SERVER_LOG_BUFFER.join('\n'))}</pre>
+  </div>
+  <div class="card">
+    <a href="/admin/logs" class="btn">View Autopost Logs</a>
+  </div>`;
+
+  res.send(renderLayout('Server Logs - Telegram Sports TV Bot', body));
 });
 
 // --------- Help page ---------
@@ -3293,7 +3372,10 @@ app.get('/admin/vps-setup', (req, res) => {
           // Check if response is JSON
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
-            throw new Error('Server returned non-JSON response. Check server logs for details.');
+            const responseText = await response.text();
+            const escapedText = responseText.substring(0, 500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            statusEl.innerHTML = '<div class="status-box status-error">❌ Server returned non-JSON response. <a href="/admin/server-logs">Check server logs</a> for details.<br><br>Response:<pre>' + escapedText + '</pre></div>';
+            return;
           }
           
           const result = await response.json();
@@ -3326,7 +3408,10 @@ app.get('/admin/vps-setup', (req, res) => {
           // Check if response is JSON
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
-            throw new Error('Server returned non-JSON response. Check server logs for details.');
+            // Try to get the actual response body for debugging
+            const responseText = await response.text();
+            logEl.textContent += '\\n\\nServer Response (Non-JSON):\\n' + responseText;
+            throw new Error('Server returned non-JSON response. See deployment log below for details. You can also check server logs at /admin/server-logs');
           }
           
           const result = await response.json();
@@ -3506,6 +3591,36 @@ app.post('/admin/vps-setup/deploy', async (req, res) => {
       message: error.message,
       log: logOutput
     });
+  }
+});
+
+// Error handler middleware for API endpoints - ensures JSON responses
+app.use((err, req, res, next) => {
+  // Log the error
+  console.error('Unhandled error:', err);
+  
+  // For API endpoints that should return JSON (VPS setup, test, and deploy endpoints)
+  if (req.path.startsWith('/admin/vps-setup/deploy') || 
+      req.path.startsWith('/admin/vps-setup/test') ||
+      req.path.startsWith('/api/')) {
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: err.message || 'Internal server error',
+        log: err.stack
+      });
+    }
+  } else {
+    // For regular pages, send error page
+    if (!res.headersSent) {
+      res.status(500).send(renderLayout('Error', `
+        <div class="card">
+          <h2>Error</h2>
+          <p>${escapeHtml(err.message)}</p>
+          <pre>${escapeHtml(err.stack)}</pre>
+        </div>
+      `));
+    }
   }
 });
 
