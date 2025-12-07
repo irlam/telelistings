@@ -36,6 +36,31 @@ const DEFAULT_TIMEOUT = 45000;
 // Minimum length for valid text values (team names, channels, etc.)
 const MIN_TEXT_LENGTH = 3;
 
+// Women's football filter terms
+const WOMENS_TERMS = ['women', 'ladies', 'wsl', 'womens'];
+
+// UK competitions to include
+const UK_COMPETITIONS = [
+  'premier league',
+  'english championship',
+  'championship',
+  'english league one',
+  'league one',
+  'english league two',
+  'league two',
+  'fa cup',
+  'efl cup',
+  'carabao cup',
+  'scottish premiership',
+  'scottish championship',
+  'scottish league one',
+  'scottish league two',
+  'scottish cup',
+  'welsh premier league',
+  'northern ireland premiership',
+  'national league'
+];
+
 // Shared browser instance
 let browser = null;
 
@@ -282,53 +307,23 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
       };
     });
 
-    // Filter out women's football
+    // Filter out women's football and keep only UK teams
     fixtures = fixtures.filter(f => {
       const comp = (f.competition || '').toLowerCase();
       const home = (f.home || '').toLowerCase();
       const away = (f.away || '').toLowerCase();
       
       // Exclude women's football matches
-      const isWomens = comp.includes('women') || 
-                       comp.includes('ladies') ||
-                       comp.includes('wsl') ||
-                       comp.includes('womens') ||
-                       home.includes('women') ||
-                       home.includes('ladies') ||
-                       away.includes('women') ||
-                       away.includes('ladies');
+      const isWomens = WOMENS_TERMS.some(term => 
+        comp.includes(term) || home.includes(term) || away.includes(term)
+      );
       
-      return !isWomens;
-    });
-
-    // Keep UK teams only - filter by competition
-    fixtures = fixtures.filter(f => {
-      const comp = (f.competition || '').toLowerCase();
-      
-      // List of UK competitions to keep
-      const ukCompetitions = [
-        'premier league',
-        'english championship',
-        'championship',
-        'english league one',
-        'league one',
-        'english league two',
-        'league two',
-        'fa cup',
-        'efl cup',
-        'carabao cup',
-        'scottish premiership',
-        'scottish championship',
-        'scottish league one',
-        'scottish league two',
-        'scottish cup',
-        'welsh premier',
-        'northern ireland',
-        'national league'
-      ];
+      if (isWomens) {
+        return false;
+      }
       
       // Check if competition matches any UK competition
-      const isUkCompetition = ukCompetitions.some(ukComp => comp.includes(ukComp));
+      const isUkCompetition = UK_COMPETITIONS.some(ukComp => comp.includes(ukComp));
       
       return isUkCompetition;
     });
