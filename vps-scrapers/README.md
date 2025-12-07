@@ -93,8 +93,6 @@ This script will:
 
 **Or install manually:**
 
-**Or install manually:**
-
 SSH into your VPS and run:
 
 ```bash
@@ -108,7 +106,8 @@ npm install
 
 ```bash
 cd /opt/vps-scrapers
-sudo bash install-chrome-headless.sh
+# The install-chrome-headless.sh is standalone, or use the full install-dependencies.sh
+sudo bash scripts/install-dependencies.sh
 ```
 
 **Or manually on Ubuntu/Debian:**

@@ -73,8 +73,14 @@ install_nodejs() {
         curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | sudo -E bash -
         sudo apt-get install -y nodejs
     elif [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "rhel" ] || [ "$DISTRO" = "fedora" ]; then
-        curl -fsSL https://rpm.nodesource.com/setup_${NODE_VERSION}.x | sudo bash -
-        sudo yum install -y nodejs
+        # Use dnf for modern RHEL/CentOS/Fedora, fallback to yum for older versions
+        if command -v dnf &> /dev/null; then
+            curl -fsSL https://rpm.nodesource.com/setup_${NODE_VERSION}.x | sudo bash -
+            sudo dnf install -y nodejs
+        else
+            curl -fsSL https://rpm.nodesource.com/setup_${NODE_VERSION}.x | sudo bash -
+            sudo yum install -y nodejs
+        fi
     else
         log_error "Unsupported distribution for automatic Node.js installation"
         log_info "Please install Node.js v${NODE_VERSION}+ manually"
@@ -138,7 +144,11 @@ install_chrome() {
         
     elif [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "rhel" ] || [ "$DISTRO" = "fedora" ]; then
         log_info "Installing Chromium..."
-        sudo yum install -y chromium
+        if command -v dnf &> /dev/null; then
+            sudo dnf install -y chromium
+        else
+            sudo yum install -y chromium
+        fi
     else
         log_error "Unsupported distribution for automatic Chrome installation"
         return 1
