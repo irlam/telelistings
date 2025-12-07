@@ -181,6 +181,7 @@ function renderLayout(title, bodyHtml) {
     <a href="/admin/scrapers">Scrapers</a>
     <a href="/admin/auto-test">Auto-Test</a>
     <a href="/admin/results">Results</a>
+    <a href="/admin/vps-setup">VPS Setup</a>
     <a href="/admin/vps-debug">VPS Debug</a>
     <a href="/admin/environment">Environment</a>
     <a href="/admin/logs">Logs</a>
@@ -3148,6 +3149,350 @@ sudo systemctl restart vps-scrapers
   `;
   
   res.send(renderLayout('VPS Debug - Telegram Sports TV Bot', body));
+});
+
+// --------- VPS Setup & Deployment ---------
+
+app.get('/admin/vps-setup', (req, res) => {
+  const cfg = loadConfig();
+  const vpsConfig = cfg.vpsConfig || {};
+  
+  // Show masked credentials
+  const maskedConfig = {
+    host: vpsConfig.host || '',
+    port: vpsConfig.port || '22',
+    username: vpsConfig.username || '',
+    authType: vpsConfig.authType || 'key',
+    hasPassword: !!(vpsConfig.password),
+    privateKeyPath: vpsConfig.privateKeyPath || '',
+    vpsDirectory: vpsConfig.vpsDirectory || '/opt/vps-scrapers'
+  };
+  
+  const body = `
+  <style>
+    .config-section { background: #1b1b1b; padding: 20px; border-radius: 8px; margin: 16px 0; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; }
+    .inline-group { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    .btn-primary { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-success { background: #00b894; color: #000; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-warning { background: #f39c12; color: #000; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-group { display: flex; gap: 12px; margin-top: 16px; }
+    .status-box { padding: 16px; border-radius: 8px; margin: 16px 0; }
+    .status-success { background: #1d4a3a; border-left: 4px solid #00b894; }
+    .status-error { background: #4a1d1d; border-left: 4px solid #e74c3c; }
+    .status-info { background: #1d3a4a; border-left: 4px solid #3498db; }
+    .help-text { color: #aaa; font-size: 13px; margin-top: 4px; }
+    #deployment-log { background: #111; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; display: none; }
+  </style>
+  
+  <div class="card">
+    <h2>🚀 VPS Setup & Deployment</h2>
+    <p>Configure your VPS connection details and deploy the scrapers remotely with one click.</p>
+    
+    <div class="status-box status-info">
+      <strong>📋 What this does:</strong>
+      <ul>
+        <li>Connects to your VPS via SSH</li>
+        <li>Transfers all VPS scraper files to the configured directory</li>
+        <li>Installs Node.js, Chrome/Chromium, and all dependencies</li>
+        <li>Configures and starts the scraper service</li>
+      </ul>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h3>VPS Connection Settings</h3>
+    <form method="post" action="/admin/vps-setup/save">
+      <div class="config-section">
+        <div class="inline-group">
+          <div class="form-group">
+            <label>VPS Host (IP or Domain)<br>
+            <input type="text" name="host" value="${escapeHtml(maskedConfig.host)}" placeholder="185.170.113.230" required></label>
+            <div class="help-text">IP address or domain name of your VPS</div>
+          </div>
+          
+          <div class="form-group">
+            <label>SSH Port<br>
+            <input type="number" name="port" value="${escapeHtml(maskedConfig.port)}" placeholder="22" required></label>
+            <div class="help-text">Usually 22</div>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Username<br>
+          <input type="text" name="username" value="${escapeHtml(maskedConfig.username)}" placeholder="root" required></label>
+          <div class="help-text">SSH user (e.g., root, ubuntu, admin)</div>
+        </div>
+        
+        <div class="form-group">
+          <label>VPS Directory<br>
+          <input type="text" name="vpsDirectory" value="${escapeHtml(maskedConfig.vpsDirectory)}" placeholder="/opt/vps-scrapers" required></label>
+          <div class="help-text">Installation directory on VPS (default: /opt/vps-scrapers)</div>
+        </div>
+        
+        <div class="form-group">
+          <label>Authentication Method<br>
+          <select name="authType" id="authType" onchange="toggleAuthFields()">
+            <option value="key" ${maskedConfig.authType === 'key' ? 'selected' : ''}>SSH Key (Recommended)</option>
+            <option value="password" ${maskedConfig.authType === 'password' ? 'selected' : ''}>Password</option>
+          </select></label>
+        </div>
+        
+        <div id="keyAuthFields" style="display: ${maskedConfig.authType === 'key' ? 'block' : 'none'};">
+          <div class="form-group">
+            <label>SSH Private Key Path<br>
+            <input type="text" name="privateKeyPath" value="${escapeHtml(maskedConfig.privateKeyPath)}" placeholder="/home/user/.ssh/id_rsa"></label>
+            <div class="help-text">Full path to your SSH private key file</div>
+          </div>
+        </div>
+        
+        <div id="passwordAuthFields" style="display: ${maskedConfig.authType === 'password' ? 'block' : 'none'};">
+          <div class="form-group">
+            <label>SSH Password<br>
+            <input type="password" name="password" value="" placeholder="${maskedConfig.hasPassword ? '••••••••' : 'Enter password'}"></label>
+            <div class="help-text">Leave blank to keep existing password. <strong>⚠️ SSH key authentication is more secure.</strong></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="btn-group">
+        <button type="submit" class="btn-primary">💾 Save Configuration</button>
+      </div>
+    </form>
+    
+    <script>
+      function toggleAuthFields() {
+        const authType = document.getElementById('authType').value;
+        document.getElementById('keyAuthFields').style.display = authType === 'key' ? 'block' : 'none';
+        document.getElementById('passwordAuthFields').style.display = authType === 'password' ? 'block' : 'none';
+      }
+    </script>
+  </div>
+  
+  ${vpsConfig.host ? `
+  <div class="card">
+    <h3>Deployment Actions</h3>
+    
+    <div class="btn-group">
+      <button onclick="testConnection()" class="btn-primary">🔌 Test Connection</button>
+      <button onclick="deployVPS()" class="btn-success">🚀 Deploy to VPS</button>
+    </div>
+    
+    <div id="status-message" style="margin-top: 16px;"></div>
+    <div id="deployment-log"></div>
+    
+    <script>
+      async function testConnection() {
+        const statusEl = document.getElementById('status-message');
+        statusEl.innerHTML = '<div class="status-box status-info">⏳ Testing SSH connection...</div>';
+        
+        try {
+          const response = await fetch('/admin/vps-setup/test', { method: 'POST' });
+          const result = await response.json();
+          
+          if (result.success) {
+            statusEl.innerHTML = '<div class="status-box status-success">✅ ' + result.message + '</div>';
+          } else {
+            statusEl.innerHTML = '<div class="status-box status-error">❌ ' + result.message + '</div>';
+          }
+        } catch (error) {
+          statusEl.innerHTML = '<div class="status-box status-error">❌ Error: ' + error.message + '</div>';
+        }
+      }
+      
+      async function deployVPS() {
+        const statusEl = document.getElementById('status-message');
+        const logEl = document.getElementById('deployment-log');
+        
+        if (!confirm('This will deploy the VPS scrapers to your VPS and install all dependencies. This may take several minutes. Continue?')) {
+          return;
+        }
+        
+        statusEl.innerHTML = '<div class="status-box status-info">⏳ Deploying to VPS... This may take several minutes.</div>';
+        logEl.style.display = 'block';
+        logEl.textContent = 'Starting deployment...\\n';
+        
+        try {
+          const response = await fetch('/admin/vps-setup/deploy', { method: 'POST' });
+          const result = await response.json();
+          
+          if (result.success) {
+            logEl.textContent += '\\n' + result.log;
+            statusEl.innerHTML = '<div class="status-box status-success">✅ Deployment successful!\\n\\n' + 
+              'Next steps:\\n' +
+              '1. VPS scrapers are installed at: ' + result.vpsDirectory + '\\n' +
+              '2. Configure environment: Edit .env file on VPS\\n' +
+              '3. Start service: sudo systemctl start vps-scrapers\\n' +
+              '4. Enable auto-start: sudo systemctl enable vps-scrapers</div>';
+          } else {
+            logEl.textContent += '\\n' + (result.log || '');
+            statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed: ' + result.message + '</div>';
+          }
+        } catch (error) {
+          logEl.textContent += '\\nError: ' + error.message;
+          statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed: ' + error.message + '</div>';
+        }
+      }
+    </script>
+  </div>
+  ` : `
+  <div class="card">
+    <div class="status-box status-info">
+      ℹ️ Save your VPS configuration above to enable deployment actions.
+    </div>
+  </div>
+  `}
+  
+  <div class="card">
+    <h3>📖 Manual Deployment (Alternative)</h3>
+    <p>If you prefer to deploy manually or the automatic deployment doesn't work:</p>
+    
+    <h4>1. Copy files to VPS</h4>
+    <pre>cd /path/to/telelistings
+rsync -avz --exclude 'node_modules' vps-scrapers/ user@vps-ip:/opt/vps-scrapers/</pre>
+    
+    <h4>2. SSH to VPS and run installation</h4>
+    <pre>ssh user@vps-ip
+cd /opt/vps-scrapers
+chmod +x scripts/*.sh
+sudo bash scripts/install-dependencies.sh</pre>
+    
+    <h4>3. Configure and start service</h4>
+    <pre>nano .env  # Edit configuration
+sudo systemctl start vps-scrapers
+sudo systemctl enable vps-scrapers</pre>
+  </div>
+  `;
+  
+  res.send(renderLayout('VPS Setup - Telegram Sports TV Bot', body));
+});
+
+app.post('/admin/vps-setup/save', (req, res) => {
+  const cfg = loadConfig();
+  
+  // Save VPS configuration
+  const vpsConfig = {
+    host: req.body.host,
+    port: parseInt(req.body.port) || 22,
+    username: req.body.username,
+    authType: req.body.authType,
+    vpsDirectory: req.body.vpsDirectory || '/opt/vps-scrapers'
+  };
+  
+  if (req.body.authType === 'key') {
+    vpsConfig.privateKeyPath = req.body.privateKeyPath;
+  } else if (req.body.authType === 'password' && req.body.password) {
+    // Only update password if provided
+    vpsConfig.password = req.body.password;
+  } else if (req.body.authType === 'password' && cfg.vpsConfig && cfg.vpsConfig.password) {
+    // Keep existing password if not provided
+    vpsConfig.password = cfg.vpsConfig.password;
+  }
+  
+  cfg.vpsConfig = vpsConfig;
+  saveConfig(cfg);
+  
+  res.redirect('/admin/vps-setup?saved=true');
+});
+
+app.post('/admin/vps-setup/test', async (req, res) => {
+  const cfg = loadConfig();
+  const vpsConfig = cfg.vpsConfig;
+  
+  if (!vpsConfig || !vpsConfig.host) {
+    return res.json({ success: false, message: 'VPS configuration not found. Please save your settings first.' });
+  }
+  
+  try {
+    const SSHClient = require('./lib/ssh-client');
+    const client = new SSHClient(vpsConfig);
+    const result = await client.testConnection();
+    res.json(result);
+  } catch (error) {
+    res.json({ success: false, message: error.message });
+  }
+});
+
+app.post('/admin/vps-setup/deploy', async (req, res) => {
+  const cfg = loadConfig();
+  const vpsConfig = cfg.vpsConfig;
+  
+  if (!vpsConfig || !vpsConfig.host) {
+    return res.json({ success: false, message: 'VPS configuration not found. Please save your settings first.' });
+  }
+  
+  let logOutput = '';
+  
+  try {
+    const SSHClient = require('./lib/ssh-client');
+    const path = require('path');
+    const client = new SSHClient(vpsConfig);
+    
+    logOutput += 'Connecting to VPS...\n';
+    await client.connect();
+    logOutput += `Connected to ${vpsConfig.host}\n\n`;
+    
+    // Create remote directory
+    logOutput += `Creating directory ${vpsConfig.vpsDirectory}...\n`;
+    await client.executeCommand(`mkdir -p ${vpsConfig.vpsDirectory}`);
+    logOutput += 'Directory created\n\n';
+    
+    // Upload vps-scrapers directory
+    logOutput += 'Uploading files to VPS...\n';
+    const localVpsDir = path.join(__dirname, 'vps-scrapers');
+    const uploadResult = await client.uploadDirectory(localVpsDir, vpsConfig.vpsDirectory);
+    logOutput += `Uploaded ${uploadResult.uploaded} files\n`;
+    if (uploadResult.failed > 0) {
+      logOutput += `Failed to upload ${uploadResult.failed} files\n`;
+      uploadResult.errors.forEach(err => {
+        logOutput += `  - ${err.file}: ${err.error}\n`;
+      });
+    }
+    logOutput += '\n';
+    
+    // Make scripts executable
+    logOutput += 'Making scripts executable...\n';
+    await client.executeCommand(`chmod +x ${vpsConfig.vpsDirectory}/scripts/*.sh`);
+    logOutput += 'Scripts are now executable\n\n';
+    
+    // Run installation script
+    logOutput += 'Running installation script...\n';
+    const installResult = await client.executeCommand(
+      `cd ${vpsConfig.vpsDirectory} && VPS_DIR=${vpsConfig.vpsDirectory} bash scripts/install-dependencies.sh`,
+      { pty: true }
+    );
+    
+    logOutput += installResult.stdout;
+    if (installResult.stderr) {
+      logOutput += '\nStderr:\n' + installResult.stderr;
+    }
+    
+    await client.disconnect();
+    
+    if (installResult.exitCode === 0) {
+      res.json({ 
+        success: true, 
+        message: 'Deployment completed successfully',
+        log: logOutput,
+        vpsDirectory: vpsConfig.vpsDirectory
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        message: `Installation script exited with code ${installResult.exitCode}`,
+        log: logOutput
+      });
+    }
+  } catch (error) {
+    logOutput += '\n\nError: ' + error.message + '\n';
+    logOutput += error.stack;
+    res.json({ 
+      success: false, 
+      message: error.message,
+      log: logOutput
+    });
+  }
 });
 
 // --------- start server ---------
