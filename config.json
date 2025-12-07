@@ -3552,5 +3552,13 @@
   "envVars": {
     "LSTV_SCRAPER_URL": "http://185.170.113.230:3333",
     "LSTV_SCRAPER_KEY": "Q0tMx1sJ8nVh3w9L2z"
+  },
+  "vpsConfig": {
+    "host": "test.example.com",
+    "port": 22,
+    "username": "root",
+    "authType": "key",
+    "vpsDirectory": "/opt/vps-scrapers",
+    "privateKeyPath": "/home/user/.ssh/id_rsa"
   }
 }

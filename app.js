@@ -3450,7 +3450,7 @@ app.get('/admin/vps-setup', (req, res) => {
       
       statusEl.innerHTML = '<div class="status-box status-info">⏳ Deploying to VPS... This may take several minutes.</div>';
       logEl.style.display = 'block';
-      logEl.textContent = 'Starting deployment...\\n';
+      logEl.textContent = 'Starting deployment...\n';
       
       try {
         const response = await fetch('/admin/vps-setup/deploy', { 
@@ -3475,38 +3475,38 @@ app.get('/admin/vps-setup', (req, res) => {
           );
           
           if (isCloudflareError) {
-            logEl.textContent += '\\n\\nCloudflare Gateway Timeout Error Detected\\n';
-            throw new Error('The request timed out through Cloudflare proxy. This usually means:\\n' +
-              '• The VPS host is unreachable or not responding\\n' +
-              '• SSH service is not running on the VPS\\n' +
-              '• VPS host/port configuration is incorrect\\n\\n' +
+            logEl.textContent += '\n\nCloudflare Gateway Timeout Error Detected\n';
+            throw new Error('The request timed out through Cloudflare proxy. This usually means:\n' +
+              '• The VPS host is unreachable or not responding\n' +
+              '• SSH service is not running on the VPS\n' +
+              '• VPS host/port configuration is incorrect\n\n' +
               'Please verify your VPS configuration and ensure the VPS is accessible via SSH.');
           }
           
           // Truncate very long responses
           const truncatedText = responseText.length > 1000 
-            ? responseText.substring(0, 1000) + '\\n\\n... (response truncated)'
+            ? responseText.substring(0, 1000) + '\n\n... (response truncated)'
             : responseText;
-          logEl.textContent += '\\n\\nServer Response (Non-JSON):\\n' + truncatedText;
+          logEl.textContent += '\n\nServer Response (Non-JSON):\n' + truncatedText;
           throw new Error('Server returned non-JSON response. This may indicate a server error or timeout. Check the deployment log above for details.');
         }
         
         const result = await response.json();
         
         if (result.success) {
-          logEl.textContent += '\\n' + result.log;
-          statusEl.innerHTML = '<div class="status-box status-success">✅ Deployment successful!\\n\\n' + 
-            'Next steps:\\n' +
-            '1. VPS scrapers are installed at: ' + result.vpsDirectory + '\\n' +
-            '2. Configure environment: Edit .env file on VPS\\n' +
-            '3. Start service: sudo systemctl start vps-scrapers\\n' +
+          logEl.textContent += '\n' + result.log;
+          statusEl.innerHTML = '<div class="status-box status-success">✅ Deployment successful!\n\n' + 
+            'Next steps:\n' +
+            '1. VPS scrapers are installed at: ' + result.vpsDirectory + '\n' +
+            '2. Configure environment: Edit .env file on VPS\n' +
+            '3. Start service: sudo systemctl start vps-scrapers\n' +
             '4. Enable auto-start: sudo systemctl enable vps-scrapers</div>';
         } else {
-          logEl.textContent += '\\n' + (result.log || '');
+          logEl.textContent += '\n' + (result.log || '');
           statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed: ' + result.message + '</div>';
         }
       } catch (error) {
-        logEl.textContent += '\\nError: ' + error.message;
+        logEl.textContent += '\nError: ' + error.message;
         statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed. See log above for details.</div>';
       }
     }
