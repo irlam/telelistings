@@ -3358,22 +3358,8 @@ app.get('/admin/vps-setup', (req, res) => {
         document.getElementById('keyAuthFields').style.display = authType === 'key' ? 'block' : 'none';
         document.getElementById('passwordAuthFields').style.display = authType === 'password' ? 'block' : 'none';
       }
-    </script>
-  </div>
-  
-  ${vpsConfig.host ? `
-  <div class="card">
-    <h3>Deployment Actions</h3>
-    
-    <div class="btn-group">
-      <button onclick="testConnection()" class="btn-primary">🔌 Test Connection</button>
-      <button onclick="deployVPS()" class="btn-success">🚀 Deploy to VPS</button>
-    </div>
-    
-    <div id="status-message" style="margin-top: 16px;"></div>
-    <div id="deployment-log"></div>
-    
-    <script>
+      
+      // VPS deployment functions - defined globally so they're always available
       async function testConnection() {
         const statusEl = document.getElementById('status-message');
         statusEl.innerHTML = '<div class="status-box status-info">⏳ Testing SSH connection...</div>';
@@ -3492,6 +3478,19 @@ app.get('/admin/vps-setup', (req, res) => {
         }
       }
     </script>
+  </div>
+  
+  ${vpsConfig.host ? `
+  <div class="card">
+    <h3>Deployment Actions</h3>
+    
+    <div class="btn-group">
+      <button onclick="testConnection()" class="btn-primary">🔌 Test Connection</button>
+      <button onclick="deployVPS()" class="btn-success">🚀 Deploy to VPS</button>
+    </div>
+    
+    <div id="status-message" style="margin-top: 16px;"></div>
+    <div id="deployment-log"></div>
   </div>
   ` : `
   <div class="card">
