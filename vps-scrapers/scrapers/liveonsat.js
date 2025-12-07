@@ -318,14 +318,11 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         comp.includes(term) || home.includes(term) || away.includes(term)
       );
       
-      if (isWomens) {
-        return false;
-      }
-      
       // Check if competition matches any UK competition
       const isUkCompetition = UK_COMPETITIONS.some(ukComp => comp.includes(ukComp));
       
-      return isUkCompetition;
+      // Keep only UK competitions that are not women's football
+      return !isWomens && isUkCompetition;
     });
 
     // Optional team filter
