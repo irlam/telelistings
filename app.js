@@ -3438,8 +3438,8 @@ app.get('/admin/vps-setup', (req, res) => {
         <div class="inline-group">
           <div class="form-group">
             <label>VPS Host (IP or Domain)<br>
-            <input type="text" name="host" value="${escapeHtml(maskedConfig.host)}" placeholder="185.170.113.230" required></label>
-            <div class="help-text">IP address or domain name of your VPS. ⚠️ Use the direct IP address or SSH hostname, NOT a web URL (http://...). If your VPS is behind Cloudflare, use the origin server IP.</div>
+            <input type="text" name="host" value="${escapeHtml(maskedConfig.host)}" placeholder="deploy.defecttracker.uk" required></label>
+            <div class="help-text">IP address or domain name of your VPS for SSH access. ⚠️ Use the direct IP or DNS-only hostname (e.g., deploy.defecttracker.uk), NOT a Cloudflare-proxied domain or web URL (http://...). For Cloudflare setups, use the DNS-only (gray cloud) record.</div>
           </div>
           
           <div class="form-group">

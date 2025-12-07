@@ -259,6 +259,21 @@ Core dependencies:
 - `node-ical` - ICS calendar parsing
 - `@napi-rs/canvas` - Image generation for posters
 
+## Deployment & Infrastructure
+
+### Cloudflare DNS Configuration
+
+If you're hosting the telelistings application behind Cloudflare, proper DNS configuration is essential to ensure both the web UI and SSH/deployment access work correctly:
+
+- **Web UI**: Use a proxied (orange cloud) A record pointing to your VPS IP (e.g., `telegram.defecttracker.uk`)
+- **SSH/Deployment**: Use a DNS-only (gray cloud) A record pointing to the same IP (e.g., `deploy.defecttracker.uk`)
+
+This setup allows Cloudflare to proxy HTTPS traffic for the web UI while keeping SSH traffic direct to your VPS. See `docs/CLOUDFLARE_DNS_GUIDE.md` for detailed configuration instructions.
+
+### VPS Deployment
+
+For automated deployment to your VPS, use the admin panel at `/admin/vps-setup` or see `docs/VPS_DEPLOYMENT_FEATURE.md` for manual deployment instructions. When configuring SSH access, always use the DNS-only hostname (e.g., `deploy.defecttracker.uk`) to avoid Cloudflare proxy timeouts.
+
 ## Remote Scraper Micro-Service
 
 The telelistings app can now query a remote VPS micro-service for multiple TV data sources beyond just LiveSoccerTV. The micro-service (located in `/opt/vps-scrapers/` on your VPS) exposes standardized HTTP endpoints for all scrapers.

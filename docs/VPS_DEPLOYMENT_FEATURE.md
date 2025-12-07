@@ -150,7 +150,7 @@ Enhanced `vps-scrapers/README.md` with:
 
 1. Navigate to `/admin/vps-setup` in the admin panel
 2. Fill in the form:
-   - Host: `185.170.113.230`
+   - Host: `deploy.defecttracker.uk`
    - Port: `22`
    - Username: `root`
    - Auth Type: `SSH Key`
@@ -166,7 +166,7 @@ Enhanced `vps-scrapers/README.md` with:
 
 ```bash
 # Set environment variables
-export VPS_HOST=185.170.113.230
+export VPS_HOST=deploy.defecttracker.uk
 export VPS_USER=root
 export VPS_PORT=22
 
@@ -220,6 +220,7 @@ cd vps-scrapers
 - Ensure SSH key has correct permissions (chmod 600)
 - For password auth, verify password is correct
 - Check firewall rules on VPS
+- **For Cloudflare setups**: Ensure you're using the DNS-only (gray cloud) hostname (e.g., `deploy.defecttracker.uk`) and NOT the proxied web hostname. Cloudflare's proxy does not support SSH traffic. See `docs/CLOUDFLARE_DNS_GUIDE.md` for configuration details.
 
 ### Installation Fails
 - Check deployment logs for specific errors

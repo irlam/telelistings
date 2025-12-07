@@ -25,10 +25,10 @@ This comprehensive guide walks you through setting up the VPS scrapers from scra
 ### Step 1: Connect to Your VPS
 
 ```bash
-ssh user@185.170.113.230
+ssh user@deploy.defecttracker.uk
 ```
 
-Replace `user` with your VPS username.
+Replace `user` with your VPS username. Use the `deploy.defecttracker.uk` hostname for SSH access (DNS-only record), not the proxied web hostname.
 
 ### Step 2: Navigate to the Scrapers Directory
 

@@ -191,7 +191,7 @@ No more:
 1. Navigate to admin panel → "VPS Setup"
 2. Fill in the form:
    ```
-   Host: 185.170.113.230
+   Host: deploy.defecttracker.uk (or 185.170.113.230)
    Port: 22
    Username: root
    Auth Type: SSH Key
@@ -205,7 +205,7 @@ No more:
 7. After 3-5 minutes, see success message
 8. VPS is ready - start the service:
    ```bash
-   ssh root@185.170.113.230
+   ssh root@deploy.defecttracker.uk
    sudo systemctl start vps-scrapers
    sudo systemctl enable vps-scrapers
    ```

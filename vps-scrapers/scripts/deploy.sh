@@ -2,6 +2,12 @@
 # scripts/deploy.sh
 # Automated deployment script for VPS scrapers
 # This script copies the vps-scrapers folder to the VPS and runs installation
+#
+# Usage:
+#   VPS_HOST=deploy.defecttracker.uk VPS_USER=root ./scripts/deploy.sh
+#
+# Important: For Cloudflare setups, use the DNS-only (gray cloud) hostname
+# (e.g., deploy.defecttracker.uk) not the proxied web hostname.
 
 set -euo pipefail
 
@@ -35,7 +41,7 @@ log_error() {
 check_requirements() {
     if [ -z "$VPS_HOST" ]; then
         log_error "VPS_HOST environment variable is not set"
-        echo "Usage: VPS_HOST=your-vps-ip VPS_USER=username ./scripts/deploy.sh"
+        echo "Usage: VPS_HOST=deploy.defecttracker.uk VPS_USER=username ./scripts/deploy.sh"
         exit 1
     fi
     
