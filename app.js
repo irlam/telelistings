@@ -39,6 +39,10 @@ if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
+// Store original console methods before overriding
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
 // Function to log to both console and file
 function serverLog(level, ...args) {
   const timestamp = new Date().toISOString();
@@ -57,19 +61,19 @@ function serverLog(level, ...args) {
   try {
     fs.appendFileSync(SERVER_LOG_PATH, logEntry + '\n', 'utf8');
   } catch (err) {
-    // Fallback to console if file write fails
-    console.error('Failed to write to server log file:', err.message);
+    // Fallback to original console if file write fails
+    originalConsoleError('Failed to write to server log file:', err.message);
   }
   
-  // Also output to console
-  const originalLog = level === 'ERROR' ? console.error : console.log;
-  originalLog(...args);
+  // Also output to original console
+  if (level === 'ERROR') {
+    originalConsoleError(...args);
+  } else {
+    originalConsoleLog(...args);
+  }
 }
 
 // Override console.log and console.error to capture logs
-const originalConsoleLog = console.log;
-const originalConsoleError = console.error;
-
 console.log = function(...args) {
   serverLog('INFO', ...args);
 };
