@@ -3363,7 +3363,7 @@ app.get('/admin/vps-setup', (req, res) => {
       async function testConnection() {
         const statusEl = document.getElementById('status-message');
         if (!statusEl) {
-          console.error('Status message element not found');
+          console.error('testConnection: status-message element not found');
           return;
         }
         statusEl.innerHTML = '<div class="status-box status-info">⏳ Testing SSH connection...</div>';
@@ -3416,7 +3416,10 @@ app.get('/admin/vps-setup', (req, res) => {
         const logEl = document.getElementById('deployment-log');
         
         if (!statusEl || !logEl) {
-          console.error('Required DOM elements not found');
+          const missing = [];
+          if (!statusEl) missing.push('status-message');
+          if (!logEl) missing.push('deployment-log');
+          console.error('deployVPS: Required elements not found: ' + missing.join(', '));
           return;
         }
         
