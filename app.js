@@ -3326,7 +3326,6 @@ app.get('/admin/vps-setup', (req, res) => {
           // Check if response is JSON
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
             throw new Error('Server returned non-JSON response. Check server logs for details.');
           }
           
