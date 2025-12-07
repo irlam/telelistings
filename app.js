@@ -46,9 +46,16 @@ const originalConsoleError = console.error;
 // Function to log to both console and file
 function serverLog(level, ...args) {
   const timestamp = new Date().toISOString();
-  const message = args.map(arg => 
-    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-  ).join(' ');
+  const message = args.map(arg => {
+    if (typeof arg === 'object') {
+      try {
+        return JSON.stringify(arg);
+      } catch (e) {
+        return '[Object with circular reference]';
+      }
+    }
+    return String(arg);
+  }).join(' ');
   const logEntry = `[${timestamp}] [${level}] ${message}`;
   
   // Add to buffer
@@ -3366,7 +3373,8 @@ app.get('/admin/vps-setup', (req, res) => {
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
             const responseText = await response.text();
-            statusEl.innerHTML = '<div class="status-box status-error">❌ Server returned non-JSON response. <a href="/admin/server-logs">Check server logs</a> for details.<br><br>Response:<pre>' + responseText.substring(0, 500) + '</pre></div>';
+            const escapedText = responseText.substring(0, 500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            statusEl.innerHTML = '<div class="status-box status-error">❌ Server returned non-JSON response. <a href="/admin/server-logs">Check server logs</a> for details.<br><br>Response:<pre>' + escapedText + '</pre></div>';
             return;
           }
           
@@ -3591,11 +3599,10 @@ app.use((err, req, res, next) => {
   // Log the error
   console.error('Unhandled error:', err);
   
-  // For API endpoints that should return JSON
-  if (req.path.startsWith('/admin/vps-setup/') || 
-      req.path.startsWith('/api/') ||
-      req.path.includes('/deploy') ||
-      req.path.includes('/test')) {
+  // For API endpoints that should return JSON (VPS setup, test, and deploy endpoints)
+  if (req.path.startsWith('/admin/vps-setup/deploy') || 
+      req.path.startsWith('/admin/vps-setup/test') ||
+      req.path.startsWith('/api/')) {
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
