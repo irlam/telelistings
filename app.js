@@ -3278,6 +3278,17 @@ app.get('/admin/vps-setup', (req, res) => {
         <li>Configures and starts the scraper service</li>
       </ul>
     </div>
+    
+    <div class="status-box status-warning" style="background-color: #fff3cd; border-color: #ffecb5;">
+      <strong>⚠️ Important Configuration Notes:</strong>
+      <ul>
+        <li><strong>VPS Host:</strong> Use the direct IP address or SSH hostname of your VPS, NOT a web URL or domain proxied through Cloudflare</li>
+        <li><strong>SSH Access:</strong> Ensure SSH is enabled and accessible on your VPS (port 22 by default)</li>
+        <li><strong>Network:</strong> The VPS must be reachable from this server's network</li>
+        <li><strong>Authentication:</strong> SSH key authentication is more secure and recommended over password auth</li>
+        <li><strong>Timeout:</strong> Connection timeout is 20 seconds - if it fails, check your VPS is online and SSH is running</li>
+      </ul>
+    </div>
   </div>
   
   <div class="card">
@@ -3288,7 +3299,7 @@ app.get('/admin/vps-setup', (req, res) => {
           <div class="form-group">
             <label>VPS Host (IP or Domain)<br>
             <input type="text" name="host" value="${escapeHtml(maskedConfig.host)}" placeholder="185.170.113.230" required></label>
-            <div class="help-text">IP address or domain name of your VPS</div>
+            <div class="help-text">IP address or domain name of your VPS. ⚠️ Use the direct IP address or SSH hostname, NOT a web URL (http://...). If your VPS is behind Cloudflare, use the origin server IP.</div>
           </div>
           
           <div class="form-group">
@@ -3403,15 +3414,35 @@ app.get('/admin/vps-setup', (req, res) => {
         logEl.textContent = 'Starting deployment...\\n';
         
         try {
-          const response = await fetch('/admin/vps-setup/deploy', { method: 'POST' });
+          const response = await fetch('/admin/vps-setup/deploy', { 
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
           
           // Check if response is JSON
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
             // Try to get the actual response body for debugging
             const responseText = await response.text();
-            logEl.textContent += '\\n\\nServer Response (Non-JSON):\\n' + responseText;
-            throw new Error('Server returned non-JSON response. See deployment log below for details. You can also check server logs at /admin/server-logs');
+            
+            // Check if it's a Cloudflare error page
+            if (responseText.includes('cloudflare') || responseText.includes('504') || responseText.includes('Gateway time-out')) {
+              logEl.textContent += '\\n\\nCloudflare Gateway Timeout Error Detected\\n';
+              throw new Error('The request timed out through Cloudflare proxy. This usually means:\\n' +
+                '• The VPS host is unreachable or not responding\\n' +
+                '• SSH service is not running on the VPS\\n' +
+                '• VPS host/port configuration is incorrect\\n\\n' +
+                'Please verify your VPS configuration and ensure the VPS is accessible via SSH.');
+            }
+            
+            // Truncate very long responses
+            const truncatedText = responseText.length > 1000 
+              ? responseText.substring(0, 1000) + '\\n\\n... (response truncated)'
+              : responseText;
+            logEl.textContent += '\\n\\nServer Response (Non-JSON):\\n' + truncatedText;
+            throw new Error('Server returned non-JSON response. This may indicate a server error or timeout. Check the deployment log above for details.');
           }
           
           const result = await response.json();
@@ -3430,7 +3461,7 @@ app.get('/admin/vps-setup', (req, res) => {
           }
         } catch (error) {
           logEl.textContent += '\\nError: ' + error.message;
-          statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed: ' + error.message + '</div>';
+          statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed. See log above for details.</div>';
         }
       }
     </script>
@@ -3514,16 +3545,17 @@ app.post('/admin/vps-setup/test', async (req, res) => {
 });
 
 app.post('/admin/vps-setup/deploy', async (req, res) => {
-  const cfg = loadConfig();
-  const vpsConfig = cfg.vpsConfig;
-  
-  if (!vpsConfig || !vpsConfig.host) {
-    return res.json({ success: false, message: 'VPS configuration not found. Please save your settings first.' });
-  }
-  
+  // Ensure we always return JSON, even if there's an unexpected error
   let logOutput = '';
   
   try {
+    const cfg = loadConfig();
+    const vpsConfig = cfg.vpsConfig;
+    
+    if (!vpsConfig || !vpsConfig.host) {
+      return res.json({ success: false, message: 'VPS configuration not found. Please save your settings first.' });
+    }
+    
     const SSHClient = require('./lib/ssh-client');
     const path = require('path');
     const client = new SSHClient(vpsConfig);
@@ -3584,13 +3616,20 @@ app.post('/admin/vps-setup/deploy', async (req, res) => {
       });
     }
   } catch (error) {
+    // Always ensure we return JSON, never HTML
     logOutput += '\n\nError: ' + error.message + '\n';
-    logOutput += error.stack;
-    res.json({ 
-      success: false, 
-      message: error.message,
-      log: logOutput
-    });
+    if (error.stack) {
+      logOutput += '\nStack trace:\n' + error.stack;
+    }
+    
+    // Make sure we haven't already sent headers
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'An unexpected error occurred during deployment',
+        log: logOutput
+      });
+    }
   }
 });
 
