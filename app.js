@@ -3358,24 +3358,14 @@ app.get('/admin/vps-setup', (req, res) => {
         document.getElementById('keyAuthFields').style.display = authType === 'key' ? 'block' : 'none';
         document.getElementById('passwordAuthFields').style.display = authType === 'password' ? 'block' : 'none';
       }
-    </script>
-  </div>
-  
-  ${vpsConfig.host ? `
-  <div class="card">
-    <h3>Deployment Actions</h3>
-    
-    <div class="btn-group">
-      <button onclick="testConnection()" class="btn-primary">🔌 Test Connection</button>
-      <button onclick="deployVPS()" class="btn-success">🚀 Deploy to VPS</button>
-    </div>
-    
-    <div id="status-message" style="margin-top: 16px;"></div>
-    <div id="deployment-log"></div>
-    
-    <script>
+      
+      // VPS deployment functions - defined globally so they're always available
       async function testConnection() {
         const statusEl = document.getElementById('status-message');
+        if (!statusEl) {
+          console.error('testConnection: status-message element not found');
+          return;
+        }
         statusEl.innerHTML = '<div class="status-box status-info">⏳ Testing SSH connection...</div>';
         
         try {
@@ -3424,6 +3414,14 @@ app.get('/admin/vps-setup', (req, res) => {
       async function deployVPS() {
         const statusEl = document.getElementById('status-message');
         const logEl = document.getElementById('deployment-log');
+        
+        if (!statusEl || !logEl) {
+          const missing = [];
+          if (!statusEl) missing.push('status-message');
+          if (!logEl) missing.push('deployment-log');
+          console.error('deployVPS: Required elements not found: ' + missing.join(', '));
+          return;
+        }
         
         if (!confirm('This will deploy the VPS scrapers to your VPS and install all dependencies. This may take several minutes. Continue?')) {
           return;
@@ -3492,6 +3490,19 @@ app.get('/admin/vps-setup', (req, res) => {
         }
       }
     </script>
+  </div>
+  
+  ${vpsConfig.host ? `
+  <div class="card">
+    <h3>Deployment Actions</h3>
+    
+    <div class="btn-group">
+      <button onclick="testConnection()" class="btn-primary">🔌 Test Connection</button>
+      <button onclick="deployVPS()" class="btn-success">🚀 Deploy to VPS</button>
+    </div>
+    
+    <div id="status-message" style="margin-top: 16px;"></div>
+    <div id="deployment-log"></div>
   </div>
   ` : `
   <div class="card">
