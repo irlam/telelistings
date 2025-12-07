@@ -2,6 +2,28 @@
 
 This folder contains Puppeteer-based scrapers designed to run on your VPS. These scrapers are called remotely from your Plesk telelistings app.
 
+## 🚀 Quick Start (Automated Deployment)
+
+The easiest way to deploy the VPS scrapers is using the **automated deployment system** in the admin panel:
+
+1. **Open the Admin Panel**: Navigate to `/admin/vps-setup` in your telelistings app
+2. **Configure VPS Connection**: Enter your VPS SSH details (host, port, username, authentication)
+3. **Test Connection**: Click "Test Connection" to verify SSH access
+4. **Deploy**: Click "Deploy to VPS" to automatically:
+   - Upload all scraper files to your VPS
+   - Install Node.js and Chrome/Chromium
+   - Install npm dependencies
+   - Configure the systemd service
+   - Run health checks
+
+That's it! The entire deployment process is automated.
+
+### Prerequisites for Automated Deployment
+
+- SSH access to your VPS (key-based authentication recommended)
+- Root or sudo access on the VPS
+- Ubuntu/Debian or CentOS/RHEL/Fedora Linux distribution
+
 ## 📁 Default VPS Location
 
 The default installation path on your VPS is: `/opt/vps-scrapers/`
@@ -32,7 +54,15 @@ The default installation path on your VPS is: `/opt/vps-scrapers/`
 
 ## 🚀 Quick Start
 
-### 1. Transfer Files to VPS
+### Automated Deployment (Recommended)
+
+See the section above for automated deployment using the admin panel.
+
+### Manual Deployment
+
+If you prefer manual deployment or automated deployment doesn't work for your setup:
+
+#### 1. Transfer Files to VPS
 
 Copy this entire `vps-scrapers` folder to your VPS at `/opt/vps-scrapers/`:
 
@@ -44,7 +74,26 @@ scp -r vps-scrapers/ user@your-vps-ip:/opt/vps-scrapers/
 rsync -avz vps-scrapers/ user@your-vps-ip:/opt/vps-scrapers/
 ```
 
-### 2. Install Dependencies on VPS
+#### 2. Install Dependencies on VPS
+
+The automated installation script handles everything:
+
+```bash
+cd /opt/vps-scrapers
+chmod +x scripts/*.sh
+sudo bash scripts/install-dependencies.sh
+```
+
+This script will:
+- Install Node.js (v18+)
+- Install Chrome/Chromium with all required dependencies
+- Install npm packages
+- Configure the environment (.env file)
+- Set up the systemd service
+
+**Or install manually:**
+
+**Or install manually:**
 
 SSH into your VPS and run:
 
@@ -55,7 +104,14 @@ npm install
 
 ### 3. Install Chrome/Chromium (Required for Puppeteer)
 
-**Ubuntu/Debian:**
+**Automated (using the provided script):**
+
+```bash
+cd /opt/vps-scrapers
+sudo bash install-chrome-headless.sh
+```
+
+**Or manually on Ubuntu/Debian:**
 ```bash
 # Update package list
 sudo apt-get update
