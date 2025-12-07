@@ -3362,6 +3362,10 @@ app.get('/admin/vps-setup', (req, res) => {
       // VPS deployment functions - defined globally so they're always available
       async function testConnection() {
         const statusEl = document.getElementById('status-message');
+        if (!statusEl) {
+          console.error('Status message element not found');
+          return;
+        }
         statusEl.innerHTML = '<div class="status-box status-info">⏳ Testing SSH connection...</div>';
         
         try {
@@ -3410,6 +3414,11 @@ app.get('/admin/vps-setup', (req, res) => {
       async function deployVPS() {
         const statusEl = document.getElementById('status-message');
         const logEl = document.getElementById('deployment-log');
+        
+        if (!statusEl || !logEl) {
+          console.error('Required DOM elements not found');
+          return;
+        }
         
         if (!confirm('This will deploy the VPS scrapers to your VPS and install all dependencies. This may take several minutes. Continue?')) {
           return;
