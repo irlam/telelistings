@@ -3410,7 +3410,7 @@ app.get('/admin/vps-setup', (req, res) => {
               'The request timed out through Cloudflare proxy. This usually means:<br>' +
               '• The application server is not responding (may be overloaded or down)<br>' +
               '• Network connectivity issues between Cloudflare and the server<br>' +
-              '• The request is taking longer than Cloudflare\\'s timeout limit<br><br>' +
+              '• The request is taking longer than Cloudflare\'s timeout limit<br><br>' +
               'Please try again in a few minutes or <a href="/admin/server-logs">check server logs</a> for more details.</div>';
             return;
           }
