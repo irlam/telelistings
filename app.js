@@ -3289,6 +3289,13 @@ app.get('/admin/vps-setup', (req, res) => {
         
         try {
           const response = await fetch('/admin/vps-setup/test', { method: 'POST' });
+          
+          // Check if response is JSON
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response. Check server logs for details.');
+          }
+          
           const result = await response.json();
           
           if (result.success) {
@@ -3315,6 +3322,13 @@ app.get('/admin/vps-setup', (req, res) => {
         
         try {
           const response = await fetch('/admin/vps-setup/deploy', { method: 'POST' });
+          
+          // Check if response is JSON
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response. Check server logs for details.');
+          }
+          
           const result = await response.json();
           
           if (result.success) {
