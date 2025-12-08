@@ -206,7 +206,7 @@ cd vps-scrapers
 - Network access to VPS
 
 ### Remote (VPS)
-- Ubuntu/Debian or CentOS/RHEL/Fedora
+- Ubuntu/Debian (including Ubuntu 24.04 LTS with time64 packages) or CentOS/RHEL/Fedora
 - SSH access (port 22 or custom)
 - sudo privileges
 - Minimum 1GB RAM
@@ -233,6 +233,7 @@ cd vps-scrapers
 - Try manual Chrome installation first
 - Check system package manager logs
 - May need to use Chromium instead of Chrome
+- **Note**: Ubuntu 24.04+ uses time64 packages (t64 suffix) - the script automatically handles this
 
 ### Service Won't Start
 - Check systemd service file permissions

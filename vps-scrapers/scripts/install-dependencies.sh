@@ -99,33 +99,70 @@ install_chrome() {
         sudo apt-get update -y
         
         log_info "Installing Chrome dependencies..."
-        sudo apt-get install -y --no-install-recommends \
-            ca-certificates \
-            fonts-liberation \
-            libnss3 \
-            lsb-release \
-            xdg-utils \
-            wget \
-            gnupg \
-            apt-transport-https \
-            libxss1 \
-            libasound2 \
-            libatk1.0-0 \
-            libatk-bridge2.0-0 \
-            libcups2 \
-            libx11-6 \
-            libx11-xcb1 \
-            libxcb1 \
-            libxcomposite1 \
-            libxdamage1 \
-            libxrandr2 \
-            libgbm1 \
-            libgdk-pixbuf2.0-0 \
-            libgtk-3-0 \
-            libpango-1.0-0 \
-            libpangocairo-1.0-0 \
-            libstdc++6 \
+        
+        # Ubuntu 24.04+ uses time64 packages with t64 suffix
+        # Detect if we're on Ubuntu 24.04 or newer
+        UBUNTU_24_04_OR_NEWER=false
+        if [ "$DISTRO" = "ubuntu" ] && [ -n "$VERSION" ] && [ "$VERSION" != "unknown" ]; then
+            # Extract major version number (e.g., "24.04" -> "24")
+            VERSION_NUM=$(echo "$VERSION" | cut -d'.' -f1)
+            # Check if version is numeric and >= 24
+            # 2>/dev/null suppresses errors if VERSION_NUM is not a number
+            if [ -n "$VERSION_NUM" ] && [ "$VERSION_NUM" -ge 24 ] 2>/dev/null; then
+                UBUNTU_24_04_OR_NEWER=true
+            fi
+        fi
+        
+        # Common packages that work on all versions
+        COMMON_PACKAGES=(
+            ca-certificates
+            fonts-liberation
+            libnss3
+            lsb-release
+            xdg-utils
+            wget
+            gnupg
+            apt-transport-https
+            libxss1
+            libx11-6
+            libx11-xcb1
+            libxcb1
+            libxcomposite1
+            libxdamage1
+            libxrandr2
+            libgbm1
+            libgdk-pixbuf2.0-0
+            libpango-1.0-0
+            libpangocairo-1.0-0
+            libstdc++6
             fonts-noto-color-emoji
+        )
+        
+        # Version-specific packages (time64 variants for Ubuntu 24.04+)
+        if [ "$UBUNTU_24_04_OR_NEWER" = true ]; then
+            VERSION_SPECIFIC_PACKAGES=(
+                libasound2t64
+                libatk1.0-0t64
+                libatk-bridge2.0-0t64
+                libcups2t64
+                libgtk-3-0t64
+            )
+        else
+            VERSION_SPECIFIC_PACKAGES=(
+                libasound2
+                libatk1.0-0
+                libatk-bridge2.0-0
+                libcups2
+                libgtk-3-0
+            )
+        fi
+        
+        sudo apt-get install -y --no-install-recommends \
+            "${COMMON_PACKAGES[@]}" \
+            "${VERSION_SPECIFIC_PACKAGES[@]}" || {
+                log_error "Failed to install Chrome dependencies"
+                return 1
+            }
         
         log_info "Adding Google Chrome repository..."
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-linux-signing-keyring.gpg
