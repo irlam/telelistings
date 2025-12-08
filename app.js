@@ -3307,10 +3307,10 @@ app.get('/admin/vps-setup', (req, res) => {
               '<strong>What this means:</strong> The HTTP request from your browser was intercepted and terminated by Cloudflare before completing.<br><br>' +
               '<strong>Common causes:</strong><br>' +
               '• This admin panel is accessed through a Cloudflare-proxied domain (e.g., telegram.defecttracker.uk)<br>' +
-              '• The operation is taking longer than Cloudflare\'s 100-second timeout<br>' +
+              '• The operation is taking longer than Cloudflare\\'s 100-second timeout<br>' +
               '• OR the VPS hostname below is using a Cloudflare-proxied DNS record<br><br>' +
               '<strong>Solutions:</strong><br>' +
-              '1. <strong>Access admin panel directly:</strong> Use your server\'s raw IP instead (e.g., http://202.61.233.123:3000/admin/vps-setup) to bypass Cloudflare<br>' +
+              '1. <strong>Access admin panel directly:</strong> Use your server\\'s raw IP instead (e.g., http://202.61.233.123:3000/admin/vps-setup) to bypass Cloudflare<br>' +
               '2. <strong>Speed up deployment:</strong> Pre-install Chrome and Node.js on your VPS to reduce deployment time<br>' +
               '3. <strong>Use command-line:</strong> Run manual deployment from terminal (see docs/CLOUDFLARE_DNS_GUIDE.md)<br>' +
               '4. <strong>Check VPS hostname:</strong> Ensure the VPS Host field below uses a DNS-only (gray cloud) hostname or raw IP<br><br>' +
