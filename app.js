@@ -3304,7 +3304,8 @@ app.get('/admin/vps-setup', (req, res) => {
               '• The application server is not responding (may be overloaded or down)<br>' +
               '• Network connectivity issues between Cloudflare and the server<br>' +
               '• The request is taking longer than Cloudflare\\'s timeout limit<br>' +
-              '• A proxied DNS record is still in use even if you expect Cloudflare to be off (try the raw VPS IP or a DNS-only host)<br><br>' +
+              '• A proxied DNS record is still in use even if you expect Cloudflare to be off<br><br>' +
+              '<strong>Fix:</strong> Point the VPS Host to the origin (e.g., raw IP 185.170.113.230 or DNS-only deploy.defecttracker.uk). Do not use the Cloudflare-proxied web hostname such as https://telegram.defecttracker.uk/ for SSH/Test/Deploy.<br><br>' +
               'Please try again in a few minutes or <a href="/admin/server-logs">check server logs</a> for more details.</div>';
             return;
           }
@@ -3374,7 +3375,8 @@ app.get('/admin/vps-setup', (req, res) => {
               '• The VPS host is unreachable or not responding\\n' +
               '• SSH service is not running on the VPS\\n' +
               '• VPS host/port configuration is incorrect\\n' +
-              '• A proxied DNS record is still in use even if Cloudflare is expected to be disabled (try the raw VPS IP or DNS-only hostname)\\n\\n' +
+              '• A proxied DNS record is still in use even if Cloudflare is expected to be disabled\\n\\n' +
+              'Fix: Set the VPS host to the origin (e.g., 185.170.113.230 or DNS-only deploy.defecttracker.uk). Avoid using the Cloudflare-proxied web hostname such as https://telegram.defecttracker.uk/.\\n\\n' +
               'Please verify your VPS configuration and ensure the VPS is accessible via SSH.');
           }
           
@@ -3441,7 +3443,7 @@ app.get('/admin/vps-setup', (req, res) => {
           <div class="form-group">
             <label>VPS Host (IP or Domain)<br>
             <input type="text" name="host" value="${escapeHtml(maskedConfig.host)}" placeholder="185.170.113.230" required></label>
-            <div class="help-text">IP address or domain name of your VPS. ⚠️ Use the direct IP address or SSH hostname, NOT a web URL (http://...). If your VPS is behind Cloudflare, use the origin server IP.</div>
+            <div class="help-text">IP address or domain name of your VPS. ⚠️ Use the direct IP address or SSH hostname, NOT a web URL (http://...). If your public site is on a different Cloudflare-proxied host (e.g., https://telegram.defecttracker.uk/ on 202.61.233.123), still point this field at the VPS origin (185.170.113.230 or DNS-only deploy.defecttracker.uk).</div>
           </div>
           
           <div class="form-group">
