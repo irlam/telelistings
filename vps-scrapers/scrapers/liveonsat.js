@@ -502,10 +502,26 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
     }
 
     log(`LiveOnSat: found ${fixtures.length} fixtures`);
-    return { fixtures };
+    
+    // Prepare debug information
+    const debugInfo = {
+      rawFixturesFound: rawFixtures.fixtures?.length || 0,
+      afterFiltering: fixtures.length,
+      filteredOut: preFilterCount - fixtures.length,
+      debugLinesCount: rawFixtures.debugLines?.length || 0,
+      debugLinesSample: rawFixtures.debugLines?.slice(0, 20) || []
+    };
+    
+    return { fixtures, debugInfo };
   } catch (err) {
     log(`Error fetching LiveOnSat fixtures: ${err.message}`);
-    return emptyResult;
+    return { 
+      ...emptyResult, 
+      debugInfo: { 
+        error: err.message,
+        stack: err.stack 
+      } 
+    };
   }
 }
 
@@ -543,7 +559,8 @@ async function healthCheck() {
  * @param {Object} params - Parameters
  * @param {string} [params.teamName] - Team name to filter by
  * @param {string} [params.date] - Date to scrape fixtures for (daily)
- * @returns {Promise<{fixtures: Array, source: string}>}
+ * @param {boolean} [params.debug] - Include debug information in response
+ * @returns {Promise<{fixtures: Array, source: string, debug?: Object}>}
  */
 async function scrape(params = {}) {
   const result = await fetchLiveOnSatFixtures(params);
@@ -559,10 +576,24 @@ async function scrape(params = {}) {
     channels: f.channels || []
   }));
   
-  return {
+  const response = {
     fixtures,
     source: 'liveonsat'
   };
+  
+  // Include debug information if requested or if no fixtures found
+  if (params.debug || fixtures.length === 0) {
+    response.debug = {
+      url: PAGE_URL,
+      fixturesFound: fixtures.length,
+      debugInfo: result.debugInfo || 'No debug info available',
+      message: fixtures.length === 0 
+        ? 'No fixtures found. This could be due to: (1) No matches scheduled today on LiveOnSat, (2) Page format changed, or (3) Parsing error. Check debug info for details.'
+        : 'Fixtures found successfully'
+    };
+  }
+  
+  return response;
 }
 
 // ---------- Exports ----------
