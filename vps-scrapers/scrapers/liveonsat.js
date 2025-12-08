@@ -352,11 +352,20 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
               
               // Stop at next time line (start of next fixture)
               if (timeLineRegex.test(next)) break;
+              
+              // Stop at next team line (contains v/vs) - signals start of next fixture
+              if (vsSeparatorRegex.test(next)) break;
 
               // Skip generic notes
               if (/^Please Note:/i.test(next)) continue;
               if (/^Members LOGIN/i.test(next)) continue;
               if (/^Members LOGOUT/i.test(next)) continue;
+              
+              // Skip lines that look like competition headers (contain " - Week", " - Round", etc.)
+              if (/\s+-\s+(Week|Round|Matchday|Match Day|MD|GW|Proper)\s+/i.test(next)) continue;
+              
+              // Skip lines that start with known competition prefixes
+              if (/^(English|Scottish|Welsh|Irish|European|UEFA)\s+(Premier League|Championship|League|FA Cup|EFL|WSL)/i.test(next)) continue;
 
               const cleanedChan = next.replace(/📺/g, '').trim();
               if (cleanedChan.length > 0) {
