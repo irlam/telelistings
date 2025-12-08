@@ -3291,22 +3291,28 @@ app.get('/admin/vps-setup', (req, res) => {
           const responseText = await response.text();
           
           // Check if it's a Cloudflare error page using case-insensitive matching and multiple indicators
+          // Be more specific to avoid false positives - require "cloudflare" to be present
           const lowerResponseText = responseText.toLowerCase();
           const isCloudflareError = (
-            (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('504')) ||
-            (lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
-            lowerResponseText.includes('cloudflare ray id')
+            (lowerResponseText.includes('cloudflare') && (lowerResponseText.includes('504') || lowerResponseText.includes('524') || lowerResponseText.includes('522'))) ||
+            (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
+            lowerResponseText.includes('cloudflare ray id') ||
+            lowerResponseText.includes('cf-ray')
           );
           
           if (isCloudflareError) {
-            statusEl.innerHTML = '<div class="status-box status-error">❌ Cloudflare Gateway Timeout Error<br><br>' +
-              'The request timed out through Cloudflare proxy. This usually means:<br>' +
-              '• The application server is not responding (may be overloaded or down)<br>' +
-              '• Network connectivity issues between Cloudflare and the server<br>' +
-              '• The request is taking longer than Cloudflare\\'s timeout limit<br>' +
-              '• A proxied DNS record is still in use even if you expect Cloudflare to be off<br><br>' +
-              '<strong>Fix:</strong> Point the VPS Host to the origin (e.g., raw IP 185.170.113.230 or DNS-only deploy.defecttracker.uk). Do not use the Cloudflare-proxied web hostname such as https://telegram.defecttracker.uk/ for SSH/Test/Deploy.<br><br>' +
-              'Please try again in a few minutes or <a href="/admin/server-logs">check server logs</a> for more details.</div>';
+            statusEl.innerHTML = '<div class="status-box status-error">❌ Cloudflare Gateway Timeout Error Detected<br><br>' +
+              '<strong>What this means:</strong> The HTTP request from your browser was intercepted and terminated by Cloudflare before completing.<br><br>' +
+              '<strong>Common causes:</strong><br>' +
+              '• This admin panel is accessed through a Cloudflare-proxied domain (e.g., telegram.defecttracker.uk)<br>' +
+              '• The operation is taking longer than Cloudflare\'s 100-second timeout<br>' +
+              '• OR the VPS hostname below is using a Cloudflare-proxied DNS record<br><br>' +
+              '<strong>Solutions:</strong><br>' +
+              '1. <strong>Access admin panel directly:</strong> Use your server\'s raw IP instead (e.g., http://202.61.233.123:3000/admin/vps-setup) to bypass Cloudflare<br>' +
+              '2. <strong>Speed up deployment:</strong> Pre-install Chrome and Node.js on your VPS to reduce deployment time<br>' +
+              '3. <strong>Use command-line:</strong> Run manual deployment from terminal (see docs/CLOUDFLARE_DNS_GUIDE.md)<br>' +
+              '4. <strong>Check VPS hostname:</strong> Ensure the VPS Host field below uses a DNS-only (gray cloud) hostname or raw IP<br><br>' +
+              'See the <a href="https://github.com/irlam/telelistings/blob/main/docs/CLOUDFLARE_DNS_GUIDE.md" target="_blank">Cloudflare DNS Guide</a> for detailed troubleshooting.</div>';
             return;
           }
           
@@ -3362,22 +3368,29 @@ app.get('/admin/vps-setup', (req, res) => {
           const responseText = await response.text();
           
           // Check if it's a Cloudflare error page using case-insensitive matching and multiple indicators
+          // Be more specific to avoid false positives - require "cloudflare" to be present
           const lowerResponseText = responseText.toLowerCase();
           const isCloudflareError = (
-            (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('504')) ||
-            (lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
-            lowerResponseText.includes('cloudflare ray id')
+            (lowerResponseText.includes('cloudflare') && (lowerResponseText.includes('504') || lowerResponseText.includes('524') || lowerResponseText.includes('522'))) ||
+            (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
+            lowerResponseText.includes('cloudflare ray id') ||
+            lowerResponseText.includes('cf-ray')
           );
           
           if (isCloudflareError) {
             logEl.textContent += '\\n\\nCloudflare Gateway Timeout Error Detected\\n';
-            throw new Error('The request timed out through Cloudflare proxy. This usually means:\\n' +
-              '• The VPS host is unreachable or not responding\\n' +
-              '• SSH service is not running on the VPS\\n' +
-              '• VPS host/port configuration is incorrect\\n' +
-              '• A proxied DNS record is still in use even if Cloudflare is expected to be disabled\\n\\n' +
-              'Fix: Set the VPS host to the origin (e.g., 185.170.113.230 or DNS-only deploy.defecttracker.uk). Avoid using the Cloudflare-proxied web hostname such as https://telegram.defecttracker.uk/.\\n\\n' +
-              'Please verify your VPS configuration and ensure the VPS is accessible via SSH.');
+            logEl.textContent += '\\nThis error came from Cloudflare, NOT from your VPS.\\n';
+            logEl.textContent += 'The HTTP request was terminated by Cloudflare before the deployment could complete.\\n';
+            throw new Error('Cloudflare intercepted the deployment request. Common causes:\\n' +
+              '• You are accessing this admin panel through a Cloudflare-proxied domain\\n' +
+              '• The deployment is taking longer than Cloudflare\\'s 100-second timeout\\n' +
+              '• OR the VPS hostname is using a Cloudflare-proxied DNS record\\n\\n' +
+              'Solutions:\\n' +
+              '1. Access admin panel via raw IP (e.g., http://202.61.233.123:3000) to bypass Cloudflare\\n' +
+              '2. Pre-install Chrome and Node.js on VPS to speed up deployment\\n' +
+              '3. Use manual command-line deployment (see docs/CLOUDFLARE_DNS_GUIDE.md)\\n' +
+              '4. Ensure VPS Host uses a DNS-only (gray cloud) hostname or raw IP\\n\\n' +
+              'See docs/CLOUDFLARE_DNS_GUIDE.md for detailed troubleshooting.');
           }
           
           // Truncate very long responses
