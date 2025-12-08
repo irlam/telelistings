@@ -94,8 +94,6 @@ This is particularly useful when:
 - VPS deployment takes longer than Cloudflare's 100-second timeout
 - Direct IP access returns `ERR_CONNECTION_REFUSED`
 - The app is configured to listen only on localhost in Plesk
-- The health endpoint proxies to `${LSTV_SCRAPER_URL}/health` on the VPS
-- Visit `/health/tsdb` to check TheSportsDB API connectivity
 
 ## Image-Based Posters
 

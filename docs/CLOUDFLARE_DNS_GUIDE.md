@@ -156,9 +156,11 @@ ssh -L 3000:localhost:3000 user@202.61.233.123
 - Use PuTTY or Windows Terminal with SSH
 - In PuTTY: Connection → SSH → Tunnels → Add new forwarded port: Source port: 3000, Destination: localhost:3000
 
-#### Solution 2: Configure App to Listen on All Interfaces
+#### Solution 2: Configure App to Listen on All Interfaces (NOT RECOMMENDED)
 
-If you have shell access to modify the application:
+**⚠️ WARNING: This solution is NOT RECOMMENDED for production environments.**
+
+If you have shell access to modify the application and understand the security implications:
 
 ```javascript
 // In app.js, change:
@@ -174,10 +176,20 @@ app.listen(PORT, '0.0.0.0', () => {
 
 Then restart the Node.js application in Plesk.
 
-**Important:** This exposes the app to the internet on that port. You should:
-- Configure firewall rules to restrict access
-- Or ensure the app has strong authentication
-- Only use this if you understand the security implications
+**🔴 SECURITY RISKS:**
+- This exposes your admin panel to the ENTIRE INTERNET on port 3000
+- Anyone who can reach your server can access the admin interface
+- Even with authentication, this increases attack surface significantly
+- Automated bots will find and attack this exposed port
+
+**If you must use this approach, you MUST:**
+1. Configure strict firewall rules (see Solution 3 below)
+2. Ensure strong authentication is enabled (ADMIN_PASSWORD)
+3. Regularly monitor access logs for suspicious activity
+4. Consider using a VPN or IP whitelist
+5. Use HTTPS with valid certificates (not HTTP)
+
+**Better Alternative:** Use Solution 1 (SSH Tunnel) instead - it's more secure and requires no configuration changes.
 
 #### Solution 3: Configure Plesk Firewall
 
