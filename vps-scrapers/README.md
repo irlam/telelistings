@@ -4,6 +4,7 @@ This folder contains Puppeteer-based scrapers designed to run on your VPS. These
 
 ## 📖 Documentation
 
+- **[QUICK_START.md](QUICK_START.md)** - Quick reference for .env configuration (3 simple steps)
 - **[ENV_CONFIGURATION.md](ENV_CONFIGURATION.md)** - Comprehensive guide for configuring the `.env` file with API keys and settings
 - **[README.md](README.md)** - This file (general overview and deployment instructions)
 
