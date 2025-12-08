@@ -112,22 +112,52 @@ install_chrome() {
         fi
         
         # Common packages that work on all versions
-        COMMON_PACKAGES="ca-certificates fonts-liberation libnss3 lsb-release xdg-utils wget"
-        COMMON_PACKAGES="$COMMON_PACKAGES gnupg apt-transport-https libxss1 libx11-6 libx11-xcb1"
-        COMMON_PACKAGES="$COMMON_PACKAGES libxcb1 libxcomposite1 libxdamage1 libxrandr2 libgbm1"
-        COMMON_PACKAGES="$COMMON_PACKAGES libgdk-pixbuf2.0-0 libpango-1.0-0 libpangocairo-1.0-0"
-        COMMON_PACKAGES="$COMMON_PACKAGES libstdc++6 fonts-noto-color-emoji"
+        COMMON_PACKAGES=(
+            ca-certificates
+            fonts-liberation
+            libnss3
+            lsb-release
+            xdg-utils
+            wget
+            gnupg
+            apt-transport-https
+            libxss1
+            libx11-6
+            libx11-xcb1
+            libxcb1
+            libxcomposite1
+            libxdamage1
+            libxrandr2
+            libgbm1
+            libgdk-pixbuf2.0-0
+            libpango-1.0-0
+            libpangocairo-1.0-0
+            libstdc++6
+            fonts-noto-color-emoji
+        )
         
         # Version-specific packages (time64 variants for Ubuntu 24.04+)
         if [ "$UBUNTU_24_04_OR_NEWER" = true ]; then
-            VERSION_SPECIFIC_PACKAGES="libasound2t64 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libgtk-3-0t64"
+            VERSION_SPECIFIC_PACKAGES=(
+                libasound2t64
+                libatk1.0-0t64
+                libatk-bridge2.0-0t64
+                libcups2t64
+                libgtk-3-0t64
+            )
         else
-            VERSION_SPECIFIC_PACKAGES="libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgtk-3-0"
+            VERSION_SPECIFIC_PACKAGES=(
+                libasound2
+                libatk1.0-0
+                libatk-bridge2.0-0
+                libcups2
+                libgtk-3-0
+            )
         fi
         
         sudo apt-get install -y --no-install-recommends \
-            $COMMON_PACKAGES \
-            $VERSION_SPECIFIC_PACKAGES || {
+            "${COMMON_PACKAGES[@]}" \
+            "${VERSION_SPECIFIC_PACKAGES[@]}" || {
                 log_error "Failed to install Chrome dependencies"
                 return 1
             }
