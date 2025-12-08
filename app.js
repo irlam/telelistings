@@ -3303,7 +3303,9 @@ app.get('/admin/vps-setup', (req, res) => {
               'The request timed out through Cloudflare proxy. This usually means:<br>' +
               '• The application server is not responding (may be overloaded or down)<br>' +
               '• Network connectivity issues between Cloudflare and the server<br>' +
-              '• The request is taking longer than Cloudflare\\'s timeout limit<br><br>' +
+              '• The request is taking longer than Cloudflare\\'s timeout limit<br>' +
+              '• A proxied DNS record is still in use even if you expect Cloudflare to be off<br><br>' +
+              '<strong>Fix:</strong> Point the VPS Host to the origin (e.g., raw IP 185.170.113.230 or DNS-only deploy.defecttracker.uk). Do not use the Cloudflare-proxied web hostname such as https://telegram.defecttracker.uk/ for SSH/Test/Deploy.<br><br>' +
               'Please try again in a few minutes or <a href="/admin/server-logs">check server logs</a> for more details.</div>';
             return;
           }
@@ -3372,7 +3374,9 @@ app.get('/admin/vps-setup', (req, res) => {
             throw new Error('The request timed out through Cloudflare proxy. This usually means:\\n' +
               '• The VPS host is unreachable or not responding\\n' +
               '• SSH service is not running on the VPS\\n' +
-              '• VPS host/port configuration is incorrect\\n\\n' +
+              '• VPS host/port configuration is incorrect\\n' +
+              '• A proxied DNS record is still in use even if Cloudflare is expected to be disabled\\n\\n' +
+              'Fix: Set the VPS host to the origin (e.g., 185.170.113.230 or DNS-only deploy.defecttracker.uk). Avoid using the Cloudflare-proxied web hostname such as https://telegram.defecttracker.uk/.\\n\\n' +
               'Please verify your VPS configuration and ensure the VPS is accessible via SSH.');
           }
           
@@ -3423,6 +3427,7 @@ app.get('/admin/vps-setup', (req, res) => {
       <strong>⚠️ Important Configuration Notes:</strong>
       <ul>
         <li><strong>VPS Host:</strong> Use the direct IP address or SSH hostname of your VPS, NOT a web URL or domain proxied through Cloudflare</li>
+        <li><strong>Cloudflare DNS:</strong> If your DNS page shows all orange clouds (proxied), click the cloud for your deploy host (e.g., <code>deploy.defecttracker.uk</code>) until it turns gray. A proxied deploy host will still hit Cloudflare and cause the timeout banner.</li>
         <li><strong>SSH Access:</strong> Ensure SSH is enabled and accessible on your VPS (port 22 by default)</li>
         <li><strong>Network:</strong> The VPS must be reachable from this server's network</li>
         <li><strong>Authentication:</strong> SSH key authentication is more secure and recommended over password auth</li>
@@ -3439,7 +3444,7 @@ app.get('/admin/vps-setup', (req, res) => {
           <div class="form-group">
             <label>VPS Host (IP or Domain)<br>
             <input type="text" name="host" value="${escapeHtml(maskedConfig.host)}" placeholder="185.170.113.230" required></label>
-            <div class="help-text">IP address or domain name of your VPS. ⚠️ Use the direct IP address or SSH hostname, NOT a web URL (http://...). If your VPS is behind Cloudflare, use the origin server IP.</div>
+            <div class="help-text">IP address or domain name of your VPS. ⚠️ Use the direct IP address or SSH hostname, NOT a web URL (http://...). If your public site is on a different Cloudflare-proxied host (e.g., https://telegram.defecttracker.uk/ on 202.61.233.123), still point this field at the VPS origin (185.170.113.230 or DNS-only deploy.defecttracker.uk).</div>
           </div>
           
           <div class="form-group">
