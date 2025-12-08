@@ -2431,6 +2431,8 @@ app.get('/admin/scraper/:id', async (req, res) => {
               if (away) params.away = away.trim();
               if (teamName) params.teamName = teamName.trim();
               if (date) params.date = date;
+              // Always include debug info in auto-test mode to help diagnose issues
+              if (autoTestMode) params.debug = true;
               
               testResult = await vpsModule.fetch(params);
               
