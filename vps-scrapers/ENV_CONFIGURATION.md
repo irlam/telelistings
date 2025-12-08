@@ -47,7 +47,7 @@ cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1
 
 **Example**:
 ```bash
-LSTV_SCRAPER_KEY=Xk9mP2vL8qR4wN7yT5uZ3aB1cD6eF0gH
+LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
 ```
 
 **Sync with Plesk**: This key **must match** the `LSTV_SCRAPER_KEY` environment variable set in your Plesk Node.js application settings.
@@ -62,7 +62,7 @@ LSTV_SCRAPER_KEY=Xk9mP2vL8qR4wN7yT5uZ3aB1cD6eF0gH
 PORT=3333
 ```
 
-**Sync with Plesk**: This port must be included in the `LSTV_SCRAPER_URL` in your Plesk settings (e.g., `http://185.170.113.230:3333`)
+**Sync with Plesk**: This port must be included in the `LSTV_SCRAPER_URL` in your Plesk settings (e.g., `http://203.0.113.45:3333`)
 
 ### Optional Settings
 
@@ -112,8 +112,8 @@ In your Plesk control panel, go to **Node.js Settings** and add these environmen
 
 | Variable | Example Value | Description |
 |----------|---------------|-------------|
-| `LSTV_SCRAPER_URL` | `http://185.170.113.230:3333` | Full URL to your VPS scraper service |
-| `LSTV_SCRAPER_KEY` | `Xk9mP2vL8qR4wN7yT5uZ3aB1cD6eF0gH` | **Must match** the key in VPS .env |
+| `LSTV_SCRAPER_URL` | `http://203.0.113.45:3333` | Full URL to your VPS scraper service |
+| `LSTV_SCRAPER_KEY` | `Q0tMx1sJ8nVh3w9L2z` | **Must match** the key in VPS .env |
 | `CRON_SECRET` | `your_cron_secret_here` | Secret for cron endpoint authentication |
 | `ADMIN_PASSWORD` | `your_admin_password_here` | Password for admin GUI |
 
@@ -146,7 +146,7 @@ Here's a complete example `.env` file with secure settings:
 PORT=3333
 
 # API Key (CHANGE THIS!)
-LSTV_SCRAPER_KEY=Xk9mP2vL8qR4wN7yT5uZ3aB1cD6eF0gH
+LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
 
 # Optional: Debug mode
 DEBUG=false
@@ -195,7 +195,7 @@ curl -X POST http://localhost:3333/scrape/lstv
 # This should work (replace with your actual key)
 curl -X POST http://localhost:3333/scrape/lstv \
   -H "Content-Type: application/json" \
-  -H "x-api-key: Xk9mP2vL8qR4wN7yT5uZ3aB1cD6eF0gH" \
+  -H "x-api-key: Q0tMx1sJ8nVh3w9L2z" \
   -d '{"home": "Arsenal", "away": "Chelsea"}'
 ```
 

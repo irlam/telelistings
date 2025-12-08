@@ -37,7 +37,7 @@ Here's what your `.env` file should look like (minimum configuration):
 PORT=3333
 
 # API Key (CHANGE THIS!)
-LSTV_SCRAPER_KEY=Xk9mP2vL8qR4wN7yT5uZ3aB1cD6eF0gH
+LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z
 
 # Optional: Debug mode
 DEBUG=false
@@ -49,7 +49,7 @@ After configuring the VPS `.env` file, configure these environment variables in 
 
 ```bash
 LSTV_SCRAPER_URL=http://<your-vps-ip>:3333
-LSTV_SCRAPER_KEY=Xk9mP2vL8qR4wN7yT5uZ3aB1cD6eF0gH  # Must match VPS .env
+LSTV_SCRAPER_KEY=Q0tMx1sJ8nVh3w9L2z  # Must match VPS .env
 CRON_SECRET=<your_cron_secret_here>
 ADMIN_PASSWORD=<your_admin_password_here>
 ```
