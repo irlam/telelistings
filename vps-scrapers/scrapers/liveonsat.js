@@ -39,27 +39,51 @@ const MIN_TEXT_LENGTH = 3;
 // Women's football filter terms
 const WOMENS_TERMS = ['women', 'ladies', 'wsl', 'womens'];
 
-// UK competitions to include
-const UK_COMPETITIONS = [
-  'premier league',
-  'english championship',
-  'championship',
-  'english league one',
-  'league one',
-  'english league two',
-  'league two',
-  'fa cup',
-  'efl cup',
-  'carabao cup',
-  'scottish premiership',
-  'scottish championship',
-  'scottish league one',
-  'scottish league two',
-  'scottish cup',
-  'welsh premier league',
-  'northern ireland premiership',
-  'national league'
+// International/European competitions to exclude (not UK domestic)
+const EXCLUDE_COMPETITIONS = [
+  'champions league',
+  'europa league',
+  'conference league',
+  'world cup',
+  'euro ',
+  'uefa',
+  'international',
+  'la liga',
+  'serie a',
+  'bundesliga',
+  'ligue 1',
+  'eredivisie'
 ];
+
+// Known UK competition names for parsing (module-level constant)
+const KNOWN_COMPETITIONS = [
+  'Premier League',
+  'English Premier League',
+  'EPL',
+  'Championship',
+  'English Championship',
+  'League One',
+  'English League One',
+  'League Two',
+  'English League Two',
+  'FA Cup',
+  'EFL Cup',
+  'Carabao Cup',
+  'League Cup',
+  'Scottish Premiership',
+  'Scottish Championship',
+  'Scottish League One',
+  'Scottish League Two',
+  'Scottish Cup',
+  'Welsh Premier',
+  'National League'
+];
+
+// Pre-compile regex patterns for known competitions (for performance)
+const KNOWN_COMPETITION_REGEXES = KNOWN_COMPETITIONS.map(name => ({
+  name,
+  regex: new RegExp(`^(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(.+)$`, 'i')
+}));
 
 // Shared browser instance
 let browser = null;
@@ -211,30 +235,57 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         .filter(l => l.length > 0);
 
       const fixtures = [];
+      const debugLines = []; // Collect lines for debugging
 
       // Matches day headers like "Friday, 5th December"
       const dayNameRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
 
       /**
-       * Fixture line regex - matches lines like:
+       * Parse fixture lines using a more robust two-pass approach:
+       * 1. Use regex to identify lines that look like fixtures (contain ST: HH:MM)
+       * 2. Parse them manually to extract competition, teams, and time
+       * 
+       * Example formats:
        * "English Championship - Week 19 Hull City v Middlesbrough ST: 15:00"
-       * 
-       * Capture groups:
-       * $1 = Competition + Round info (e.g., "English Championship - Week 19")
-       * $2 = Home team name (e.g., "Hull City")
-       * $3 = Away team name (e.g., "Middlesbrough")
-       * $4 = Kickoff time in HH:MM format (e.g., "15:00")
-       * 
-       * Pattern breakdown:
-       * ^(.*?-\s*.*?)   - Competition with round (non-greedy, must contain "-")
-       * \s+(.+?)        - Home team (non-greedy)
-       * \s+v\s+         - "v" separator with spaces
-       * (.+?)           - Away team (non-greedy)
-       * \s+ST:\s*       - "ST:" marker (Start Time)
-       * ([0-9]{1,2}:[0-9]{2}) - Time in H:MM or HH:MM format
-       * \s*$            - Optional trailing whitespace
+       * "Premier League Arsenal v Chelsea ST: 15:00"
+       * "FA Cup Manchester United vs Liverpool ST: 20:00"
        */
-      const fixtureRegex = /^(.*?-\s*.*?)\s+(.+?)\s+v\s+(.+?)\s+ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
+      
+      // First, identify potential fixture lines (contains ST: followed by time)
+      const fixtureIndicatorRegex = /\bST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
+      
+      // Pattern to find "v" or "vs" separator
+      const vsSeparatorRegex = /\s+v(?:s)?\s+/i;
+      
+      // Known UK competition names (defined in browser context)
+      const knownCompetitions = [
+        'Premier League',
+        'English Premier League',
+        'EPL',
+        'Championship',
+        'English Championship',
+        'League One',
+        'English League One',
+        'League Two',
+        'English League Two',
+        'FA Cup',
+        'EFL Cup',
+        'Carabao Cup',
+        'League Cup',
+        'Scottish Premiership',
+        'Scottish Championship',
+        'Scottish League One',
+        'Scottish League Two',
+        'Scottish Cup',
+        'Welsh Premier',
+        'National League'
+      ];
+      
+      // Pre-compile regex patterns for known competitions
+      const knownCompetitionRegexes = knownCompetitions.map(name => ({
+        name,
+        regex: new RegExp(`^(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(.+)$`, 'i')
+      }));
 
       let currentDateLabel = null;
 
@@ -244,52 +295,145 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         // Date header
         if (dayNameRegex.test(line)) {
           currentDateLabel = line;
+          debugLines.push(`DATE: ${line}`);
           continue;
         }
 
-        const m = line.match(fixtureRegex);
-        if (!m) continue;
+        // Try to match fixture line
+        const timeMatch = line.match(fixtureIndicatorRegex);
+        if (timeMatch) {
+          const timeString = timeMatch[1].trim();
+          
+          // Remove the "ST: HH:MM" part from the end
+          const lineWithoutTime = line.replace(fixtureIndicatorRegex, '').trim();
+          
+          // Find the "v" or "vs" separator
+          const vsMatch = vsSeparatorRegex.exec(lineWithoutTime);
+          
+          if (vsMatch) {
+            const vsIndex = vsMatch.index;
+            const vsSeparator = vsMatch[0];
+            
+            // Everything before "v/vs" contains: Competition + Home Team
+            const beforeVs = lineWithoutTime.substring(0, vsIndex).trim();
+            
+            // Everything after "v/vs" is the away team
+            const away = lineWithoutTime.substring(vsIndex + vsSeparator.length).trim();
+            
+            // Now we need to split beforeVs into competition and home team
+            // Strategy: Look for known competition names/patterns first
+            // Common patterns: "- Week N", "- Round N", "- Matchday N", etc.
+            // Known competitions: "Premier League", "Championship", "FA Cup", etc.
+            
+            let competition = '';
+            let home = '';
+            
+            // Normalize dashes (handle en-dash, em-dash, hyphen-minus, etc.)
+            const normalizedBeforeVs = beforeVs.replace(/[\u2010-\u2015\u2212]/g, '-');
+            
+            // Check for round/week/matchday patterns (most specific)
+            // This handles: "English Championship - Week 19"
+            const roundMatch = normalizedBeforeVs.match(/^(.+?-)\s*(?:Week|Round|Matchday|Match Day|MD|GW)\s+\d+\s+(.+)$/i);
+            if (roundMatch) {
+              competition = roundMatch[1].trim();
+              home = roundMatch[2].trim();
+            } else {
+              // Try to identify known competition patterns using pre-compiled regexes
+              let foundComp = false;
+              for (const { name, regex } of knownCompetitionRegexes) {
+                const match = beforeVs.match(regex);
+                if (match) {
+                  competition = match[1].trim();
+                  home = match[2].trim();
+                  foundComp = true;
+                  break;
+                }
+              }
+              
+              if (!foundComp) {
+                // Fallback: assume last 2-3 words are team name
+                // NOTE: This is a heuristic that works for most common cases but may fail
+                // for teams with very long names (4+ words) or single-word names.
+                // Known limitation: May incorrectly split unusual team names.
+                const words = beforeVs.split(/\s+/);
+                
+                if (words.length >= 4) {
+                  // 3-word team name (e.g., "West Ham United")
+                  competition = words.slice(0, -3).join(' ');
+                  home = words.slice(-3).join(' ');
+                } else if (words.length === 3) {
+                  // 2-word team name (e.g., "Hull City")
+                  competition = words[0];
+                  home = words.slice(-2).join(' ');
+                } else if (words.length === 2) {
+                  // 1-word team name
+                  competition = words[0];
+                  home = words[1];
+                } else {
+                  // Only 1 word total
+                  competition = '';
+                  home = beforeVs;
+                }
+              }
+            }
+            
+            // Only add if we got reasonable values
+            if (home && away && timeString) {
+              debugLines.push(`MATCH: ${line}`);
+              debugLines.push(`  Competition: ${competition || '(none)'}`);
+              debugLines.push(`  Home: ${home}, Away: ${away}, Time: ${timeString}`);
 
-        const competitionRaw = m[1].trim(); // includes round info
-        const home = m[2].trim();
-        const away = m[3].trim();
-        const timeString = m[4].trim();
+              // Collect channels in following lines until we hit next fixture/date
+              const channels = [];
+              for (let j = i + 1; j < lines.length; j++) {
+                const next = lines[j];
 
-        // Collect channels in following lines until we hit next fixture/date
-        const channels = [];
-        for (let j = i + 1; j < lines.length; j++) {
-          const next = lines[j];
+                if (dayNameRegex.test(next)) break;
+                if (fixtureIndicatorRegex.test(next)) break;
 
-          if (dayNameRegex.test(next)) break;
-          if (fixtureRegex.test(next)) break;
+                // Skip generic notes
+                if (/^Please Note:/i.test(next)) continue;
+                if (/^Members LOGIN/i.test(next)) continue;
+                if (/^Members LOGOUT/i.test(next)) continue;
 
-          // Skip generic notes
-          if (/^Please Note:/i.test(next)) continue;
-          if (/^Members LOGIN/i.test(next)) continue;
-          if (/^Members LOGOUT/i.test(next)) continue;
+                const cleanedChan = next.replace(/📺/g, '').trim();
+                if (cleanedChan.length > 0) {
+                  channels.push(cleanedChan);
+                }
+              }
 
-          const cleanedChan = next.replace(/📺/g, '').trim();
-          if (cleanedChan.length > 0) {
-            channels.push(cleanedChan);
+              fixtures.push({
+                dateLabel: currentDateLabel,
+                competitionRaw: competition,
+                home,
+                away,
+                timeString,
+                channels
+              });
+            }
+          } else {
+            // Has ST: time but no v/vs separator
+            debugLines.push(`NO VS SEPARATOR: ${line}`);
           }
+        } else if (line.includes(' v ') || line.includes(' vs ')) {
+          // Potential fixture line that didn't match - log it for debugging
+          debugLines.push(`NO ST TIME MARKER: ${line}`);
         }
-
-        fixtures.push({
-          dateLabel: currentDateLabel,
-          competitionRaw,
-          home,
-          away,
-          timeString,
-          channels
-        });
       }
 
-      return fixtures;
+      return { fixtures, debugLines };
     });
 
     await page.close();
 
-    let fixtures = rawFixtures.map(f => {
+    // Log debug information
+    if (rawFixtures.debugLines && rawFixtures.debugLines.length > 0) {
+      log('--- Debug Info (first 50 lines) ---');
+      rawFixtures.debugLines.slice(0, 50).forEach(line => log(line));
+      log('--- End Debug Info ---');
+    }
+
+    let fixtures = (rawFixtures.fixtures || []).map(f => {
       const kickoffUtc = parseKickoffUtc(f.dateLabel, f.timeString);
       let competition = f.competitionRaw || null;
 
@@ -307,7 +451,10 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
       };
     });
 
-    // Filter out women's football and keep only UK teams
+    // Filter out women's football and international competitions
+    // Since this page is specifically uk-england-all-football.php, we can be more permissive
+    // and just exclude things we know we don't want
+    const preFilterCount = fixtures.length;
     fixtures = fixtures.filter(f => {
       const comp = (f.competition || '').toLowerCase();
       const home = (f.home || '').toLowerCase();
@@ -318,12 +465,25 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         comp.includes(term) || home.includes(term) || away.includes(term)
       );
       
-      // Check if competition matches any UK competition
-      const isUkCompetition = UK_COMPETITIONS.some(ukComp => comp.includes(ukComp));
+      if (isWomens) {
+        log(`Filtered out women's match: ${f.home} v ${f.away} (${f.competition})`);
+        return false;
+      }
       
-      // Keep only UK competitions that are not women's football
-      return !isWomens && isUkCompetition;
+      // Exclude international/European competitions
+      const isExcluded = EXCLUDE_COMPETITIONS.some(excludeComp => comp.includes(excludeComp));
+      
+      if (isExcluded) {
+        log(`Filtered out international/European competition: ${f.home} v ${f.away} (${f.competition})`);
+        return false;
+      }
+      
+      // If we're on the UK England page, accept everything else
+      return true;
     });
+    
+    log(`Fixtures after filtering: ${fixtures.length} (filtered out ${preFilterCount - fixtures.length})`);
+
 
     // Optional team filter
     if (teamName) {
