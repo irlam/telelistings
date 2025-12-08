@@ -55,6 +55,36 @@ const EXCLUDE_COMPETITIONS = [
   'eredivisie'
 ];
 
+// Known UK competition names for parsing (module-level constant)
+const KNOWN_COMPETITIONS = [
+  'Premier League',
+  'English Premier League',
+  'EPL',
+  'Championship',
+  'English Championship',
+  'League One',
+  'English League One',
+  'League Two',
+  'English League Two',
+  'FA Cup',
+  'EFL Cup',
+  'Carabao Cup',
+  'League Cup',
+  'Scottish Premiership',
+  'Scottish Championship',
+  'Scottish League One',
+  'Scottish League Two',
+  'Scottish Cup',
+  'Welsh Premier',
+  'National League'
+];
+
+// Pre-compile regex patterns for known competitions (for performance)
+const KNOWN_COMPETITION_REGEXES = KNOWN_COMPETITIONS.map(name => ({
+  name,
+  regex: new RegExp(`^(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(.+)$`, 'i')
+}));
+
 // Shared browser instance
 let browser = null;
 
@@ -226,6 +256,36 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
       
       // Pattern to find "v" or "vs" separator
       const vsSeparatorRegex = /\s+v(?:s)?\s+/i;
+      
+      // Known UK competition names (defined in browser context)
+      const knownCompetitions = [
+        'Premier League',
+        'English Premier League',
+        'EPL',
+        'Championship',
+        'English Championship',
+        'League One',
+        'English League One',
+        'League Two',
+        'English League Two',
+        'FA Cup',
+        'EFL Cup',
+        'Carabao Cup',
+        'League Cup',
+        'Scottish Premiership',
+        'Scottish Championship',
+        'Scottish League One',
+        'Scottish League Two',
+        'Scottish Cup',
+        'Welsh Premier',
+        'National League'
+      ];
+      
+      // Pre-compile regex patterns for known competitions
+      const knownCompetitionRegexes = knownCompetitions.map(name => ({
+        name,
+        regex: new RegExp(`^(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(.+)$`, 'i')
+      }));
 
       let currentDateLabel = null;
 
@@ -268,41 +328,20 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
             let competition = '';
             let home = '';
             
+            // Normalize dashes (handle en-dash, em-dash, hyphen-minus, etc.)
+            const normalizedBeforeVs = beforeVs.replace(/[\u2010-\u2015\u2212]/g, '-');
+            
             // Check for round/week/matchday patterns (most specific)
-            const roundMatch = beforeVs.match(/^(.+?[-–])\s*(?:Week|Round|Matchday|Match Day|MD|GW)\s+\d+\s+(.+)$/i);
+            // This handles: "English Championship - Week 19"
+            const roundMatch = normalizedBeforeVs.match(/^(.+?-)\s*(?:Week|Round|Matchday|Match Day|MD|GW)\s+\d+\s+(.+)$/i);
             if (roundMatch) {
               competition = roundMatch[1].trim();
               home = roundMatch[2].trim();
             } else {
-              // Try to identify known competition patterns
-              // These are common UK competition names that might appear
-              const knownCompetitions = [
-                'Premier League',
-                'English Premier League',
-                'EPL',
-                'Championship',
-                'English Championship',
-                'League One',
-                'English League One',
-                'League Two',
-                'English League Two',
-                'FA Cup',
-                'EFL Cup',
-                'Carabao Cup',
-                'League Cup',
-                'Scottish Premiership',
-                'Scottish Championship',
-                'Scottish League One',
-                'Scottish League Two',
-                'Scottish Cup',
-                'Welsh Premier',
-                'National League'
-              ];
-              
+              // Try to identify known competition patterns using pre-compiled regexes
               let foundComp = false;
-              for (const compName of knownCompetitions) {
-                const compRegex = new RegExp(`^(${compName})\\s+(.+)$`, 'i');
-                const match = beforeVs.match(compRegex);
+              for (const { name, regex } of knownCompetitionRegexes) {
+                const match = beforeVs.match(regex);
                 if (match) {
                   competition = match[1].trim();
                   home = match[2].trim();
@@ -313,10 +352,13 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
               
               if (!foundComp) {
                 // Fallback: assume last 2-3 words are team name
+                // NOTE: This is a heuristic that works for most common cases but may fail
+                // for teams with very long names (4+ words) or single-word names.
+                // Known limitation: May incorrectly split unusual team names.
                 const words = beforeVs.split(/\s+/);
                 
                 if (words.length >= 4) {
-                  // 3-word team name (e.g., "Manchester United FC")
+                  // 3-word team name (e.g., "West Ham United")
                   competition = words.slice(0, -3).join(' ');
                   home = words.slice(-3).join(' ');
                 } else if (words.length === 3) {
