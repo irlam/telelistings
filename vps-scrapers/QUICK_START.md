@@ -88,12 +88,12 @@ sudo journalctl -u vps-scrapers -f
 
 ## Common Issues
 
-| Problem | Solution |
-|---------|----------|
-| "Using default API key" warning | Set a custom `LSTV_SCRAPER_KEY` in `.env` |
-| 403 Forbidden errors | Make sure API keys match in VPS `.env` and Plesk settings |
-| Connection refused | Check service is running: `sudo systemctl status vps-scrapers` |
-| Browser launch errors | Chrome may not be installed: `which google-chrome-stable` |
+| Problem                          | Solution                                                     |
+|----------------------------------|--------------------------------------------------------------|
+| "Using default API key" warning  | Set a custom `LSTV_SCRAPER_KEY` in `.env`                   |
+| 403 Forbidden errors             | Make sure API keys match in VPS `.env` and Plesk settings   |
+| Connection refused               | Check service is running: `sudo systemctl status vps-scrapers` |
+| Browser launch errors            | Chrome may not be installed: `which google-chrome-stable`   |
 
 ## Security Checklist
 

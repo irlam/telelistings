@@ -41,9 +41,10 @@ The default installation path on your VPS is: `/opt/vps-scrapers/`
 ├── server.js                    # Main Express server (scraper microservice)
 ├── package.json                 # Dependencies and scripts
 ├── .env.example                 # Environment configuration template
-├── .env                         # Your actual configuration (created from .env.example)
+├── .env                         # Your actual configuration (created from .env.example, git-ignored)
 ├── README.md                    # This file
 ├── ENV_CONFIGURATION.md         # Comprehensive .env configuration guide
+├── QUICK_START.md               # Quick reference for .env setup
 ├── scripts/                     # Utility scripts
 │   └── health.js                # Health check script
 └── scrapers/                    # Individual scrapers (all export unified scrape() function)

@@ -272,10 +272,10 @@ The `.env` file should only be readable by the service user:
 ```bash
 cd /opt/vps-scrapers
 chmod 600 .env
-chown irlam:irlam .env
+chown username:groupname .env
 ```
 
-Replace `irlam:irlam` with the appropriate user:group running the service.
+Replace `username:groupname` with the appropriate user:group running the service (e.g., `www-data:www-data`, `nodeuser:nodeuser`, or your specific service user).
 
 ## Firewall Configuration
 
