@@ -103,15 +103,20 @@ install_chrome() {
         # Ubuntu 24.04+ uses time64 packages with t64 suffix
         # Detect if we're on Ubuntu 24.04 or newer
         UBUNTU_24_04_OR_NEWER=false
-        if [ "$DISTRO" = "ubuntu" ]; then
+        if [ "$DISTRO" = "ubuntu" ] && [ -n "$VERSION" ]; then
+            # Extract major version number (e.g., "24.04" -> "24")
             VERSION_NUM=$(echo "$VERSION" | cut -d'.' -f1)
-            if [ "$VERSION_NUM" -ge 24 ]; then
+            if [ -n "$VERSION_NUM" ] && [ "$VERSION_NUM" -ge 24 ] 2>/dev/null; then
                 UBUNTU_24_04_OR_NEWER=true
             fi
         fi
         
         # Common packages that work on all versions
-        COMMON_PACKAGES="ca-certificates fonts-liberation libnss3 lsb-release xdg-utils wget gnupg apt-transport-https libxss1 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libgdk-pixbuf2.0-0 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 fonts-noto-color-emoji"
+        COMMON_PACKAGES="ca-certificates fonts-liberation libnss3 lsb-release xdg-utils wget"
+        COMMON_PACKAGES="$COMMON_PACKAGES gnupg apt-transport-https libxss1 libx11-6 libx11-xcb1"
+        COMMON_PACKAGES="$COMMON_PACKAGES libxcb1 libxcomposite1 libxdamage1 libxrandr2 libgbm1"
+        COMMON_PACKAGES="$COMMON_PACKAGES libgdk-pixbuf2.0-0 libpango-1.0-0 libpangocairo-1.0-0"
+        COMMON_PACKAGES="$COMMON_PACKAGES libstdc++6 fonts-noto-color-emoji"
         
         # Version-specific packages (time64 variants for Ubuntu 24.04+)
         if [ "$UBUNTU_24_04_OR_NEWER" = true ]; then
@@ -122,7 +127,10 @@ install_chrome() {
         
         sudo apt-get install -y --no-install-recommends \
             $COMMON_PACKAGES \
-            $VERSION_SPECIFIC_PACKAGES
+            $VERSION_SPECIFIC_PACKAGES || {
+                log_error "Failed to install Chrome dependencies"
+                return 1
+            }
         
         log_info "Adding Google Chrome repository..."
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-linux-signing-keyring.gpg
