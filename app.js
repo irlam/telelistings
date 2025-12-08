@@ -3427,6 +3427,7 @@ app.get('/admin/vps-setup', (req, res) => {
       <strong>⚠️ Important Configuration Notes:</strong>
       <ul>
         <li><strong>VPS Host:</strong> Use the direct IP address or SSH hostname of your VPS, NOT a web URL or domain proxied through Cloudflare</li>
+        <li><strong>Cloudflare DNS:</strong> If your DNS page shows all orange clouds (proxied), click the cloud for your deploy host (e.g., <code>deploy.defecttracker.uk</code>) until it turns gray. A proxied deploy host will still hit Cloudflare and cause the timeout banner.</li>
         <li><strong>SSH Access:</strong> Ensure SSH is enabled and accessible on your VPS (port 22 by default)</li>
         <li><strong>Network:</strong> The VPS must be reachable from this server's network</li>
         <li><strong>Authentication:</strong> SSH key authentication is more secure and recommended over password auth</li>
