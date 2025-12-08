@@ -3303,7 +3303,8 @@ app.get('/admin/vps-setup', (req, res) => {
               'The request timed out through Cloudflare proxy. This usually means:<br>' +
               '• The application server is not responding (may be overloaded or down)<br>' +
               '• Network connectivity issues between Cloudflare and the server<br>' +
-              '• The request is taking longer than Cloudflare\\'s timeout limit<br><br>' +
+              '• The request is taking longer than Cloudflare\\'s timeout limit<br>' +
+              '• A proxied DNS record is still in use even if you expect Cloudflare to be off (try the raw VPS IP or a DNS-only host)<br><br>' +
               'Please try again in a few minutes or <a href="/admin/server-logs">check server logs</a> for more details.</div>';
             return;
           }
@@ -3372,7 +3373,8 @@ app.get('/admin/vps-setup', (req, res) => {
             throw new Error('The request timed out through Cloudflare proxy. This usually means:\\n' +
               '• The VPS host is unreachable or not responding\\n' +
               '• SSH service is not running on the VPS\\n' +
-              '• VPS host/port configuration is incorrect\\n\\n' +
+              '• VPS host/port configuration is incorrect\\n' +
+              '• A proxied DNS record is still in use even if Cloudflare is expected to be disabled (try the raw VPS IP or DNS-only hostname)\\n\\n' +
               'Please verify your VPS configuration and ensure the VPS is accessible via SSH.');
           }
           
