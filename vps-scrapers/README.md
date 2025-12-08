@@ -2,6 +2,11 @@
 
 This folder contains Puppeteer-based scrapers designed to run on your VPS. These scrapers are called remotely from your Plesk telelistings app.
 
+## 📖 Documentation
+
+- **[ENV_CONFIGURATION.md](ENV_CONFIGURATION.md)** - Comprehensive guide for configuring the `.env` file with API keys and settings
+- **[README.md](README.md)** - This file (general overview and deployment instructions)
+
 ## 🚀 Quick Start (Automated Deployment)
 
 The easiest way to deploy the VPS scrapers is using the **automated deployment system** in the admin panel:
@@ -35,7 +40,9 @@ The default installation path on your VPS is: `/opt/vps-scrapers/`
 ├── server.js                    # Main Express server (scraper microservice)
 ├── package.json                 # Dependencies and scripts
 ├── .env.example                 # Environment configuration template
+├── .env                         # Your actual configuration (created from .env.example)
 ├── README.md                    # This file
+├── ENV_CONFIGURATION.md         # Comprehensive .env configuration guide
 ├── scripts/                     # Utility scripts
 │   └── health.js                # Health check script
 └── scrapers/                    # Individual scrapers (all export unified scrape() function)
@@ -175,7 +182,9 @@ cp .env.example .env
 nano .env
 ```
 
-**Important:** Change the `LSTV_SCRAPER_KEY` to a secure random key!
+**Important:** 
+- Change the `LSTV_SCRAPER_KEY` to a secure random key!
+- See [ENV_CONFIGURATION.md](ENV_CONFIGURATION.md) for detailed configuration instructions
 
 ### 5. Start the Server
 
