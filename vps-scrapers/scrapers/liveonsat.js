@@ -39,26 +39,20 @@ const MIN_TEXT_LENGTH = 3;
 // Women's football filter terms
 const WOMENS_TERMS = ['women', 'ladies', 'wsl', 'womens'];
 
-// UK competitions to include
-const UK_COMPETITIONS = [
-  'premier league',
-  'english championship',
-  'championship',
-  'english league one',
-  'league one',
-  'english league two',
-  'league two',
-  'fa cup',
-  'efl cup',
-  'carabao cup',
-  'scottish premiership',
-  'scottish championship',
-  'scottish league one',
-  'scottish league two',
-  'scottish cup',
-  'welsh premier league',
-  'northern ireland premiership',
-  'national league'
+// International/European competitions to exclude (not UK domestic)
+const EXCLUDE_COMPETITIONS = [
+  'champions league',
+  'europa league',
+  'conference league',
+  'world cup',
+  'euro ',
+  'uefa',
+  'international',
+  'la liga',
+  'serie a',
+  'bundesliga',
+  'ligue 1',
+  'eredivisie'
 ];
 
 // Shared browser instance
@@ -211,6 +205,7 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         .filter(l => l.length > 0);
 
       const fixtures = [];
+      const debugLines = []; // Collect lines for debugging
 
       // Matches day headers like "Friday, 5th December"
       const dayNameRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
@@ -218,23 +213,19 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
       /**
        * Fixture line regex - matches lines like:
        * "English Championship - Week 19 Hull City v Middlesbrough ST: 15:00"
+       * OR "Premier League Arsenal v Chelsea ST: 15:00"
+       * OR "FA Cup Manchester United vs Liverpool ST: 20:00"
+       * 
+       * Strategy: Match from the end backwards (time, teams, then competition)
+       * This is more reliable as the time format is fixed, and "v"/"vs" is a clear separator
        * 
        * Capture groups:
-       * $1 = Competition + Round info (e.g., "English Championship - Week 19")
-       * $2 = Home team name (e.g., "Hull City")
-       * $3 = Away team name (e.g., "Middlesbrough")
-       * $4 = Kickoff time in HH:MM format (e.g., "15:00")
-       * 
-       * Pattern breakdown:
-       * ^(.*?-\s*.*?)   - Competition with round (non-greedy, must contain "-")
-       * \s+(.+?)        - Home team (non-greedy)
-       * \s+v\s+         - "v" separator with spaces
-       * (.+?)           - Away team (non-greedy)
-       * \s+ST:\s*       - "ST:" marker (Start Time)
-       * ([0-9]{1,2}:[0-9]{2}) - Time in H:MM or HH:MM format
-       * \s*$            - Optional trailing whitespace
+       * $1 = Full line before teams (competition)
+       * $2 = Home team name
+       * $3 = Away team name  
+       * $4 = Kickoff time in HH:MM format
        */
-      const fixtureRegex = /^(.*?-\s*.*?)\s+(.+?)\s+v\s+(.+?)\s+ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
+      const fixtureRegex = /^(.+?)\s+([A-Z][\w\s&'-]+?)\s+v(?:s)?\s+([\w\s&'-]+?)\s+ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
 
       let currentDateLabel = null;
 
@@ -244,52 +235,68 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         // Date header
         if (dayNameRegex.test(line)) {
           currentDateLabel = line;
+          debugLines.push(`DATE: ${line}`);
           continue;
         }
 
+        // Try to match fixture line
         const m = line.match(fixtureRegex);
-        if (!m) continue;
+        if (m) {
+          const competitionRaw = m[1].trim();
+          const home = m[2].trim();
+          const away = m[3].trim();
+          const timeString = m[4].trim();
 
-        const competitionRaw = m[1].trim(); // includes round info
-        const home = m[2].trim();
-        const away = m[3].trim();
-        const timeString = m[4].trim();
+          debugLines.push(`MATCH: ${line}`);
+          debugLines.push(`  Competition: ${competitionRaw}`);
+          debugLines.push(`  Home: ${home}, Away: ${away}, Time: ${timeString}`);
 
-        // Collect channels in following lines until we hit next fixture/date
-        const channels = [];
-        for (let j = i + 1; j < lines.length; j++) {
-          const next = lines[j];
+          // Collect channels in following lines until we hit next fixture/date
+          const channels = [];
+          for (let j = i + 1; j < lines.length; j++) {
+            const next = lines[j];
 
-          if (dayNameRegex.test(next)) break;
-          if (fixtureRegex.test(next)) break;
+            if (dayNameRegex.test(next)) break;
+            if (fixtureRegex.test(next)) break;
 
-          // Skip generic notes
-          if (/^Please Note:/i.test(next)) continue;
-          if (/^Members LOGIN/i.test(next)) continue;
-          if (/^Members LOGOUT/i.test(next)) continue;
+            // Skip generic notes
+            if (/^Please Note:/i.test(next)) continue;
+            if (/^Members LOGIN/i.test(next)) continue;
+            if (/^Members LOGOUT/i.test(next)) continue;
 
-          const cleanedChan = next.replace(/📺/g, '').trim();
-          if (cleanedChan.length > 0) {
-            channels.push(cleanedChan);
+            const cleanedChan = next.replace(/📺/g, '').trim();
+            if (cleanedChan.length > 0) {
+              channels.push(cleanedChan);
+            }
           }
-        }
 
-        fixtures.push({
-          dateLabel: currentDateLabel,
-          competitionRaw,
-          home,
-          away,
-          timeString,
-          channels
-        });
+          fixtures.push({
+            dateLabel: currentDateLabel,
+            competitionRaw,
+            home,
+            away,
+            timeString,
+            channels
+          });
+        } else if (line.includes(' v ') || line.includes(' vs ') || line.includes('ST:')) {
+          // Potential fixture line that didn't match - log it for debugging
+          debugLines.push(`NO MATCH (potential fixture): ${line}`);
+        }
       }
 
-      return fixtures;
+      return { fixtures, debugLines };
     });
 
     await page.close();
 
-    let fixtures = rawFixtures.map(f => {
+    // Log debug information
+    if (rawFixtures.debugLines && rawFixtures.debugLines.length > 0) {
+      log('--- Debug Info (first 50 lines) ---');
+      rawFixtures.debugLines.slice(0, 50).forEach(line => log(line));
+      log('--- End Debug Info ---');
+    }
+
+    let fixtures = (rawFixtures.fixtures || []).map(f => {
       const kickoffUtc = parseKickoffUtc(f.dateLabel, f.timeString);
       let competition = f.competitionRaw || null;
 
@@ -307,7 +314,10 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
       };
     });
 
-    // Filter out women's football and keep only UK teams
+    // Filter out women's football and international competitions
+    // Since this page is specifically uk-england-all-football.php, we can be more permissive
+    // and just exclude things we know we don't want
+    const preFilterCount = fixtures.length;
     fixtures = fixtures.filter(f => {
       const comp = (f.competition || '').toLowerCase();
       const home = (f.home || '').toLowerCase();
@@ -318,12 +328,25 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         comp.includes(term) || home.includes(term) || away.includes(term)
       );
       
-      // Check if competition matches any UK competition
-      const isUkCompetition = UK_COMPETITIONS.some(ukComp => comp.includes(ukComp));
+      if (isWomens) {
+        log(`Filtered out women's match: ${f.home} v ${f.away} (${f.competition})`);
+        return false;
+      }
       
-      // Keep only UK competitions that are not women's football
-      return !isWomens && isUkCompetition;
+      // Exclude international/European competitions
+      const isExcluded = EXCLUDE_COMPETITIONS.some(excludeComp => comp.includes(excludeComp));
+      
+      if (isExcluded) {
+        log(`Filtered out international/European competition: ${f.home} v ${f.away} (${f.competition})`);
+        return false;
+      }
+      
+      // If we're on the UK England page, accept everything else
+      return true;
     });
+    
+    log(`Fixtures after filtering: ${fixtures.length} (filtered out ${preFilterCount - fixtures.length})`);
+
 
     // Optional team filter
     if (teamName) {
