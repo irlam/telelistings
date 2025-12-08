@@ -211,21 +211,21 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
       const dayNameRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
 
       /**
-       * Fixture line regex - matches lines like:
+       * Parse fixture lines using a more robust two-pass approach:
+       * 1. Use regex to identify lines that look like fixtures (contain ST: HH:MM)
+       * 2. Parse them manually to extract competition, teams, and time
+       * 
+       * Example formats:
        * "English Championship - Week 19 Hull City v Middlesbrough ST: 15:00"
-       * OR "Premier League Arsenal v Chelsea ST: 15:00"
-       * OR "FA Cup Manchester United vs Liverpool ST: 20:00"
-       * 
-       * Strategy: Match from the end backwards (time, teams, then competition)
-       * This is more reliable as the time format is fixed, and "v"/"vs" is a clear separator
-       * 
-       * Capture groups:
-       * $1 = Full line before teams (competition)
-       * $2 = Home team name
-       * $3 = Away team name  
-       * $4 = Kickoff time in HH:MM format
+       * "Premier League Arsenal v Chelsea ST: 15:00"
+       * "FA Cup Manchester United vs Liverpool ST: 20:00"
        */
-      const fixtureRegex = /^(.+?)\s+([A-Z][\w\s&'-]+?)\s+v(?:s)?\s+([\w\s&'-]+?)\s+ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
+      
+      // First, identify potential fixture lines (contains ST: followed by time)
+      const fixtureIndicatorRegex = /\bST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
+      
+      // Pattern to find "v" or "vs" separator
+      const vsSeparatorRegex = /\s+v(?:s)?\s+/i;
 
       let currentDateLabel = null;
 
@@ -240,47 +240,104 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
         }
 
         // Try to match fixture line
-        const m = line.match(fixtureRegex);
-        if (m) {
-          const competitionRaw = m[1].trim();
-          const home = m[2].trim();
-          const away = m[3].trim();
-          const timeString = m[4].trim();
-
-          debugLines.push(`MATCH: ${line}`);
-          debugLines.push(`  Competition: ${competitionRaw}`);
-          debugLines.push(`  Home: ${home}, Away: ${away}, Time: ${timeString}`);
-
-          // Collect channels in following lines until we hit next fixture/date
-          const channels = [];
-          for (let j = i + 1; j < lines.length; j++) {
-            const next = lines[j];
-
-            if (dayNameRegex.test(next)) break;
-            if (fixtureRegex.test(next)) break;
-
-            // Skip generic notes
-            if (/^Please Note:/i.test(next)) continue;
-            if (/^Members LOGIN/i.test(next)) continue;
-            if (/^Members LOGOUT/i.test(next)) continue;
-
-            const cleanedChan = next.replace(/📺/g, '').trim();
-            if (cleanedChan.length > 0) {
-              channels.push(cleanedChan);
+        const timeMatch = line.match(fixtureIndicatorRegex);
+        if (timeMatch) {
+          const timeString = timeMatch[1].trim();
+          
+          // Remove the "ST: HH:MM" part from the end
+          const lineWithoutTime = line.replace(fixtureIndicatorRegex, '').trim();
+          
+          // Find the "v" or "vs" separator
+          const vsMatch = vsSeparatorRegex.exec(lineWithoutTime);
+          
+          if (vsMatch) {
+            const vsIndex = vsMatch.index;
+            const vsSeparator = vsMatch[0];
+            
+            // Everything before "v/vs" contains: Competition + Home Team
+            const beforeVs = lineWithoutTime.substring(0, vsIndex).trim();
+            
+            // Everything after "v/vs" is the away team
+            const away = lineWithoutTime.substring(vsIndex + vsSeparator.length).trim();
+            
+            // Now we need to split beforeVs into competition and home team
+            // Strategy: Competition usually contains certain keywords or patterns
+            // Common patterns: "- Week N", "- Round N", "- Matchday N", etc.
+            // If we find such patterns, everything up to and including them is the competition
+            // Otherwise, we look for the last 1-3 words as the team name
+            
+            let competition = '';
+            let home = '';
+            
+            // Check for round/week/matchday patterns
+            const roundMatch = beforeVs.match(/^(.+?[-–])\s*(?:Week|Round|Matchday|Match Day|MD|GW)\s+\d+\s+(.+)$/i);
+            if (roundMatch) {
+              competition = roundMatch[1].trim();
+              home = roundMatch[2].trim();
+            } else {
+              // No round pattern found, try to split based on word count
+              // Assume team names are typically 1-4 words, competition names can be longer
+              // Look for the last 1-4 words as the team name
+              const words = beforeVs.split(/\s+/);
+              
+              // Try different splits (last 1, 2, 3, or 4 words as team name)
+              // Prefer 2-word team names as they're most common (e.g., "Hull City")
+              if (words.length >= 3) {
+                // Try 2-word team name first (most common)
+                competition = words.slice(0, -2).join(' ');
+                home = words.slice(-2).join(' ');
+              } else if (words.length === 2) {
+                // If only 2 words total, first is competition, second is team
+                competition = words[0];
+                home = words[1];
+              } else {
+                // Only 1 word? Treat it as home team, no competition
+                competition = '';
+                home = beforeVs;
+              }
             }
-          }
+            
+            // Only add if we got reasonable values
+            if (home && away && timeString) {
+              debugLines.push(`MATCH: ${line}`);
+              debugLines.push(`  Competition: ${competition || '(none)'}`);
+              debugLines.push(`  Home: ${home}, Away: ${away}, Time: ${timeString}`);
 
-          fixtures.push({
-            dateLabel: currentDateLabel,
-            competitionRaw,
-            home,
-            away,
-            timeString,
-            channels
-          });
-        } else if (line.includes(' v ') || line.includes(' vs ') || line.includes('ST:')) {
+              // Collect channels in following lines until we hit next fixture/date
+              const channels = [];
+              for (let j = i + 1; j < lines.length; j++) {
+                const next = lines[j];
+
+                if (dayNameRegex.test(next)) break;
+                if (fixtureIndicatorRegex.test(next)) break;
+
+                // Skip generic notes
+                if (/^Please Note:/i.test(next)) continue;
+                if (/^Members LOGIN/i.test(next)) continue;
+                if (/^Members LOGOUT/i.test(next)) continue;
+
+                const cleanedChan = next.replace(/📺/g, '').trim();
+                if (cleanedChan.length > 0) {
+                  channels.push(cleanedChan);
+                }
+              }
+
+              fixtures.push({
+                dateLabel: currentDateLabel,
+                competitionRaw: competition,
+                home,
+                away,
+                timeString,
+                channels
+              });
+            }
+          } else {
+            // Has ST: time but no v/vs separator
+            debugLines.push(`NO VS SEPARATOR: ${line}`);
+          }
+        } else if (line.includes(' v ') || line.includes(' vs ')) {
           // Potential fixture line that didn't match - log it for debugging
-          debugLines.push(`NO MATCH (potential fixture): ${line}`);
+          debugLines.push(`NO ST TIME MARKER: ${line}`);
         }
       }
 
