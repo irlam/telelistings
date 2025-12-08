@@ -3267,6 +3267,17 @@ app.get('/admin/vps-setup', (req, res) => {
   </style>
   
   <script>
+    // Helper function to detect Cloudflare error pages
+    function isCloudflareErrorPage(responseText) {
+      const lowerResponseText = responseText.toLowerCase();
+      return (
+        (lowerResponseText.includes('cloudflare') && (lowerResponseText.includes('504') || lowerResponseText.includes('524') || lowerResponseText.includes('522'))) ||
+        (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
+        lowerResponseText.includes('cloudflare ray id') ||
+        lowerResponseText.includes('cf-ray')
+      );
+    }
+    
     function toggleAuthFields() {
       const authType = document.getElementById('authType').value;
       document.getElementById('keyAuthFields').style.display = authType === 'key' ? 'block' : 'none';
@@ -3290,17 +3301,8 @@ app.get('/admin/vps-setup', (req, res) => {
         if (!contentType || !contentType.includes('application/json')) {
           const responseText = await response.text();
           
-          // Check if it's a Cloudflare error page using case-insensitive matching and multiple indicators
-          // Be more specific to avoid false positives - require "cloudflare" to be present
-          const lowerResponseText = responseText.toLowerCase();
-          const isCloudflareError = (
-            (lowerResponseText.includes('cloudflare') && (lowerResponseText.includes('504') || lowerResponseText.includes('524') || lowerResponseText.includes('522'))) ||
-            (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
-            lowerResponseText.includes('cloudflare ray id') ||
-            lowerResponseText.includes('cf-ray')
-          );
-          
-          if (isCloudflareError) {
+          // Check if it's a Cloudflare error page
+          if (isCloudflareErrorPage(responseText)) {
             statusEl.innerHTML = '<div class="status-box status-error">❌ Cloudflare Gateway Timeout Error Detected<br><br>' +
               '<strong>What this means:</strong> The HTTP request from your browser was intercepted and terminated by Cloudflare before completing.<br><br>' +
               '<strong>Common causes:</strong><br>' +
@@ -3367,17 +3369,8 @@ app.get('/admin/vps-setup', (req, res) => {
           // Try to get the actual response body for debugging
           const responseText = await response.text();
           
-          // Check if it's a Cloudflare error page using case-insensitive matching and multiple indicators
-          // Be more specific to avoid false positives - require "cloudflare" to be present
-          const lowerResponseText = responseText.toLowerCase();
-          const isCloudflareError = (
-            (lowerResponseText.includes('cloudflare') && (lowerResponseText.includes('504') || lowerResponseText.includes('524') || lowerResponseText.includes('522'))) ||
-            (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
-            lowerResponseText.includes('cloudflare ray id') ||
-            lowerResponseText.includes('cf-ray')
-          );
-          
-          if (isCloudflareError) {
+          // Check if it's a Cloudflare error page
+          if (isCloudflareErrorPage(responseText)) {
             logEl.textContent += '\\n\\nCloudflare Gateway Timeout Error Detected\\n';
             logEl.textContent += '\\nThis error came from Cloudflare, NOT from your VPS.\\n';
             logEl.textContent += 'The HTTP request was terminated by Cloudflare before the deployment could complete.\\n';

@@ -29,7 +29,7 @@ Following the table above gives you a proxied hostname for the web UI while keep
 
 ## Understanding Cloudflare timeout errors
 
-**Important:** The admin UI only shows a "Cloudflare timeout error" when it receives an actual HTML error page from Cloudflare (containing "Cloudflare", error codes like 504/522/524, or "CF-Ray" identifiers). If you see this error, it means your request is genuinely being routed through Cloudflare's proxy.
+**Important:** The admin UI only shows a "Cloudflare timeout error" when it receives an actual HTML error page from Cloudflare (containing "Cloudflare", error codes like 504/524/522, or "CF-Ray" identifiers). If you see this error, it means your request is genuinely being routed through Cloudflare's proxy.
 
 ### The error is REAL if you see:
 - An error message specifically mentioning "Cloudflare Gateway Timeout Error Detected"
@@ -63,6 +63,7 @@ If you're certain the VPS is reachable and SSH is running, but you still see the
 1. **Use the raw IP address for the admin UI** (bypasses Cloudflare entirely):
    - Instead of accessing `https://telegram.defecttracker.uk/admin/vps-setup`
    - Access `http://202.61.233.123:3000/admin/vps-setup` (use your actual web server IP and port)
+   - **Security Note:** Using HTTP instead of HTTPS removes SSL/TLS encryption. Only use this on trusted networks. For production, configure HTTPS with proper certificates on the origin server or use a VPN/SSH tunnel.
    - This removes Cloudflare's 100-second timeout from the equation
 
 2. **Optimize the deployment** to complete faster:
