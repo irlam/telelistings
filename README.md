@@ -76,6 +76,25 @@ ADMIN_PASSWORD=your_admin_password_here
 - The health endpoint proxies to `${LSTV_SCRAPER_URL}/health` on the VPS
 - Visit `/health/tsdb` to check TheSportsDB API connectivity
 
+### Troubleshooting Cloudflare Issues
+
+If you experience Cloudflare timeout errors when accessing the admin panel:
+
+- **Quick Fix:** Use an SSH tunnel to bypass Cloudflare entirely
+  ```bash
+  ssh -L 3000:localhost:3000 user@your-server-ip
+  ```
+  Then access: `http://localhost:3000/admin/vps-setup`
+
+- **Detailed Guides:**
+  - `docs/SSH_TUNNEL_BYPASS.md` - Complete SSH tunnel setup guide
+  - `docs/CLOUDFLARE_DNS_GUIDE.md` - Full Cloudflare troubleshooting
+  
+This is particularly useful when:
+- VPS deployment takes longer than Cloudflare's 100-second timeout
+- Direct IP access returns `ERR_CONNECTION_REFUSED`
+- The app is configured to listen only on localhost in Plesk
+
 ## Image-Based Posters
 
 For poster-style channels, you can upload a background image to generate visually appealing image posters instead of text-only messages.

@@ -3310,10 +3310,16 @@ app.get('/admin/vps-setup', (req, res) => {
               '• The operation is taking longer than Cloudflare\\'s 100-second timeout<br>' +
               '• OR the VPS hostname below is using a Cloudflare-proxied DNS record<br><br>' +
               '<strong>Solutions:</strong><br>' +
-              '1. <strong>Access admin panel directly:</strong> Use your server\\'s raw IP instead (e.g., http://202.61.233.123:3000/admin/vps-setup) to bypass Cloudflare<br>' +
-              '2. <strong>Speed up deployment:</strong> Pre-install Chrome and Node.js on your VPS to reduce deployment time<br>' +
-              '3. <strong>Use command-line:</strong> Run manual deployment from terminal (see docs/CLOUDFLARE_DNS_GUIDE.md)<br>' +
-              '4. <strong>Check VPS hostname:</strong> Ensure the VPS Host field below uses a DNS-only (gray cloud) hostname or raw IP<br><br>' +
+              '1. <strong>Use SSH tunnel (RECOMMENDED):</strong><br>' +
+              '   <code>ssh -L 3000:localhost:3000 user@202.61.233.123</code><br>' +
+              '   Then access <code>http://localhost:3000/admin/vps-setup</code><br>' +
+              '   This bypasses Cloudflare securely and works even if raw IP access is blocked.<br><br>' +
+              '2. <strong>Access admin panel via raw IP:</strong> Try <code>http://202.61.233.123:3000/admin/vps-setup</code><br>' +
+              '   ⚠️ If you get ERR_CONNECTION_REFUSED, the app may be configured for localhost-only access.<br>' +
+              '   In that case, use the SSH tunnel method above instead.<br><br>' +
+              '3. <strong>Speed up deployment:</strong> Pre-install Chrome and Node.js on your VPS to reduce deployment time<br>' +
+              '4. <strong>Use command-line:</strong> Run manual deployment from terminal (see docs/CLOUDFLARE_DNS_GUIDE.md)<br>' +
+              '5. <strong>Check VPS hostname:</strong> Ensure the VPS Host field below uses a DNS-only (gray cloud) hostname or raw IP<br><br>' +
               'See the <a href="https://github.com/irlam/telelistings/blob/main/docs/CLOUDFLARE_DNS_GUIDE.md" target="_blank">Cloudflare DNS Guide</a> for detailed troubleshooting.</div>';
             return;
           }
@@ -3378,10 +3384,13 @@ app.get('/admin/vps-setup', (req, res) => {
               '• You are accessing this admin panel through a Cloudflare-proxied domain\\n' +
               '• The deployment is taking longer than Cloudflare\\'s 100-second timeout\\n' +
               '• OR the VPS hostname is using a Cloudflare-proxied DNS record\\n\\n' +
-              'Solutions:\\n' +
-              '1. Access admin panel via raw IP (e.g., http://202.61.233.123:3000) to bypass Cloudflare\\n' +
-              '2. Pre-install Chrome and Node.js on VPS to speed up deployment\\n' +
-              '3. Use manual command-line deployment (see docs/CLOUDFLARE_DNS_GUIDE.md)\\n' +
+              'Solutions (in order of recommendation):\\n' +
+              '1. Use SSH tunnel (WORKS BEST): ssh -L 3000:localhost:3000 user@202.61.233.123\\n' +
+              '   Then access http://localhost:3000/admin/vps-setup in your browser\\n' +
+              '2. Access admin panel via raw IP (e.g., http://202.61.233.123:3000)\\n' +
+              '   Note: If you get ERR_CONNECTION_REFUSED, use SSH tunnel instead\\n' +
+              '3. Pre-install Chrome and Node.js on VPS to speed up deployment\\n' +
+              '4. Use manual command-line deployment (see docs/CLOUDFLARE_DNS_GUIDE.md)\\n' +
               '4. Ensure VPS Host uses a DNS-only (gray cloud) hostname or raw IP\\n\\n' +
               'See docs/CLOUDFLARE_DNS_GUIDE.md for detailed troubleshooting.');
           }
@@ -3426,6 +3435,23 @@ app.get('/admin/vps-setup', (req, res) => {
         <li>Transfers all VPS scraper files to the configured directory</li>
         <li>Installs Node.js, Chrome/Chromium, and all dependencies</li>
         <li>Configures and starts the scraper service</li>
+      </ul>
+    </div>
+    
+    <div class="status-box status-warning">
+      <strong>⚠️ Getting Cloudflare Timeout Errors?</strong>
+      <p>If you see Cloudflare timeout errors when using this page, you have several options:</p>
+      <ul>
+        <li><strong>🔧 Use SSH Tunnel (RECOMMENDED):</strong> Most reliable method that works in all scenarios:
+          <pre style="background: #000; padding: 8px; margin: 8px 0; border-radius: 4px;">ssh -L 3000:localhost:3000 user@202.61.233.123</pre>
+          Then access: <code>http://localhost:3000/admin/vps-setup</code><br>
+          This bypasses Cloudflare completely and works even if direct IP access is blocked.
+        </li>
+        <li><strong>🌐 Try Raw IP Access:</strong> Access this page via <code>http://202.61.233.123:3000/admin/vps-setup</code>
+          <br>⚠️ <em>If you get ERR_CONNECTION_REFUSED, your server may be configured for localhost-only access. Use SSH tunnel instead.</em>
+        </li>
+        <li><strong>⚡ Speed up deployment:</strong> Pre-install Node.js and Chrome on your VPS to complete under 100 seconds</li>
+        <li><strong>💻 Use command line:</strong> Run deployment manually from terminal (see <code>docs/CLOUDFLARE_DNS_GUIDE.md</code>)</li>
       </ul>
     </div>
     

@@ -65,6 +65,7 @@ If you're certain the VPS is reachable and SSH is running, but you still see the
    - Access `http://202.61.233.123:3000/admin/vps-setup` (use your actual web server IP and port)
    - **Security Note:** Using HTTP instead of HTTPS removes SSL/TLS encryption. Only use this on trusted networks. For production, configure HTTPS with proper certificates on the origin server or use a VPN/SSH tunnel.
    - This removes Cloudflare's 100-second timeout from the equation
+   - **If you get ERR_CONNECTION_REFUSED**, see the detailed troubleshooting section below
 
 2. **Optimize the deployment** to complete faster:
    - Pre-install Chrome/Chromium on the VPS manually: `sudo apt-get install chromium-browser`
@@ -81,6 +82,9 @@ If you're certain the VPS is reachable and SSH is running, but you still see the
    ```
    Command-line deployment isn't subject to Cloudflare timeouts
 
+4. **Use SSH tunnel** (secure alternative when direct IP access doesn't work):
+   - See the "SSH Tunnel Solution" section below for detailed instructions
+
 If you see a genuine Cloudflare timeout error AND need to use the web UI through Cloudflare:
 
 1. **Double-check the DNS record**: In Cloudflare's dashboard, make sure the cloud icon for your SSH/deploy hostname is gray (DNS-only). If it is orange, traffic is still proxied.
@@ -88,6 +92,181 @@ If you see a genuine Cloudflare timeout error AND need to use the web UI through
 3. **Verify with `dig`**: `dig +short deploy.defecttracker.uk` should return the VPS IP directly with no Cloudflare anycast addresses in the chain. If you see multiple IPs or Cloudflare ranges, the record is still proxied somewhere.
 4. **Look for upstream protection**: Some hosting providers or CDNs add Cloudflare in front of your service automatically. If your hostname resolves correctly but you still see Cloudflare HTML, the provider may be injecting a protection page; use the origin IP to bypass it.
 5. **Retest after changing the host**: Once the admin UI points at `185.170.113.230` (or `deploy.defecttracker.uk`), re-run the Test/Deploy buttons.
+
+## Troubleshooting ERR_CONNECTION_REFUSED When Accessing Admin Panel via Raw IP
+
+If you get `ERR_CONNECTION_REFUSED` when trying to access the admin panel via raw IP (e.g., `http://202.61.233.123:3000`), this means the Node.js application is not accessible on that IP:port combination. This is a **different issue** from Cloudflare timeouts.
+
+### Common Causes
+
+**1. Application is listening on localhost only (127.0.0.1)**
+- In some Plesk environments, Node.js apps are configured to listen only on localhost for security
+- External connections to the IP are blocked by design
+- Plesk uses a reverse proxy to route traffic from port 80/443 to your app
+
+**2. Firewall is blocking the port**
+- The server firewall may not allow incoming connections to port 3000
+- Plesk's firewall rules may only allow HTTP (80) and HTTPS (443)
+
+**3. Plesk proxy configuration**
+- Plesk Node.js apps typically don't expose ports directly
+- Instead, Plesk proxies requests from your domain to the app
+- Direct IP:port access is intentionally disabled
+
+**4. Port is different than expected**
+- The app might be running on a different port than 3000
+- Check Plesk Node.js settings for the actual port
+
+### Solutions
+
+#### Solution 1: Use SSH Tunnel (Recommended - Secure and Always Works)
+
+An SSH tunnel creates a secure encrypted connection that bypasses Cloudflare AND works with Plesk's localhost-only configuration:
+
+```bash
+# From your local machine, create an SSH tunnel
+# This forwards your local port 3000 to the server's localhost:3000
+ssh -L 3000:localhost:3000 user@202.61.233.123
+
+# Keep this terminal window open, then in your browser access:
+# http://localhost:3000/admin/vps-setup
+```
+
+**Why this works:**
+- Your browser connects to `localhost:3000` on YOUR machine
+- SSH forwards this to `localhost:3000` on the SERVER
+- This bypasses Cloudflare completely (you're not using the domain)
+- Works even when the app listens only on localhost (127.0.0.1)
+- Secure - all traffic is encrypted through SSH
+- No firewall changes needed
+
+**Step-by-step:**
+1. Open a terminal on your local machine (Mac/Linux) or use PuTTY on Windows
+2. Run the SSH tunnel command with your server credentials:
+   ```bash
+   ssh -L 3000:localhost:3000 user@202.61.233.123
+   ```
+3. Enter your password when prompted
+4. Keep this terminal window open
+5. Open your browser and go to `http://localhost:3000/admin/vps-setup`
+6. You're now accessing the admin panel through the SSH tunnel, bypassing Cloudflare
+7. When done, close the terminal to close the tunnel
+
+**For Windows users:**
+- Use PuTTY or Windows Terminal with SSH
+- In PuTTY: Connection → SSH → Tunnels → Add new forwarded port: Source port: 3000, Destination: localhost:3000
+
+#### Solution 2: Configure App to Listen on All Interfaces (NOT RECOMMENDED)
+
+**⚠️ WARNING: This solution is NOT RECOMMENDED for production environments.**
+
+If you have shell access to modify the application and understand the security implications:
+
+```javascript
+// In app.js, change:
+app.listen(PORT, () => {
+  console.log(`Admin GUI listening on port ${PORT}`);
+});
+
+// To:
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Admin GUI listening on 0.0.0.0:${PORT}`);
+});
+```
+
+Then restart the Node.js application in Plesk.
+
+**🔴 SECURITY RISKS:**
+- This exposes your admin panel to the ENTIRE INTERNET on port 3000
+- Anyone who can reach your server can access the admin interface
+- Even with authentication, this increases attack surface significantly
+- Automated bots will find and attack this exposed port
+
+**If you must use this approach, you MUST:**
+1. Configure strict firewall rules (see Solution 3 below)
+2. Ensure strong authentication is enabled (ADMIN_PASSWORD)
+3. Regularly monitor access logs for suspicious activity
+4. Consider using a VPN or IP whitelist
+5. Use HTTPS with valid certificates (not HTTP)
+
+**Better Alternative:** Use Solution 1 (SSH Tunnel) instead - it's more secure and requires no configuration changes.
+
+#### Solution 3: Configure Plesk Firewall
+
+If you want to access via raw IP:port and Solution 2 is implemented:
+
+1. Log into Plesk
+2. Go to Tools & Settings → Firewall
+3. Add a custom rule:
+   - Name: "Node.js Admin Panel"
+   - Action: Allow
+   - Direction: Incoming
+   - Port: 3000
+   - Sources: Your IP address (recommended) or "Any" (less secure)
+4. Apply the rule
+5. Try accessing `http://202.61.233.123:3000` again
+
+#### Solution 4: Use Plesk's Proxy (If Configured)
+
+Some Plesk setups allow subdomain configuration:
+
+1. Create a subdomain in Plesk (e.g., `direct.defecttracker.uk`)
+2. Point it to your server IP with **DNS only** (gray cloud in Cloudflare)
+3. Configure Plesk to proxy this subdomain to your Node.js app
+4. Access via `http://direct.defecttracker.uk/admin/vps-setup`
+
+This avoids port numbers and works with Plesk's architecture.
+
+#### Solution 5: Optimize Deployment to Complete Under 100 Seconds
+
+Instead of bypassing Cloudflare, make the deployment fast enough to complete within Cloudflare's timeout:
+
+```bash
+# SSH into your VPS and pre-install dependencies:
+ssh user@185.170.113.230
+
+# Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Install Chrome/Chromium (largest dependency)
+sudo apt-get update
+sudo apt-get install -y chromium-browser
+
+# Exit VPS
+exit
+```
+
+Now when you deploy from the admin panel, it will complete much faster since the large dependencies are already installed.
+
+### Testing Which Solution Works for You
+
+**Test 1: Check if app is listening and on which interface**
+```bash
+# SSH into your server
+ssh user@202.61.233.123
+
+# Check what the app is listening on
+sudo netstat -tlnp | grep :3000
+
+# Look for output like:
+# tcp        0      0 127.0.0.1:3000          0.0.0.0:*               LISTEN      12345/node
+#                    ^^^^^^^^^ (localhost only - need SSH tunnel)
+# 
+# OR:
+# tcp        0      0 0.0.0.0:3000            0.0.0.0:*               LISTEN      12345/node
+#                    ^^^^^^^ (all interfaces - need firewall rule)
+```
+
+**Test 2: Try SSH tunnel immediately**
+```bash
+# From your local machine
+ssh -L 3000:localhost:3000 user@202.61.233.123
+
+# Then browse to http://localhost:3000/admin/vps-setup
+```
+
+If Test 2 works, SSH tunnel is your best solution. It's secure, requires no configuration changes, and always works.
 
 ## Troubleshooting NON-Cloudflare deployment errors
 
