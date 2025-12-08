@@ -103,9 +103,11 @@ install_chrome() {
         # Ubuntu 24.04+ uses time64 packages with t64 suffix
         # Detect if we're on Ubuntu 24.04 or newer
         UBUNTU_24_04_OR_NEWER=false
-        if [ "$DISTRO" = "ubuntu" ] && [ -n "$VERSION" ]; then
+        if [ "$DISTRO" = "ubuntu" ] && [ -n "$VERSION" ] && [ "$VERSION" != "unknown" ]; then
             # Extract major version number (e.g., "24.04" -> "24")
             VERSION_NUM=$(echo "$VERSION" | cut -d'.' -f1)
+            # Check if version is numeric and >= 24
+            # 2>/dev/null suppresses errors if VERSION_NUM is not a number
             if [ -n "$VERSION_NUM" ] && [ "$VERSION_NUM" -ge 24 ] 2>/dev/null; then
                 UBUNTU_24_04_OR_NEWER=true
             fi
