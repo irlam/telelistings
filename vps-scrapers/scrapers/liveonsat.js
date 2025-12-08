@@ -261,39 +261,77 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
             const away = lineWithoutTime.substring(vsIndex + vsSeparator.length).trim();
             
             // Now we need to split beforeVs into competition and home team
-            // Strategy: Competition usually contains certain keywords or patterns
+            // Strategy: Look for known competition names/patterns first
             // Common patterns: "- Week N", "- Round N", "- Matchday N", etc.
-            // If we find such patterns, everything up to and including them is the competition
-            // Otherwise, we look for the last 1-3 words as the team name
+            // Known competitions: "Premier League", "Championship", "FA Cup", etc.
             
             let competition = '';
             let home = '';
             
-            // Check for round/week/matchday patterns
+            // Check for round/week/matchday patterns (most specific)
             const roundMatch = beforeVs.match(/^(.+?[-–])\s*(?:Week|Round|Matchday|Match Day|MD|GW)\s+\d+\s+(.+)$/i);
             if (roundMatch) {
               competition = roundMatch[1].trim();
               home = roundMatch[2].trim();
             } else {
-              // No round pattern found, try to split based on word count
-              // Assume team names are typically 1-4 words, competition names can be longer
-              // Look for the last 1-4 words as the team name
-              const words = beforeVs.split(/\s+/);
+              // Try to identify known competition patterns
+              // These are common UK competition names that might appear
+              const knownCompetitions = [
+                'Premier League',
+                'English Premier League',
+                'EPL',
+                'Championship',
+                'English Championship',
+                'League One',
+                'English League One',
+                'League Two',
+                'English League Two',
+                'FA Cup',
+                'EFL Cup',
+                'Carabao Cup',
+                'League Cup',
+                'Scottish Premiership',
+                'Scottish Championship',
+                'Scottish League One',
+                'Scottish League Two',
+                'Scottish Cup',
+                'Welsh Premier',
+                'National League'
+              ];
               
-              // Try different splits (last 1, 2, 3, or 4 words as team name)
-              // Prefer 2-word team names as they're most common (e.g., "Hull City")
-              if (words.length >= 3) {
-                // Try 2-word team name first (most common)
-                competition = words.slice(0, -2).join(' ');
-                home = words.slice(-2).join(' ');
-              } else if (words.length === 2) {
-                // If only 2 words total, first is competition, second is team
-                competition = words[0];
-                home = words[1];
-              } else {
-                // Only 1 word? Treat it as home team, no competition
-                competition = '';
-                home = beforeVs;
+              let foundComp = false;
+              for (const compName of knownCompetitions) {
+                const compRegex = new RegExp(`^(${compName})\\s+(.+)$`, 'i');
+                const match = beforeVs.match(compRegex);
+                if (match) {
+                  competition = match[1].trim();
+                  home = match[2].trim();
+                  foundComp = true;
+                  break;
+                }
+              }
+              
+              if (!foundComp) {
+                // Fallback: assume last 2-3 words are team name
+                const words = beforeVs.split(/\s+/);
+                
+                if (words.length >= 4) {
+                  // 3-word team name (e.g., "Manchester United FC")
+                  competition = words.slice(0, -3).join(' ');
+                  home = words.slice(-3).join(' ');
+                } else if (words.length === 3) {
+                  // 2-word team name (e.g., "Hull City")
+                  competition = words[0];
+                  home = words.slice(-2).join(' ');
+                } else if (words.length === 2) {
+                  // 1-word team name
+                  competition = words[0];
+                  home = words[1];
+                } else {
+                  // Only 1 word total
+                  competition = '';
+                  home = beforeVs;
+                }
               }
             }
             
