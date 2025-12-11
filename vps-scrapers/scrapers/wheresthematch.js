@@ -1,38 +1,20 @@
 // scrapers/wheresthematch.js
 // Where's The Match (UK) scraper with Puppeteer support for VPS.
-// This version uses Puppeteer for reliable scraping of JavaScript-rendered content.
-/**
- * VPS Where's The Match Scraper
- *
- * Uses Puppeteer for browser automation to handle JavaScript-rendered content.
- * Can be run as a standalone service or integrated into the main VPS server.
- *
- * Exports fetchWheresTheMatchFixtures({ date }) which:
- * - Uses Puppeteer to load Where's The Match pages
- * - Handles JavaScript-rendered content
- * - Parses fixture list with TV channels
- *
- * Returns:
- * {
- *   fixtures: Array<{
- *     home: string,
- *     away: string,
- *     kickoffUtc: string | null,
- *     competition: string | null,
- *     channels: string[]
- *   }>
- * }
- */
+//
+// Uses Puppeteer to handle the JS-rendered table on
+// https://www.wheresthematch.com/live-football-on-tv/
+//
+// Exports:
+//   - fetchWheresTheMatchFixtures()
+//   - scrape({ date })  // date is ignored; we scrape all fixtures on the page
 
 const puppeteer = require('puppeteer');
-
-// ---------- Configuration ----------
 
 const BASE_URL = 'https://www.wheresthematch.com';
 const FIXTURES_URL = `${BASE_URL}/live-football-on-tv/`;
 const DEFAULT_TIMEOUT = 30000;
 
-// Known UK TV channels for football
+// Known UK TV channels for football (used to sanity-check free-text)
 const UK_CHANNELS = [
   'Sky Sports Main Event',
   'Sky Sports Premier League',
@@ -48,6 +30,7 @@ const UK_CHANNELS = [
   'TNT Sports 3',
   'TNT Sports 4',
   'TNT Sports Ultimate',
+  'TNT Sports Extra',
   'TNT Sports',
   'BBC One',
   'BBC Two',
@@ -67,25 +50,23 @@ const UK_CHANNELS = [
   'LaLigaTV',
   'FreeSports',
   'discovery+',
+  'Discovery+',
   'DAZN'
 ];
 
-// Shared browser instance
 let browser = null;
 
 // ---------- Logging ----------
 
 function log(msg) {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [WTM-VPS] ${msg}`);
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] [WTM-VPS] ${msg}`);
 }
 
-// ---------- Browser Management ----------
+// ---------- Browser management ----------
 
 async function getBrowser() {
-  if (browser && browser.isConnected()) {
-    return browser;
-  }
+  if (browser && browser.isConnected()) return browser;
   browser = await puppeteer.launch({
     headless: 'new',
     args: [
@@ -110,234 +91,230 @@ function normalizeTeamName(name) {
 
 function normalizeChannelName(name) {
   return (name || '')
-    .trim()
+    .replace(/logo/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function extractChannels(text) {
+function extractChannelsFromText(text) {
   if (!text) return [];
-  
-  const channels = [];
-  const textLower = text.toLowerCase();
-  
-  for (const channel of UK_CHANNELS) {
-    if (textLower.includes(channel.toLowerCase())) {
-      channels.push(channel);
+  const lower = text.toLowerCase();
+  const found = [];
+  for (const ch of UK_CHANNELS) {
+    if (lower.includes(ch.toLowerCase())) {
+      found.push(ch);
     }
   }
-  
-  return [...new Set(channels)];
+  return [...new Set(found)];
 }
 
-// ---------- Main Function ----------
+// ---------- Core scraper ----------
 
-async function fetchWheresTheMatchFixtures({ date } = {}) {
-  const emptyResult = { fixtures: [] };
-  
-  log(`Fetching fixtures${date ? ` for ${date}` : ' for today'}`);
-  
+/**
+ * Fetch fixtures from Where's The Match.
+ *
+ * NOTE: we *do not* filter by date here. The page is "this week on TV" and
+ * date-window filtering is done at the Telelistings aggregator layer.
+ */
+async function fetchWheresTheMatchFixtures() {
+  const empty = { fixtures: [] };
+
+  log("Fetching fixtures from Where's The Match (no date filter, women's fixtures excluded)");
+
   let page = null;
   try {
     const browserInstance = await getBrowser();
     page = await browserInstance.newPage();
-    
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
+
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
     await page.goto(FIXTURES_URL, {
       waitUntil: 'networkidle2',
       timeout: DEFAULT_TIMEOUT
     });
-    
-    // Wait for content to load
+
     await page.waitForSelector('body', { timeout: 10000 });
-    
-    // Extract fixtures using page.evaluate
+
     const fixtures = await page.evaluate((UK_CHANNELS) => {
       const results = [];
-      
-      // Try multiple selectors for fixtures on Where's The Match
-      const fixtureSelectors = [
-        '.fixture',
-        '.match',
-        '.fixture-row',
-        '.match-row',
-        '[class*="fixture"]',
-        '[class*="match"]',
-        'table tbody tr',
-        '.event',
-        '.listing'
-      ];
-      
-      for (const selector of fixtureSelectors) {
-        const elements = document.querySelectorAll(selector);
-        
-        elements.forEach(el => {
-          try {
-            const text = el.innerText || el.textContent || '';
-            
-            // Skip elements that are clearly ads or prompts
-            if (text.toLowerCase().includes('subscribe') ||
-                text.toLowerCase().includes('advertisement') ||
-                text.toLowerCase().includes('sign up')) {
-              return;
-            }
-            
-            // Extract teams
-            let homeTeam = '';
-            let awayTeam = '';
-            
-            // Try specific selectors
-            const homeEl = el.querySelector('.home-team, .home, [class*="home"]');
-            const awayEl = el.querySelector('.away-team, .away, [class*="away"]');
-            
-            if (homeEl) homeTeam = homeEl.innerText.trim();
-            if (awayEl) awayTeam = awayEl.innerText.trim();
-            
-            // Fallback: parse from text for "vs" or "v" patterns
-            if (!homeTeam || !awayTeam) {
-              const vsMatch = text.match(/([A-Za-z\s\-'\.0-9]+)\s+(?:v|vs|versus|–|-)\s+([A-Za-z\s\-'\.0-9]+)/i);
-              if (vsMatch) {
-                homeTeam = vsMatch[1].trim();
-                awayTeam = vsMatch[2].trim();
-              }
-            }
-            
-            // Clean up team names
-            homeTeam = homeTeam
-              .replace(/\b(fc|afc|cf|sc|ac)\b/gi, '')
-              .replace(/\s+/g, ' ')
-              .trim();
-            awayTeam = awayTeam
-              .replace(/\b(fc|afc|cf|sc|ac)\b/gi, '')
-              .replace(/\s+/g, ' ')
-              .trim();
-            
-            if (!homeTeam || !awayTeam) return;
-            
-            // Extract kickoff time
-            let kickoffUtc = null;
-            const timeEl = el.querySelector('time, [datetime], .time, .kickoff, .ko-time');
-            if (timeEl) {
-              kickoffUtc = timeEl.getAttribute('datetime') || timeEl.innerText.trim() || null;
-            }
-            
-            // Try to find time pattern in text
-            if (!kickoffUtc) {
-              const timeMatch = text.match(/(\d{1,2}[:\.]?\d{2}\s*(am|pm)?)/i);
-              if (timeMatch) {
-                kickoffUtc = timeMatch[1];
-              }
-            }
-            
-            // Extract competition
-            let competition = null;
-            const compEl = el.querySelector('.competition, .league, [class*="competition"], [class*="league"], [class*="tournament"]');
-            if (compEl) {
-              competition = compEl.innerText.trim();
-            }
-            
-            // Extract TV channels
-            const channels = [];
-            const textLower = text.toLowerCase();
-            for (const channel of UK_CHANNELS) {
-              if (textLower.includes(channel.toLowerCase())) {
-                channels.push(channel);
-              }
-            }
-            
-            // Also look for channel-specific elements
-            const channelEls = el.querySelectorAll('.channel, .broadcaster, .tv, [class*="channel"], [class*="broadcaster"]');
-            channelEls.forEach(chEl => {
-              const chText = chEl.innerText.trim();
-              if (chText && !channels.includes(chText)) {
-                channels.push(chText);
-              }
-            });
-            
-            results.push({
-              home: homeTeam,
-              away: awayTeam,
-              kickoffUtc,
-              competition,
-              channels: [...new Set(channels)]
-            });
-          } catch (e) {
-            // Skip malformed fixtures
+
+      const rows = Array.from(
+        document.querySelectorAll('tr[itemscope][itemtype*="BroadcastEvent"]')
+      );
+
+      rows.forEach(row => {
+        try {
+          const rowText = row.innerText || row.textContent || '';
+          const rowLower = rowText.toLowerCase();
+
+          // Skip women's / ladies fixtures
+          if (
+            rowLower.includes("women's") ||
+            rowLower.includes('womens') ||
+            rowLower.includes('women ') ||
+            rowLower.includes('ladies')
+          ) {
+            return;
           }
-        });
-        
-        if (results.length > 0) break;
-      }
-      
+
+          const fixtureCell = row.querySelector('td.fixture-details');
+          const startCell = row.querySelector('td.start-details');
+          const compCell = row.querySelector('td.competition-name');
+          const chanCell = row.querySelector('td.channel-details');
+
+          if (!fixtureCell || !startCell) return;
+
+          const fixtureText = (fixtureCell.innerText || fixtureCell.textContent || '').trim();
+          if (!fixtureText) return;
+
+          // Prefer using the <a title="Team"> elements for team names
+          const teamLinks = Array.from(
+            fixtureCell.querySelectorAll('span.fixture a[title]')
+          );
+          let homeTeam = '';
+          let awayTeam = '';
+
+          if (teamLinks.length >= 2) {
+            homeTeam = teamLinks[0].getAttribute('title') || teamLinks[0].innerText;
+            awayTeam = teamLinks[teamLinks.length - 1].getAttribute('title') ||
+                       teamLinks[teamLinks.length - 1].innerText;
+          } else {
+            // Fallback: parse "Team A v Team B"
+            const vsMatch = fixtureText.match(
+              /([A-Za-z\s\-'\.0-9]+)\s+(?:v|vs|versus|–|-)\s+([A-Za-z\s\-'\.0-9]+)/i
+            );
+            if (vsMatch) {
+              homeTeam = vsMatch[1];
+              awayTeam = vsMatch[2];
+            }
+          }
+
+          homeTeam = normalizeTeamName(homeTeam);
+          awayTeam = normalizeTeamName(awayTeam);
+          if (!homeTeam || !awayTeam) return;
+
+          // Kickoff – take the ISO datetime from the start-details cell if present
+          let kickoffUtc = startCell.getAttribute('content') || null;
+          if (!kickoffUtc) {
+            const meta = row.querySelector('meta[itemprop="startDate"]');
+            if (meta && meta.getAttribute('content')) {
+              kickoffUtc = meta.getAttribute('content');
+            }
+          }
+          if (!kickoffUtc) {
+            const timeEl = startCell.querySelector('.time em');
+            if (timeEl && timeEl.textContent.trim()) {
+              kickoffUtc = timeEl.textContent.trim(); // fallback: local time string
+            }
+          }
+
+          // Competition name
+          let competition = null;
+          if (compCell) {
+            const span = compCell.querySelector('span');
+            competition = (span ? span.innerText : compCell.innerText || '').trim() || null;
+          }
+
+          // Channels from logos + any text
+          const channels = [];
+          if (chanCell) {
+            const text = (chanCell.innerText || chanCell.textContent || '').trim();
+            channels.push(...extractChannelsFromText(text));
+
+            const logos = Array.from(chanCell.querySelectorAll('img'));
+            logos.forEach(img => {
+              const title = img.getAttribute('title') || '';
+              const alt = img.getAttribute('alt') || '';
+              let name = title || alt;
+              if (!name) return;
+
+              // alt strings like "Discovery+ logo" → "Discovery+"
+              name = name.replace(/logo/i, '').trim();
+              channels.push(name);
+            });
+          }
+
+          const normalizedChannels = Array.from(
+            new Set(
+              channels
+                .map(ch => normalizeChannelName(ch))
+                .filter(Boolean)
+            )
+          );
+
+          results.push({
+            home: homeTeam,
+            away: awayTeam,
+            kickoffUtc,
+            competition,
+            channels: normalizedChannels
+          });
+        } catch (e) {
+          // skip bad row
+        }
+      });
+
       return results;
     }, UK_CHANNELS);
-    
+
     await page.close();
     page = null;
-    
+
     log(`Found ${fixtures.length} fixtures`);
     return { fixtures };
-    
   } catch (err) {
     log(`Error fetching fixtures: ${err.message}`);
     if (page) {
-      try { await page.close(); } catch (e) { /* ignore */ }
+      try { await page.close(); } catch (_) {}
     }
-    return emptyResult;
+    return empty;
   }
 }
 
+// ---------- Health check ----------
+
 async function healthCheck() {
-  const startTime = Date.now();
+  const start = Date.now();
   let page = null;
-  
+
   try {
     const browserInstance = await getBrowser();
     page = await browserInstance.newPage();
-    
+
     await page.goto(FIXTURES_URL, {
       waitUntil: 'domcontentloaded',
       timeout: DEFAULT_TIMEOUT
     });
-    
+
     const title = await page.title();
-    
-    // Check for expected content
-    const hasExpectedContent = await page.evaluate(() => {
-      const text = document.body.innerText.toLowerCase();
-      return text.includes('live football') || text.includes('tv') || text.includes('match');
+    const ok = await page.evaluate(() => {
+      const t = document.body.innerText.toLowerCase();
+      return t.includes('live football') || t.includes('channels');
     });
-    
+
     await page.close();
     page = null;
-    
-    const latencyMs = Date.now() - startTime;
-    log(`[health] ${hasExpectedContent ? 'OK' : 'WARN'} in ${latencyMs}ms`);
-    return { ok: hasExpectedContent, latencyMs, title };
-    
+
+    const latencyMs = Date.now() - start;
+    log(`[health] ${ok ? 'OK' : 'WARN'} in ${latencyMs}ms`);
+    return { ok, latencyMs, title };
   } catch (err) {
     if (page) {
-      try { await page.close(); } catch (e) { /* ignore */ }
+      try { await page.close(); } catch (_) {}
     }
-    const latencyMs = Date.now() - startTime;
+    const latencyMs = Date.now() - start;
     log(`[health] FAIL in ${latencyMs}ms: ${err.message}`);
     return { ok: false, latencyMs, error: err.message };
   }
 }
 
-// ---------- Unified Scrape Function ----------
+// ---------- Unified scrape() wrapper ----------
 
-/**
- * Unified scrape function with consistent signature.
- * @param {Object} params - Parameters
- * @param {string} [params.date] - Date to scrape fixtures for
- * @returns {Promise<{fixtures: Array, source: string}>}
- */
 async function scrape(params = {}) {
   const result = await fetchWheresTheMatchFixtures(params);
-  
-  // Normalize to consistent format
+
   const fixtures = (result.fixtures || []).map(f => ({
     homeTeam: f.home || null,
     awayTeam: f.away || null,
@@ -347,14 +324,12 @@ async function scrape(params = {}) {
     url: null,
     channels: f.channels || []
   }));
-  
+
   return {
     fixtures,
     source: 'wheresthematch'
   };
 }
-
-// ---------- Module Exports ----------
 
 module.exports = {
   scrape,
@@ -362,24 +337,24 @@ module.exports = {
   healthCheck,
   normalizeTeamName,
   normalizeChannelName,
-  extractChannels,
+  extractChannelsFromText,
   UK_CHANNELS,
   BASE_URL
 };
 
-// Allow running as standalone
+// Allow manual CLI run
 if (require.main === module) {
   (async () => {
-    console.log('Running Where\'s The Match VPS Scraper health check...');
-    const result = await healthCheck();
-    console.log('Result:', result);
-    
-    if (result.ok) {
-      console.log('\nFetching fixtures...');
-      const fixtures = await fetchWheresTheMatchFixtures();
-      console.log('Fixtures:', JSON.stringify(fixtures, null, 2));
+    console.log("Running Where's The Match VPS Scraper health check…");
+    const health = await healthCheck();
+    console.log('Health:', health);
+
+    if (health.ok) {
+      console.log('\nFetching fixtures…');
+      const res = await fetchWheresTheMatchFixtures();
+      console.log('Fixtures:', JSON.stringify(res.fixtures, null, 2));
     }
-    
-    process.exit(result.ok ? 0 : 1);
+
+    process.exit(health.ok ? 0 : 1);
   })();
 }
