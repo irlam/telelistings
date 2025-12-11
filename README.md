@@ -191,6 +191,25 @@ The telelistings app uses a **remote scraper service architecture** for data col
 | `scrapers/footballdata.js` | FootballData.org API | Direct API |
 | `scrapers/fixtures_scraper.js` | **Unified fixture scraper** (web scrapers instead of ICS) | Aggregator |
 
+### VPS Scraper Service
+
+The VPS scraper service (`vps-scrapers/`) provides Puppeteer-based scrapers for multiple sources:
+
+- **BBC Sport** (`/scrape/bbc`) - Fixtures and TV listings
+- **LiveFootballOnTV** (`/scrape/livefootballontv`) - UK TV listings
+- **LiveOnSat** (`/scrape/liveonsat`) - UK daily fixtures
+- **LiveSoccerTV** (`/scrape/lstv`) - Global TV channels
+- **OddAlerts** (`/scrape/oddalerts`) - TV Guide
+- **ProSoccer.TV** (`/scrape/prosoccertv`) - International TV listings
+- **Sky Sports** (`/scrape/skysports`) - Sky Sports fixtures
+- **SofaScore** (`/scrape/sofascore`) - Fixtures + TV channels (API-based)
+- **SportEventz** (`/scrape/sporteventz`) - Sport events
+- **TNT Sports** (`/scrape/tnt`) - TNT Sports fixtures
+- **Where's The Match** (`/scrape/wheresthematch`) - UK match finder
+- **World Soccer Talk** (`/scrape/worldsoccertalk`) - Global TV listings
+
+All VPS scrapers can be called remotely via HTTP using the `lstv.js` client module (e.g., `fetchBBCRemote()`, `fetchSofaScoreRemote()`).
+
 ### Unified Fixtures Scraper (Web Scrapers Alternative to ICS)
 
 The `scrapers/fixtures_scraper.js` module provides an alternative to ICS-based fixture discovery, using web scrapers instead:

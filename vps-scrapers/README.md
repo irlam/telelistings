@@ -58,7 +58,8 @@ The default installation path on your VPS is: `/opt/vps-scrapers/`
     ├── oddalerts.js             # OddAlerts TV Guide scraper
     ├── prosoccertv.js           # ProSoccer.TV scraper
     ├── worldsoccertalk.js       # World Soccer Talk scraper
-    └── sporteventz.js           # SportEventz scraper
+    ├── sporteventz.js           # SportEventz scraper
+    └── sofascore.js             # SofaScore football fixtures + TV scraper
 ```
 
 ## 🚀 Quick Start
@@ -340,7 +341,7 @@ Main health check - checks if service is running and browser works.
   "ok": true,
   "latencyMs": 1234,
   "title": "Live Soccer TV - TV Guide for Soccer & Football",
-  "sources": ["bbc", "livefootballontv", "liveonsat", "lstv", "oddalerts", "prosoccertv", "skysports", "sporteventz", "tnt", "wheresthematch", "worldsoccertalk"]
+  "sources": ["bbc", "livefootballontv", "liveonsat", "lstv", "oddalerts", "prosoccertv", "skysports", "sofascore", "sporteventz", "tnt", "wheresthematch", "worldsoccertalk"]
 }
 ```
 
@@ -358,6 +359,7 @@ Returns list of all supported scraper sources with their paths.
     { "name": "oddalerts", "path": "/scrape/oddalerts", "description": "OddAlerts TV Guide" },
     { "name": "prosoccertv", "path": "/scrape/prosoccertv", "description": "ProSoccer.TV" },
     { "name": "skysports", "path": "/scrape/skysports", "description": "Sky Sports fixtures" },
+    { "name": "sofascore", "path": "/scrape/sofascore", "description": "SofaScore football fixtures + TV" },
     { "name": "sporteventz", "path": "/scrape/sporteventz", "description": "SportEventz" },
     { "name": "tnt", "path": "/scrape/tnt", "description": "TNT Sports fixtures" },
     { "name": "wheresthematch", "path": "/scrape/wheresthematch", "description": "Where's The Match UK" },
@@ -506,6 +508,18 @@ Scrape SportEventz.
 }
 ```
 
+#### POST /scrape/sofascore
+Scrape SofaScore for football fixtures and TV channels.
+
+**Request:**
+```json
+{
+  "date": "2024-12-02",
+  "teamName": "Arsenal",
+  "maxEvents": 40
+}
+```
+
 ### Individual Health Checks
 
 Each scraper has its own health check endpoint:
@@ -517,6 +531,7 @@ Each scraper has its own health check endpoint:
 - `GET /health/oddalerts`
 - `GET /health/prosoccertv`
 - `GET /health/skysports`
+- `GET /health/sofascore`
 - `GET /health/sporteventz`
 - `GET /health/tnt`
 - `GET /health/wheresthematch`
