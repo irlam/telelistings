@@ -540,12 +540,14 @@ async function getTvDataForFixture(baseFixture, options = {}) {
     enableRemoteProSoccerTV = false,
     enableRemoteSportEventz = false,
     enableRemoteWheresTheMatch = false,
-    enableRemoteWorldSoccerTalk = false
+    enableRemoteWorldSoccerTalk = false,
+    enableRemoteSofaScore = false
   } = options;
   
   if (useRemoteScrapers || enableRemoteBBC || enableRemoteSkySports || enableRemoteTNT ||
       enableRemoteLiveFootballOnTV || enableRemoteOddAlerts || enableRemoteProSoccerTV ||
-      enableRemoteSportEventz || enableRemoteWheresTheMatch || enableRemoteWorldSoccerTalk) {
+      enableRemoteSportEventz || enableRemoteWheresTheMatch || enableRemoteWorldSoccerTalk ||
+      enableRemoteSofaScore) {
     
     const remotePromises = [];
     const remoteSourceNames = [];
@@ -586,6 +588,13 @@ async function getTvDataForFixture(baseFixture, options = {}) {
     if (useRemoteScrapers || enableRemoteWorldSoccerTalk) {
       remotePromises.push(lstv.fetchWorldSoccerTalkRemote({}));
       remoteSourceNames.push('remoteWST');
+    }
+    if (useRemoteScrapers || enableRemoteSofaScore) {
+      remotePromises.push(lstv.fetchSofaScoreRemote({ 
+        date: dateUtc?.toISOString().slice(0, 10),
+        teamName: homeTeam || awayTeam
+      }));
+      remoteSourceNames.push('remoteSofaScore');
     }
     
     if (remotePromises.length > 0) {

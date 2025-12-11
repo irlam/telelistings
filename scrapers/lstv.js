@@ -423,6 +423,15 @@ async function fetchWorldSoccerTalkRemote(params = {}) {
   return callRemoteScraper({ source: 'worldsoccertalk', path: '/scrape/worldsoccertalk', payload: params });
 }
 
+/**
+ * Fetch SofaScore fixtures from remote scraper.
+ * @param {Object} params - Parameters (date, teamName, maxEvents)
+ * @returns {Promise<{fixtures: Array, source: string}>}
+ */
+async function fetchSofaScoreRemote(params = {}) {
+  return callRemoteScraper({ source: 'sofascore', path: '/scrape/sofascore', payload: params });
+}
+
 // ---------- Main Remote Scraper Function ----------
 
 /**
@@ -693,6 +702,7 @@ module.exports = {
   fetchSportEventzRemote,
   fetchWheresTheMatchRemote,
   fetchWorldSoccerTalkRemote,
+  fetchSofaScoreRemote,
   
   // Export helpers for testing (backwards compatibility)
   normalizeTeamName,
