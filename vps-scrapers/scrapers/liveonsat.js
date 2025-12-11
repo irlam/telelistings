@@ -1,28 +1,8 @@
-// scrapers/liveonsat.js
-// LiveOnSat UK/England football TV listings scraper using Puppeteer.
-
 /**
- * VPS LiveOnSat Scraper
- *
- * Target: https://liveonsat.com/uk-england-all-football.php
- *
- * Returns:
- * {
- *   fixtures: Array<{
- *     home: string,
- *     away: string,
- *     kickoffUtc: string | null,
- *     competition: string | null,
- *     channels: string[]
- *   }>
- * }
- *
- * Notes:
- * - Parses from page text, so it's fairly resilient to minor markup changes.
- * - Uses a regex for lines like:
- *   "English Championship - Week 19 Hull City v Middlesbrough ST: 15:00"
- * - Follows with channel lines (Sky Sports, ITV, TNT etc) until the next
- *   fixture or date header.
+ * File: scrapers/liveonsat.js
+ * Description: LiveOnSat UK/England football TV listings scraper for VPS.
+ * Notes: Scrapes desktop then mobile layouts, parses fixtures, normalises channels,
+ *        filters non-UK and women’s games, and returns UK-formatted kick-off times.
  */
 
 const puppeteer = require('puppeteer');
@@ -31,12 +11,11 @@ const puppeteer = require('puppeteer');
 
 const BASE_URL = 'https://liveonsat.com';
 const PAGE_URL = `${BASE_URL}/uk-england-all-football.php`;
+const MOBILE_URL = `${BASE_URL}/m/uk-england-all-football`;
 const DEFAULT_TIMEOUT = 45000;
-
-// Minimum length for valid text values (team names, channels, etc.)
 const MIN_TEXT_LENGTH = 3;
 
-// Women's football filter terms
+// Women’s football filter terms
 const WOMENS_TERMS = ['women', 'ladies', 'wsl', 'womens'];
 
 // International/European competitions to exclude (not UK domestic)
@@ -55,7 +34,7 @@ const EXCLUDE_COMPETITIONS = [
   'eredivisie'
 ];
 
-// Known UK competition names for parsing (module-level constant)
+// Known UK competition names
 const KNOWN_COMPETITIONS = [
   'Premier League',
   'English Premier League',
@@ -79,7 +58,6 @@ const KNOWN_COMPETITIONS = [
   'National League'
 ];
 
-// Pre-compile regex patterns for known competitions (for performance)
 const KNOWN_COMPETITION_REGEXES = KNOWN_COMPETITIONS.map(name => ({
   name,
   regex: new RegExp(`^(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(.+)$`, 'i')
@@ -98,9 +76,8 @@ function log(msg) {
 // ---------- Browser Management ----------
 
 async function getBrowser() {
-  if (browser && browser.isConnected()) {
-    return browser;
-  }
+  if (browser && browser.isConnected()) return browser;
+
   browser = await puppeteer.launch({
     headless: 'new',
     args: [
@@ -110,6 +87,7 @@ async function getBrowser() {
       '--disable-gpu'
     ]
   });
+
   return browser;
 }
 
@@ -127,85 +105,275 @@ function normalizeTeamName(name) {
 
 function normalizeChannelName(name) {
   return (name || '')
-    .trim()
+    .replace(/📺/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+function formatUkLocal(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  // Remove the comma produced by en-GB default format
+  return formatter.format(date).replace(',', '');
+}
+
 /**
- * Parse kickoff time to UTC ISO string.
- * Input: dateLabel like "Friday, 5th December"
- * timeString: "15:00" (local UK time - GMT or BST)
- *
- * We assume current season/year and convert to ISO UTC string.
- * Accounts for British Summer Time (BST) which runs from last Sunday
- * in March to last Sunday in October.
- * If parsing fails, returns null.
+ * Parse kickoff time to UTC ISO string and UK-formatted local string.
+ * @param {string} dateLabel e.g. "Friday, 5th December"
+ * @param {string} timeString e.g. "15:00" (UK local time)
+ * @returns {{ kickoffUtc: string|null, kickoffLocal: string|null }}
  */
-function parseKickoffUtc(dateLabel, timeString) {
-  if (!dateLabel || !timeString) return null;
+function parseKickoff(dateLabel, timeString) {
+  if (!dateLabel || !timeString) return { kickoffUtc: null, kickoffLocal: null };
 
-  try {
-    const currentYear = new Date().getFullYear();
+  const currentYear = resolveSeasonYear(dateLabel);
 
-    // Remove ordinal suffixes (1st/2nd/3rd/4th etc.)
-    const cleanedDate = dateLabel.replace(
-      /(\d+)(st|nd|rd|th)/i,
-      '$1'
-    );
+  // Remove ordinal suffixes
+  const cleanedDate = dateLabel.replace(/(\d+)(st|nd|rd|th)/i, '$1');
 
-    // Parse as GMT first, then adjust for BST if applicable
-    // Format: "Friday, 5 December 2025 15:00 GMT"
-    const dateString = `${cleanedDate} ${currentYear} ${timeString} GMT`;
+  // Parse as GMT then adjust for BST manually
+  const dateString = `${cleanedDate} ${currentYear} ${timeString} GMT`;
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return { kickoffUtc: null, kickoffLocal: null };
 
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return null;
-
-    // Check if date is in BST period (last Sunday March to last Sunday October)
-    // If so, the time shown is BST, so we need to subtract 1 hour for UTC
-    if (isInBST(d)) {
-      d.setHours(d.getHours() - 1);
-    }
-
-    return d.toISOString();
-  } catch (e) {
-    return null;
+  // If local time was BST, subtract one hour to convert to UTC
+  if (isInBST(d)) {
+    d.setHours(d.getHours() - 1);
   }
+
+  const kickoffUtc = d.toISOString();
+  const kickoffLocal = formatUkLocal(new Date(kickoffUtc));
+  return { kickoffUtc, kickoffLocal };
+}
+
+/**
+ * Resolve season year: keep fixtures in the same season across year boundary.
+ */
+function resolveSeasonYear(dateLabel) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const monthMatch = dateLabel.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/i);
+  if (!monthMatch) return currentYear;
+
+  const monthIndex = [
+    'january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december'
+  ].indexOf(monthMatch[0].toLowerCase());
+
+  if (monthIndex >= 7 && now.getMonth() <= 5) return currentYear - 1; // Aug-Dec while now is Jan-Jun
+  if (monthIndex <= 5 && now.getMonth() >= 7) return currentYear + 1; // Jan-Jun while now is Aug-Dec
+  return currentYear;
 }
 
 /**
  * Check if a given date falls within British Summer Time (BST).
  * BST runs from 01:00 UTC on the last Sunday of March to
  * 01:00 UTC on the last Sunday of October.
- * @param {Date} date - Date to check
- * @returns {boolean} - True if date is in BST period
  */
 function isInBST(date) {
   const year = date.getFullYear();
-  
-  // Find last Sunday of March
-  const marchEnd = new Date(year, 2, 31); // March 31
+
+  const marchEnd = new Date(year, 2, 31);
   const lastSundayMarch = new Date(marchEnd);
   lastSundayMarch.setDate(31 - ((marchEnd.getDay() + 7) % 7));
-  lastSundayMarch.setHours(1, 0, 0, 0); // BST starts at 01:00 UTC
-  
-  // Find last Sunday of October
-  const octEnd = new Date(year, 9, 31); // October 31
+  lastSundayMarch.setHours(1, 0, 0, 0);
+
+  const octEnd = new Date(year, 9, 31);
   const lastSundayOct = new Date(octEnd);
   lastSundayOct.setDate(31 - ((octEnd.getDay() + 7) % 7));
-  lastSundayOct.setHours(1, 0, 0, 0); // BST ends at 01:00 UTC
-  
+  lastSundayOct.setHours(1, 0, 0, 0);
+
   return date >= lastSundayMarch && date < lastSundayOct;
+}
+
+// ---------- Page Parsing ----------
+
+/**
+ * Extract fixtures using desktop/mobile DOM and text fallback.
+ * Returns { fixtures, debug }
+ */
+async function extractFixtures(page) {
+  // DOM-first extraction (handles current table/div layouts)
+  const domResult = await page.evaluate(() => {
+    const fixtures = [];
+    const debug = [];
+
+    const dayHeaderRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
+    const timeLineRegex = /^ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
+    const vsSeparatorRegex = /\s+v(?:s)?\s+/i;
+
+    // Flatten leaf nodes for order-preserving scan
+    const blocks = [];
+    const allNodes = Array.from(document.querySelectorAll('body *')).filter(el => el.childElementCount === 0);
+    allNodes.forEach(node => {
+      const text = (node.innerText || '').trim();
+      if (!text) return;
+      blocks.push({ text, tag: node.tagName, className: node.className });
+    });
+
+    let currentDate = null;
+    for (let i = 0; i < blocks.length; i++) {
+      const line = blocks[i].text;
+
+      if (dayHeaderRegex.test(line)) {
+        currentDate = line;
+        debug.push(`DATE: ${line}`);
+        continue;
+      }
+
+      const timeMatch = line.match(timeLineRegex);
+      if (timeMatch) {
+        const timeString = timeMatch[1].trim();
+        if (i < 1) {
+          debug.push(`SKIP time idx ${i} no team line`);
+          continue;
+        }
+
+        const teamLine = blocks[i - 1].text;
+        const vsMatch = vsSeparatorRegex.exec(teamLine);
+        if (!vsMatch) {
+          debug.push(`SKIP team line "${teamLine}" lacks vs`);
+          continue;
+        }
+
+        const vsIndex = vsMatch.index;
+        const vsSeparator = vsMatch[0];
+        const home = teamLine.substring(0, vsIndex).trim();
+        const away = teamLine.substring(vsIndex + vsSeparator.length).trim();
+
+        // competition line if present 2 lines above
+        let competition = '';
+        if (i >= 2 && !dayHeaderRegex.test(blocks[i - 2].text)) {
+          competition = blocks[i - 2].text.trim();
+        }
+
+        // collect channels forward until next date/team/time
+        const channels = [];
+        for (let j = i + 1; j < blocks.length; j++) {
+          const next = blocks[j].text;
+
+          if (dayHeaderRegex.test(next)) break;
+          if (timeLineRegex.test(next)) break;
+          if (vsSeparatorRegex.test(next)) break;
+          if (/^Please Note:/i.test(next)) continue;
+          if (/^Members LOGIN/i.test(next) || /^Members LOGOUT/i.test(next)) continue;
+          if (/\s+-\s+(Week|Round|Matchday|Match Day|MD|GW|Proper)\s+/i.test(next)) continue;
+          if (/^(English|Scottish|Welsh|Irish|European|UEFA)\s+(Premier League|Championship|League|FA Cup|EFL|WSL)/i.test(next)) continue;
+
+          const cleaned = next.replace(/📺/g, '').trim();
+          if (cleaned.length) channels.push(cleaned);
+        }
+
+        fixtures.push({
+          dateLabel: currentDate,
+          competitionRaw: competition,
+          home,
+          away,
+          timeString,
+          channels
+        });
+      }
+    }
+
+    return { fixtures, debug };
+  });
+
+  if (domResult.fixtures.length > 0) return domResult;
+
+  // Fallback: plain text scan (legacy)
+  const textResult = await page.evaluate(() => {
+    const fixtures = [];
+    const debug = [];
+    const lines = document.body.innerText
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean);
+
+    const dayNameRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
+    const timeLineRegex = /^ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
+    const vsSeparatorRegex = /\s+v(?:s)?\s+/i;
+
+    let currentDateLabel = null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      if (dayNameRegex.test(line)) {
+        currentDateLabel = line;
+        debug.push(`DATE: ${line}`);
+        continue;
+      }
+
+      const timeMatch = line.match(timeLineRegex);
+      if (timeMatch) {
+        const timeString = timeMatch[1].trim();
+        if (i < 1) {
+          debug.push(`SKIP time idx ${i} no previous line`);
+          continue;
+        }
+
+        const teamLine = lines[i - 1];
+        const vsMatch = vsSeparatorRegex.exec(teamLine);
+        if (!vsMatch) {
+          debug.push(`SKIP: "${teamLine}" no vs`);
+          continue;
+        }
+
+        const vsIndex = vsMatch.index;
+        const vsSeparator = vsMatch[0];
+        const home = teamLine.substring(0, vsIndex).trim();
+        const away = teamLine.substring(vsIndex + vsSeparator.length).trim();
+
+        let competition = '';
+        if (i >= 2) {
+          const competitionLine = lines[i - 2];
+          if (!dayNameRegex.test(competitionLine)) competition = competitionLine;
+        }
+
+        const channels = [];
+        for (let j = i + 1; j < lines.length; j++) {
+          const next = lines[j];
+
+          if (dayNameRegex.test(next)) break;
+          if (timeLineRegex.test(next)) break;
+          if (vsSeparatorRegex.test(next)) break;
+          if (/^Please Note:/i.test(next)) continue;
+          if (/^Members LOGIN/i.test(next) || /^Members LOGOUT/i.test(next)) continue;
+          if (/\s+-\s+(Week|Round|Matchday|Match Day|MD|GW|Proper)\s+/i.test(next)) continue;
+          if (/^(English|Scottish|Welsh|Irish|European|UEFA)\s+(Premier League|Championship|League|FA Cup|EFL|WSL)/i.test(next)) continue;
+
+          const cleanedChan = next.replace(/📺/g, '').trim();
+          if (cleanedChan.length > 0) channels.push(cleanedChan);
+        }
+
+        fixtures.push({
+          dateLabel: currentDateLabel,
+          competitionRaw: competition,
+          home,
+          away,
+          timeString,
+          channels
+        });
+      } else if (line.includes(' v ') || line.includes(' vs ')) {
+        debug.push(`POTENTIAL TEAMS: ${line}`);
+      }
+    }
+
+    return { fixtures, debug };
+  });
+
+  return textResult;
 }
 
 // ---------- Main Scrape ----------
 
-/**
- * Scrape LiveOnSat UK/England all-football page.
- *
- * @param {Object} opts
- * @param {string} [opts.teamName] - Optional team filter.
- */
 async function fetchLiveOnSatFixtures({ teamName } = {}) {
   const emptyResult = { fixtures: [] };
   log(`Fetching LiveOnSat fixtures${teamName ? ` for ${teamName}` : ''}`);
@@ -217,242 +385,72 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
       'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-      'Chrome/120.0.0.0 Safari/537.36'
+      'Chrome/122.0.0.0 Safari/537.36'
     );
 
-    await page.goto(PAGE_URL, {
-      waitUntil: 'networkidle2',
-      timeout: DEFAULT_TIMEOUT
-    });
-
+    // Try desktop first, then mobile if empty
+    let usedUrl = PAGE_URL;
+    await page.goto(PAGE_URL, { waitUntil: 'networkidle2', timeout: DEFAULT_TIMEOUT });
     await page.waitForSelector('body', { timeout: 15000 });
 
-    // Extract raw fixture data in the browser context
-    const rawFixtures = await page.evaluate(() => {
-      const lines = document.body.innerText
-        .split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
+    let rawFixtures = await extractFixtures(page);
 
-      const fixtures = [];
-      const debugLines = []; // Collect lines for debugging
-
-      // Matches day headers like "Friday, 5th December"
-      const dayNameRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i;
-
-      /**
-       * Parse fixture lines using multi-line format:
-       * The page format is:
-       * Line 1: Competition (e.g., "English Premier League - Week 15")
-       * Line 2: Teams (e.g., "Wolves v Manchester United")
-       * Line 3: Time (e.g., "ST: 19:30")
-       * Line 4+: Channels
-       * 
-       * We need to scan for "ST: HH:MM" lines and work backwards to find teams.
-       */
-      
-      // Pattern to match time lines (e.g., "ST: 19:30")
-      const timeLineRegex = /^ST:\s*([0-9]{1,2}:[0-9]{2})\s*$/i;
-      
-      // Pattern to find "v" or "vs" separator in team line
-      const vsSeparatorRegex = /\s+v(?:s)?\s+/i;
-      
-      // Known UK competition names (defined in browser context)
-      const knownCompetitions = [
-        'Premier League',
-        'English Premier League',
-        'EPL',
-        'Championship',
-        'English Championship',
-        'League One',
-        'English League One',
-        'League Two',
-        'English League Two',
-        'FA Cup',
-        'EFL Cup',
-        'Carabao Cup',
-        'League Cup',
-        'Scottish Premiership',
-        'Scottish Championship',
-        'Scottish League One',
-        'Scottish League Two',
-        'Scottish Cup',
-        'Welsh Premier',
-        'National League'
-      ];
-      
-      // Pre-compile regex patterns for known competitions
-      const knownCompetitionRegexes = knownCompetitions.map(name => ({
-        name,
-        regex: new RegExp(`^(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+(.+)$`, 'i')
-      }));
-
-      let currentDateLabel = null;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-
-        // Date header
-        if (dayNameRegex.test(line)) {
-          currentDateLabel = line;
-          debugLines.push(`DATE: ${line}`);
-          continue;
-        }
-
-        // Try to match time line (e.g., "ST: 19:30")
-        const timeMatch = line.match(timeLineRegex);
-        if (timeMatch) {
-          const timeString = timeMatch[1].trim();
-          
-          // Look backwards for the team line (should be 1 line above)
-          if (i < 1) {
-            debugLines.push(`SKIP: Time line at index ${i} has no previous line for teams`);
-            continue;
-          }
-          
-          const teamLine = lines[i - 1];
-          const vsMatch = vsSeparatorRegex.exec(teamLine);
-          
-          if (!vsMatch) {
-            debugLines.push(`SKIP: Previous line "${teamLine}" has no v/vs separator`);
-            continue;
-          }
-          
-          const vsIndex = vsMatch.index;
-          const vsSeparator = vsMatch[0];
-          
-          // Extract home and away teams
-          const home = teamLine.substring(0, vsIndex).trim();
-          const away = teamLine.substring(vsIndex + vsSeparator.length).trim();
-          
-          // Look backwards for competition line (should be 2 lines above the time)
-          let competition = '';
-          if (i >= 2) {
-            const competitionLine = lines[i - 2];
-            // Skip if it looks like a date header
-            if (!dayNameRegex.test(competitionLine)) {
-              competition = competitionLine;
-            }
-          }
-          
-          // Only add if we got valid teams
-          if (home && away && timeString) {
-            debugLines.push(`MATCH FOUND:`);
-            debugLines.push(`  Line ${i - 2}: Competition: ${competition || '(none)'}`);
-            debugLines.push(`  Line ${i - 1}: Teams: ${home} v ${away}`);
-            debugLines.push(`  Line ${i}: Time: ${timeString}`);
-
-            // Collect channels in following lines until we hit next fixture/date/time
-            const channels = [];
-            for (let j = i + 1; j < lines.length; j++) {
-              const next = lines[j];
-
-              // Stop at next date header
-              if (dayNameRegex.test(next)) break;
-              
-              // Stop at next time line (start of next fixture)
-              if (timeLineRegex.test(next)) break;
-              
-              // Stop at next team line (contains v/vs) - signals start of next fixture
-              if (vsSeparatorRegex.test(next)) break;
-
-              // Skip generic notes
-              if (/^Please Note:/i.test(next)) continue;
-              if (/^Members LOGIN/i.test(next)) continue;
-              if (/^Members LOGOUT/i.test(next)) continue;
-              
-              // Skip lines that look like competition headers (contain " - Week", " - Round", etc.)
-              if (/\s+-\s+(Week|Round|Matchday|Match Day|MD|GW|Proper)\s+/i.test(next)) continue;
-              
-              // Skip lines that start with known competition prefixes
-              if (/^(English|Scottish|Welsh|Irish|European|UEFA)\s+(Premier League|Championship|League|FA Cup|EFL|WSL)/i.test(next)) continue;
-
-              const cleanedChan = next.replace(/📺/g, '').trim();
-              if (cleanedChan.length > 0) {
-                channels.push(cleanedChan);
-              }
-            }
-
-            fixtures.push({
-              dateLabel: currentDateLabel,
-              competitionRaw: competition,
-              home,
-              away,
-              timeString,
-              channels
-            });
-          } else {
-            debugLines.push(`SKIP: Invalid teams - home: "${home}", away: "${away}", time: "${timeString}"`);
-          }
-        } else if (line.includes(' v ') || line.includes(' vs ')) {
-          // Potential team line - log it for debugging
-          debugLines.push(`POTENTIAL TEAMS: ${line}`);
-        }
-      }
-
-      return { fixtures, debugLines };
-    });
+    if (!rawFixtures.fixtures.length) {
+      log('Desktop parse empty, retrying mobile layout');
+      usedUrl = MOBILE_URL;
+      await page.goto(MOBILE_URL, { waitUntil: 'networkidle2', timeout: DEFAULT_TIMEOUT });
+      await page.waitForSelector('body', { timeout: 15000 });
+      rawFixtures = await extractFixtures(page);
+    }
 
     await page.close();
 
-    // Log debug information
-    if (rawFixtures.debugLines && rawFixtures.debugLines.length > 0) {
+    if (rawFixtures.debug?.length) {
       log('--- Debug Info (first 50 lines) ---');
-      rawFixtures.debugLines.slice(0, 50).forEach(line => log(line));
+      rawFixtures.debug.slice(0, 50).forEach(line => log(line));
       log('--- End Debug Info ---');
     }
 
     let fixtures = (rawFixtures.fixtures || []).map(f => {
-      const kickoffUtc = parseKickoffUtc(f.dateLabel, f.timeString);
+      const { kickoffUtc, kickoffLocal } = parseKickoff(f.dateLabel, f.timeString);
       let competition = f.competitionRaw || null;
-
-      // Normalise competition a little bit (optional)
-      if (competition) {
-        competition = competition.replace(/\s+/g, ' ').trim();
-      }
+      if (competition) competition = competition.replace(/\s+/g, ' ').trim();
 
       return {
         home: f.home,
         away: f.away,
         kickoffUtc,
+        kickoffLocal, // UK-format dd/MM/yyyy HH:mm (Europe/London)
         competition,
-        channels: Array.from(new Set(f.channels))
+        channels: Array.from(new Set(f.channels.map(normalizeChannelName).filter(Boolean)))
       };
     });
 
-    // Filter out women's football and international competitions
-    // Since this page is specifically uk-england-all-football.php, we can be more permissive
-    // and just exclude things we know we don't want
+    // Filter out unwanted fixtures
     const preFilterCount = fixtures.length;
     fixtures = fixtures.filter(f => {
       const comp = (f.competition || '').toLowerCase();
       const home = (f.home || '').toLowerCase();
       const away = (f.away || '').toLowerCase();
-      
-      // Exclude women's football matches
-      const isWomens = WOMENS_TERMS.some(term => 
+
+      const isWomens = WOMENS_TERMS.some(term =>
         comp.includes(term) || home.includes(term) || away.includes(term)
       );
-      
       if (isWomens) {
         log(`Filtered out women's match: ${f.home} v ${f.away} (${f.competition})`);
         return false;
       }
-      
-      // Exclude international/European competitions
+
       const isExcluded = EXCLUDE_COMPETITIONS.some(excludeComp => comp.includes(excludeComp));
-      
       if (isExcluded) {
-        log(`Filtered out international/European competition: ${f.home} v ${f.away} (${f.competition})`);
+        log(`Filtered out international/European: ${f.home} v ${f.away} (${f.competition})`);
         return false;
       }
-      
-      // If we're on the UK England page, accept everything else
+
       return true;
     });
-    
-    log(`Fixtures after filtering: ${fixtures.length} (filtered out ${preFilterCount - fixtures.length})`);
 
+    log(`Fixtures after filtering: ${fixtures.length} (filtered out ${preFilterCount - fixtures.length})`);
 
     // Optional team filter
     if (teamName) {
@@ -460,7 +458,6 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
       fixtures = fixtures.filter(f => {
         const homeNorm = normalizeTeamName(f.home);
         const awayNorm = normalizeTeamName(f.away);
-
         return (
           homeNorm.includes(filterNorm) ||
           awayNorm.includes(filterNorm) ||
@@ -471,25 +468,24 @@ async function fetchLiveOnSatFixtures({ teamName } = {}) {
     }
 
     log(`LiveOnSat: found ${fixtures.length} fixtures`);
-    
-    // Prepare debug information
+
     const debugInfo = {
       rawFixturesFound: rawFixtures.fixtures?.length || 0,
       afterFiltering: fixtures.length,
       filteredOut: preFilterCount - fixtures.length,
-      debugLinesCount: rawFixtures.debugLines?.length || 0,
-      debugLinesSample: rawFixtures.debugLines?.slice(0, 20) || []
+      debugLinesCount: rawFixtures.debug?.length || 0,
+      debugLinesSample: rawFixtures.debug?.slice(0, 20) || []
     };
-    
-    return { fixtures, debugInfo };
+
+    return { fixtures, debugInfo, usedUrl };
   } catch (err) {
     log(`Error fetching LiveOnSat fixtures: ${err.message}`);
-    return { 
-      ...emptyResult, 
-      debugInfo: { 
+    return {
+      ...emptyResult,
+      debugInfo: {
         error: err.message,
-        stack: err.stack 
-      } 
+        stack: err.stack
+      }
     };
   }
 }
@@ -523,45 +519,36 @@ async function healthCheck() {
 
 // ---------- Unified Scrape Function ----------
 
-/**
- * Unified scrape function with consistent signature.
- * @param {Object} params - Parameters
- * @param {string} [params.teamName] - Team name to filter by
- * @param {string} [params.date] - Date to scrape fixtures for (daily)
- * @param {boolean} [params.debug] - Include debug information in response
- * @returns {Promise<{fixtures: Array, source: string, debug?: Object}>}
- */
 async function scrape(params = {}) {
   const result = await fetchLiveOnSatFixtures(params);
-  
-  // Normalize to consistent format
+
   const fixtures = (result.fixtures || []).map(f => ({
     homeTeam: f.home || null,
     awayTeam: f.away || null,
     kickoffUtc: f.kickoffUtc || null,
+    kickoffLocal: f.kickoffLocal || null, // UK dd/MM/yyyy HH:mm (Europe/London)
     league: null,
     competition: f.competition || null,
-    url: null,
+    url: result.usedUrl || PAGE_URL,
     channels: f.channels || []
   }));
-  
+
   const response = {
     fixtures,
     source: 'liveonsat'
   };
-  
-  // Include debug information if requested or if no fixtures found
+
   if (params.debug || fixtures.length === 0) {
     response.debug = {
-      url: PAGE_URL,
+      url: result.usedUrl || PAGE_URL,
       fixturesFound: fixtures.length,
       debugInfo: result.debugInfo || 'No debug info available',
-      message: fixtures.length === 0 
-        ? 'No fixtures found. This could be due to: (1) No matches scheduled today on LiveOnSat, (2) Page format changed, or (3) Parsing error. Check debug info for details.'
+      message: fixtures.length === 0
+        ? 'No fixtures found. Possible reasons: no matches on LiveOnSat, page format changed, or parsing error. Check debug info.'
         : 'Fixtures found successfully'
     };
   }
-  
+
   return response;
 }
 
