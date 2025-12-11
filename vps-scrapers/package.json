@@ -17,9 +17,11 @@
     "scraper:prosoccertv": "node scrapers/prosoccertv.js",
     "scraper:wst": "node scrapers/worldsoccertalk.js",
     "scraper:sporteventz": "node scrapers/sporteventz.js",
+    "scraper:sofascore": "node scrapers/sofascore.js",
     "health": "node scripts/health.js"
   },
   "dependencies": {
+    "axios": "^1.13.2",
     "express": "^4.21.2",
     "puppeteer": "^21.6.1"
   },

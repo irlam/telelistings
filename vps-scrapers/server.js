@@ -37,6 +37,7 @@ const lstv = safeRequire('./scrapers/lstv', 'lstv');
 const oddalerts = safeRequire('./scrapers/oddalerts', 'oddalerts');
 const prosoccertv = safeRequire('./scrapers/prosoccertv', 'prosoccertv');
 const skysports = safeRequire('./scrapers/skysports', 'skysports');
+const sofascore = safeRequire('./scrapers/sofascore', 'sofascore');
 const sporteventz = safeRequire('./scrapers/sporteventz', 'sporteventz');
 const tnt = safeRequire('./scrapers/tnt', 'tnt');
 const wheresthematch = safeRequire('./scrapers/wheresthematch', 'wheresthematch');
@@ -65,6 +66,7 @@ const SUPPORTED_SOURCES = [
   { name: 'oddalerts', path: '/scrape/oddalerts', description: 'OddAlerts TV Guide' },
   { name: 'prosoccertv', path: '/scrape/prosoccertv', description: 'ProSoccer.TV' },
   { name: 'skysports', path: '/scrape/skysports', description: 'Sky Sports fixtures' },
+  { name: 'sofascore', path: '/scrape/sofascore', description: 'SofaScore football fixtures + TV' },
   { name: 'sporteventz', path: '/scrape/sporteventz', description: 'SportEventz' },
   { name: 'tnt', path: '/scrape/tnt', description: 'TNT Sports fixtures' },
   { name: 'wheresthematch', path: '/scrape/wheresthematch', description: 'Where\'s The Match UK' },
@@ -167,6 +169,7 @@ addScrapeRoute('/scrape/lstv', lstv, 'lstv');
 addScrapeRoute('/scrape/oddalerts', oddalerts, 'oddalerts');
 addScrapeRoute('/scrape/prosoccertv', prosoccertv, 'prosoccertv');
 addScrapeRoute('/scrape/skysports', skysports, 'skysports');
+addScrapeRoute('/scrape/sofascore', sofascore, 'sofascore');
 addScrapeRoute('/scrape/sporteventz', sporteventz, 'sporteventz');
 addScrapeRoute('/scrape/tnt', tnt, 'tnt');
 addScrapeRoute('/scrape/wheresthematch', wheresthematch, 'wheresthematch');
@@ -324,6 +327,7 @@ addHealthRoute('/health/lstv', lstv, 'lstv');
 addHealthRoute('/health/oddalerts', oddalerts, 'oddalerts');
 addHealthRoute('/health/prosoccertv', prosoccertv, 'prosoccertv');
 addHealthRoute('/health/skysports', skysports, 'skysports');
+addHealthRoute('/health/sofascore', sofascore, 'sofascore');
 addHealthRoute('/health/sporteventz', sporteventz, 'sporteventz');
 addHealthRoute('/health/tnt', tnt, 'tnt');
 addHealthRoute('/health/wheresthematch', wheresthematch, 'wheresthematch');
