@@ -365,6 +365,19 @@ async function buildPosterImageForFixture(fixture, options = {}) {
     
     y += lineHeight * 1.2;
     
+    // Date: "Sat 11 Jan"
+    const dateUk = fixture.dateUk || '';
+    if (dateUk) {
+      drawAutoScaledText(ctx, dateUk, canvasWidth / 2, y, maxTextWidth, {
+        fontStyle: 'bold',
+        fontSize: timeSize,
+        fontFamily,
+        fillStyle: '#ffffff',
+        textAlign: 'center'
+      });
+      y += lineHeight * 0.9;
+    }
+    
     // Times: "3:00pm UK    10:00am ET"
     const timeUk = fixture.timeUk || '';
     const timeEt = fixture.timeEt || '';
@@ -556,6 +569,31 @@ function formatTimeInZone(date, timezone) {
 }
 
 /**
+ * Format a date in a given timezone.
+ * @param {Date} date - The date to format
+ * @param {string} timezone - IANA timezone string (e.g., 'Europe/London')
+ * @returns {string} Formatted date string (e.g., "Sat 11 Jan")
+ */
+function formatDateInZone(date, timezone) {
+  try {
+    const options = {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      timeZone: timezone
+    };
+    return date.toLocaleDateString('en-GB', options);
+  } catch (err) {
+    // Fallback if timezone is invalid
+    return date.toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
+    });
+  }
+}
+
+/**
  * Clean a team name by removing common annotations like (HOME), (AWAY), (H), (A), etc.
  * @param {string} name - Team name that may have annotations
  * @returns {string} Cleaned team name
@@ -686,7 +724,8 @@ function parseTeamsFromSummary(summary) {
 function adaptFixtureForPoster(fixture) {
   const start = fixture.start instanceof Date ? fixture.start : new Date(fixture.start);
   
-  // Format times in UK and US Eastern timezones
+  // Format date and times in UK and US Eastern timezones
+  const dateUk = formatDateInZone(start, 'Europe/London');
   const timeUk = formatTimeInZone(start, 'Europe/London');
   const timeEt = formatTimeInZone(start, 'America/New_York');
   
@@ -724,6 +763,7 @@ function adaptFixtureForPoster(fixture) {
   return {
     ...fixture,
     date: start,
+    dateUk,
     timeUk,
     timeEt,
     homeTeam,
@@ -773,6 +813,12 @@ function formatFixturePoster(fixture, options = {}) {
   lines.push('   SPORTS LISTINGS ON TV   ');
   lines.push('═══════════════════════════');
   lines.push('');
+  
+  // Date
+  if (fixture.dateUk) {
+    lines.push(fixture.dateUk);
+    lines.push('');
+  }
   
   // Times in two zones
   const timeUk = fixture.timeUk || '';
@@ -1792,6 +1838,7 @@ module.exports = {
   parseFishySummary,
   cleanTeamName,
   formatTimeInZone,
+  formatDateInZone,
   getBackgroundImagePath,
   buildPosterImageForFixture,
   sendTelegramPhoto,

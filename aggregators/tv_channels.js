@@ -536,6 +536,7 @@ async function getTvDataForFixture(baseFixture, options = {}) {
     enableRemoteSkySports = false,
     enableRemoteTNT = false,
     enableRemoteLiveFootballOnTV = false,
+    enableRemoteLiveOnSat = false,
     enableRemoteOddAlerts = false,
     enableRemoteProSoccerTV = false,
     enableRemoteSportEventz = false,
@@ -545,9 +546,9 @@ async function getTvDataForFixture(baseFixture, options = {}) {
   } = options;
   
   if (useRemoteScrapers || enableRemoteBBC || enableRemoteSkySports || enableRemoteTNT ||
-      enableRemoteLiveFootballOnTV || enableRemoteOddAlerts || enableRemoteProSoccerTV ||
-      enableRemoteSportEventz || enableRemoteWheresTheMatch || enableRemoteWorldSoccerTalk ||
-      enableRemoteSofaScore) {
+      enableRemoteLiveFootballOnTV || enableRemoteLiveOnSat || enableRemoteOddAlerts || 
+      enableRemoteProSoccerTV || enableRemoteSportEventz || enableRemoteWheresTheMatch || 
+      enableRemoteWorldSoccerTalk || enableRemoteSofaScore) {
     
     const remotePromises = [];
     const remoteSourceNames = [];
@@ -568,6 +569,10 @@ async function getTvDataForFixture(baseFixture, options = {}) {
     if (useRemoteScrapers || enableRemoteLiveFootballOnTV) {
       remotePromises.push(lstv.fetchLiveFootballOnTVRemote({ teamName: homeTeam }));
       remoteSourceNames.push('remoteLFOTV');
+    }
+    if (useRemoteScrapers || enableRemoteLiveOnSat) {
+      remotePromises.push(lstv.fetchLiveOnSatRemote({ teamName: homeTeam }));
+      remoteSourceNames.push('remoteLiveOnSat');
     }
     if (useRemoteScrapers || enableRemoteOddAlerts) {
       remotePromises.push(lstv.fetchOddAlertsRemote({ date: dateUtc?.toISOString().slice(0, 10) }));
