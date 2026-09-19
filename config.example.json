@@ -1,0 +1,37 @@
+{
+  "timezone": "Europe/London",
+  "posterFooterText": "Fixtures and channels can change — check before kick-off.",
+  "telegramPostDelayMs": 3200,
+  "messageExpiry": {
+    "enabled": true,
+    "posterHoursAfterKickoff": 3,
+    "digestExpiryHour": 6
+  },
+  "dailyListings": {
+    "cacheMinutes": 20,
+    "concurrency": 2,
+    "sourceDelayMs": 800,
+    "timeoutMs": 90000,
+    "sources": [
+      "liveonsat",
+      "lstv",
+      "skysports",
+      "premiersports"
+    ]
+  },
+  "channels": [
+    {
+      "label": "UK Football on TV",
+      "brandName": "UK FOOTBALL ON TV",
+      "posterSubtitle": "FREE • UK TIMES • UPDATED DAILY",
+      "id": "@replace_with_your_channel",
+      "posterStyle": true,
+      "postDailyDigest": true,
+      "requireTv": true,
+      "includeNonUk": false,
+      "maxEventsPerSource": 250,
+      "maxFixturesPerRun": 80,
+      "maxPostersPerRun": 20
+    }
+  ]
+}

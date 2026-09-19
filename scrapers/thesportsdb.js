@@ -1,0 +1,610 @@
+// scrapers/thesportsdb.js
+// TheSportsDB v1 JSON API integration for fixture lookup and TV station info.
+// NOTE: This is an API client that runs directly on Plesk (no Puppeteer needed).
+/**
+ * Telegram Sports TV Bot – TheSportsDB Fixture Scraper
+ *
+ * This is a lightweight API client that can run directly on Plesk.
+ * No browser automation required – uses axios for API calls.
+ *
+ * Exports fetchTSDBFixture({ home, away, date }) which:
+ * - Queries TheSportsDB API for the specific fixture
+ * - Returns normalized fixture data with kickoff time, league, venue
+ * - Optionally includes TV stations if available from API
+ *
+ * Returns:
+ * {
+ *   matched: boolean,       // Whether a fixture was found
+ *   kickoffUtc: string|null,
+ *   league: string|null,
+ *   venue: string|null,
+ *   tvStations: string[]    // List of TV stations (if available)
+ * }
+ *
+ * Never throws; on failure returns { matched: false }
+ * All logs use prefix [TSDB]
+ */
+
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+
+// ---------- Configuration ----------
+
+const BASE_URL = 'https://www.thesportsdb.com/api/v1/json';
+const DEFAULT_TIMEOUT = 15000;
+
+// Listing sites often shorten club names, while TheSportsDB's team search is
+// much more reliable with the official name. Keep the mapping conservative so
+// similarly named clubs (Bristol City/Rovers, Sheffield United/Wednesday,
+// etc.) are never guessed from only a place name.
+const TEAM_ARTWORK_ALIASES = new Map(Object.entries({
+  'brighton': 'Brighton and Hove Albion',
+  'man city': 'Manchester City',
+  'man united': 'Manchester United',
+  'man utd': 'Manchester United',
+  'newcastle': 'Newcastle United',
+  'qpr': 'Queens Park Rangers',
+  'sheffield wed': 'Sheffield Wednesday',
+  'spurs': 'Tottenham Hotspur',
+  'tottenham': 'Tottenham Hotspur',
+  'west brom': 'West Bromwich Albion',
+  'wolves': 'Wolverhampton Wanderers'
+}));
+
+// Get API key from environment variable or config
+function getApiKey() {
+  // Try environment variable first
+  if (process.env.THESPORTSDB_API_KEY) {
+    return process.env.THESPORTSDB_API_KEY;
+  }
+  
+  // Try config.json
+  try {
+    const configPath = path.join(__dirname, '..', 'config.json');
+    if (fs.existsSync(configPath)) {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (cfg.theSportsDbApiKey) {
+        return cfg.theSportsDbApiKey;
+      }
+    }
+  } catch (err) {
+    // Ignore config errors
+  }
+  
+  // Default to test/free tier key '123'
+  return '123';
+}
+
+// Alternative API keys to try if default fails
+const FALLBACK_API_KEYS = ['123', '3', '2', '1'];
+
+// ---------- Logging ----------
+
+/**
+ * Log a message with [TSDB] prefix.
+ * @param {string} msg - Message to log
+ */
+function log(msg) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] [TSDB] ${msg}`;
+  console.log(line);
+  
+  // Also append to autopost.log for visibility in /admin/logs
+  try {
+    const logPath = path.join(__dirname, '..', 'autopost.log');
+    fs.appendFileSync(logPath, line + '\n', 'utf8');
+  } catch (err) {
+    // Ignore file errors
+  }
+}
+
+// ---------- Team Name Normalization ----------
+
+/**
+ * Normalize a team name for comparison/matching.
+ * Only strips truly redundant prefixes like FC, AFC.
+ * Keeps distinguishing words like City, United, Town.
+ * @param {string} name - Team name
+ * @returns {string} Normalized name
+ */
+function normalizeTeamName(name) {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .trim()
+    // Only remove truly redundant prefixes/suffixes (FC, AFC, SC, etc.)
+    // Keep words like United, City, Town as they distinguish teams
+    .replace(/\b(fc|afc|cf|sc|ac|as|ss|rc|rfc)\b/gi, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Check if two team names match (fuzzy).
+ * @param {string} name1 - First team name
+ * @param {string} name2 - Second team name
+ * @returns {boolean}
+ */
+function teamsMatch(name1, name2) {
+  const norm1 = normalizeTeamName(name1);
+  const norm2 = normalizeTeamName(name2);
+  
+  if (!norm1 || !norm2) return false;
+  
+  // Exact match after normalization
+  if (norm1 === norm2) return true;
+  
+  // One contains the other
+  if (norm1.includes(norm2) || norm2.includes(norm1)) return true;
+  
+  // Check if main word matches (e.g., "Arsenal" in "Arsenal FC")
+  const words1 = norm1.split(' ').filter(w => w.length > 3);
+  const words2 = norm2.split(' ').filter(w => w.length > 3);
+  
+  for (const w1 of words1) {
+    if (words2.includes(w1)) return true;
+  }
+  
+  return false;
+}
+
+function teamArtworkSearchNames(teamName) {
+  const original = String(teamName || '')
+    .replace(/\s*(?:\(\s*(?:home|away|h|a)\s*\)|\[\s*(?:home|away|h|a)\s*\])\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!original) return [];
+
+  const normalized = normalizeTeamName(original);
+  const candidates = [];
+  const add = (value) => {
+    const clean = String(value || '').replace(/\s+/g, ' ').trim();
+    if (clean && !candidates.some((item) => item.toLowerCase() === clean.toLowerCase())) {
+      candidates.push(clean);
+    }
+  };
+
+  // Prefer the expanded official name. If it is not in our conservative
+  // alias table, try the source spelling and common unambiguous abbreviations.
+  add(TEAM_ARTWORK_ALIASES.get(normalized));
+  add(original);
+  add(original.replace(/\bUtd\b/gi, 'United'));
+  add(original.replace(/\bWed\b/gi, 'Wednesday'));
+  return candidates;
+}
+
+// ---------- API Helpers ----------
+
+/**
+ * Make an API request to TheSportsDB.
+ * @param {string} apiKey - API key
+ * @param {string} endpoint - API endpoint path
+ * @returns {Promise<Object>} API response data
+ */
+async function apiRequest(apiKey, endpoint) {
+  const url = `${BASE_URL}/${encodeURIComponent(apiKey)}${endpoint}`;
+  
+  const response = await axios.get(url, {
+    timeout: DEFAULT_TIMEOUT,
+    headers: {
+      'User-Agent': 'Telelistings/2.0 (+https://github.com/irlam/telelistings)',
+      'Accept': 'application/json'
+    }
+  });
+  
+  return response.data;
+}
+
+/**
+ * Search for a team by name.
+ * @param {string} apiKey - API key
+ * @param {string} teamName - Team name to search
+ * @returns {Promise<Object|null>} Team object or null
+ */
+async function searchTeam(apiKey, teamName) {
+  const encoded = encodeURIComponent(teamName.trim());
+  const data = await apiRequest(apiKey, `/searchteams.php?t=${encoded}`);
+  
+  if (!data || !data.teams || !Array.isArray(data.teams) || data.teams.length === 0) {
+    return null;
+  }
+  
+  // Return first match
+  return data.teams[0];
+}
+
+function getTeamBadgeUrl(team) {
+  if (!team || typeof team !== 'object') return null;
+  return team.strBadge || team.strTeamBadge || team.strLogo || null;
+}
+
+async function fetchTeamArtwork(teamName) {
+  if (!teamName) return { teamName: '', badgeUrl: null };
+  const keysToTry = [...new Set([getApiKey(), ...FALLBACK_API_KEYS])];
+  let lastTransientError = null;
+  for (const searchName of teamArtworkSearchNames(teamName)) {
+    for (const apiKey of keysToTry) {
+      try {
+        const team = await searchTeam(apiKey, searchName);
+        const badgeUrl = getTeamBadgeUrl(team);
+        if (team && badgeUrl) return { teamName: team.strTeam || teamName, badgeUrl };
+        // A successful response has the same catalogue regardless of API key.
+        // Move to the next spelling rather than repeating an empty query.
+        break;
+      } catch (error) {
+        const status = Number(error.response?.status || 0);
+        const transient = error.code === 'ECONNABORTED'
+          || error.code === 'ECONNRESET'
+          || error.code === 'ETIMEDOUT'
+          || status === 429
+          || status >= 500;
+        if (status === 404 || transient) {
+          if (transient) lastTransientError = error;
+          continue;
+        }
+        log(`Team artwork lookup failed for ${teamName}: ${error.message}`);
+        return { teamName, badgeUrl: null };
+      }
+    }
+  }
+  if (lastTransientError) {
+    log(`Team artwork lookup exhausted retries for ${teamName}: ${lastTransientError.message}`);
+  }
+  return { teamName, badgeUrl: null };
+}
+
+/**
+ * Get upcoming events for a team.
+ * @param {string} apiKey - API key
+ * @param {string} teamId - Team ID
+ * @returns {Promise<Array>} Array of events
+ */
+async function getUpcomingEvents(apiKey, teamId) {
+  const data = await apiRequest(apiKey, `/eventsnext.php?id=${teamId}`);
+  
+  if (!data || !data.events || !Array.isArray(data.events)) {
+    return [];
+  }
+  
+  return data.events;
+}
+
+/**
+ * Get TV listings for an event.
+ * @param {string} apiKey - API key
+ * @param {string} eventId - Event ID
+ * @returns {Promise<Array>} Array of TV listings
+ */
+async function getTvListings(apiKey, eventId) {
+  try {
+    const data = await apiRequest(apiKey, `/lookuptv.php?id=${eventId}`);
+    
+    if (!data || !data.tvevent || !Array.isArray(data.tvevent)) {
+      return [];
+    }
+    
+    return data.tvevent;
+  } catch (err) {
+    // TV listings endpoint may not be available for all events
+    return [];
+  }
+}
+
+// ---------- Main Fixture Lookup ----------
+
+/**
+ * Fetch fixture information from TheSportsDB.
+ *
+ * @param {Object} params - Parameters
+ * @param {string} params.home - Home team name
+ * @param {string} params.away - Away team name
+ * @param {Date|string} params.date - Match date
+ * @returns {Promise<{matched: boolean, kickoffUtc: string|null, league: string|null, venue: string|null, tvStations: string[], eventId: string|null}>}
+ */
+async function fetchTSDBFixture({ home, away, date }) {
+  const emptyResult = {
+    matched: false,
+    kickoffUtc: null,
+    league: null,
+    venue: null,
+    tvStations: [],
+    eventId: null
+  };
+  
+  if (!home || !away) {
+    log(`Missing team names: home="${home}", away="${away}"`);
+    return emptyResult;
+  }
+  
+  let apiKey = getApiKey();
+  
+  // Parse date for matching
+  const matchDate = date instanceof Date ? date : new Date(date || Date.now());
+  const matchDateStr = matchDate.toISOString().slice(0, 10);
+  
+  log(`Searching for ${home} vs ${away} on ${matchDateStr}`);
+  
+  // Build list of API keys to try using Set for O(1) deduplication
+  const keysSet = new Set([apiKey, ...FALLBACK_API_KEYS]);
+  const keysToTry = Array.from(keysSet);
+  
+  for (const tryKey of keysToTry) {
+    try {
+      // Search for home team first
+      const homeTeam = await searchTeam(tryKey, home);
+      
+      if (!homeTeam) {
+        log(`Could not find team: ${home}`);
+        return emptyResult;
+      }
+    
+      log(`Found team: ${homeTeam.strTeam} (ID: ${homeTeam.idTeam})`);
+    
+      // Get upcoming events
+      const events = await getUpcomingEvents(tryKey, homeTeam.idTeam);
+    
+      if (events.length === 0) {
+        log(`No upcoming events found for ${homeTeam.strTeam}`);
+        return emptyResult;
+      }
+    
+      // Find matching fixture
+      let bestMatch = null;
+    
+      for (const event of events) {
+        // Check date match
+        if (event.dateEvent !== matchDateStr) {
+          continue;
+        }
+      
+        // Check if away team matches
+        const eventHome = event.strHomeTeam || '';
+        const eventAway = event.strAwayTeam || '';
+      
+        const homeMatches = teamsMatch(eventHome, home) || teamsMatch(eventAway, home);
+        const awayMatches = teamsMatch(eventHome, away) || teamsMatch(eventAway, away);
+      
+        if (homeMatches && awayMatches) {
+          bestMatch = event;
+          break;
+        }
+      }
+    
+      if (!bestMatch) {
+        log(`No matching fixture found for ${home} vs ${away} on ${matchDateStr}`);
+        return emptyResult;
+      }
+    
+      log(`Found fixture: ${bestMatch.strEvent} (ID: ${bestMatch.idEvent})`);
+    
+      // Build kickoff UTC from date and time
+      let kickoffUtc = null;
+      if (bestMatch.dateEvent && bestMatch.strTime) {
+        kickoffUtc = `${bestMatch.dateEvent}T${bestMatch.strTime}`;
+      } else if (bestMatch.strTimestamp) {
+        kickoffUtc = bestMatch.strTimestamp;
+      }
+    
+      // Try to get TV listings
+      let tvStations = [];
+      if (bestMatch.idEvent) {
+        const tvListings = await getTvListings(tryKey, bestMatch.idEvent);
+        tvStations = tvListings.map(tv => tv.strChannel).filter(Boolean);
+      
+        // Remove duplicates
+        tvStations = [...new Set(tvStations)];
+      
+        if (tvStations.length > 0) {
+          log(`Found ${tvStations.length} TV stations`);
+        }
+      }
+    
+      return {
+        matched: true,
+        kickoffUtc,
+        league: bestMatch.strLeague || null,
+        venue: bestMatch.strVenue || null,
+        tvStations,
+        eventId: bestMatch.idEvent || null
+      };
+    
+    } catch (err) {
+      // If it's a 404, try the next API key
+      if (err.response && err.response.status === 404) {
+        continue;
+      }
+      log(`Error: ${err.message}`);
+      return emptyResult;
+    }
+  }
+  
+  // All API keys failed
+  log(`All API keys failed for ${home} vs ${away}`);
+  return emptyResult;
+}
+
+/**
+ * Fetch all fixtures for a given date from TheSportsDB.
+ * This is used for general fixture listing without team-specific filtering.
+ *
+ * @param {Object} params - Parameters
+ * @param {Date|string} [params.date] - Match date (defaults to today)
+ * @param {string} [params.region] - Region filter for TV channels (e.g., 'UK', 'US')
+ * @param {string} [params.leagueId] - Optional league ID to filter
+ * @returns {Promise<{fixtures: Array<{home: string, away: string, kickoffUtc: string|null, league: string|null, venue: string|null, tvStations: Array<{region: string, channel: string}>, eventId: string|null}>}>}
+ */
+async function fetchTSDBFixtures({ date, region, leagueId } = {}) {
+  const emptyResult = { fixtures: [] };
+  
+  // Parse date for matching
+  const matchDate = date instanceof Date ? date : new Date(date || Date.now());
+  const matchDateStr = matchDate.toISOString().slice(0, 10);
+  
+  log(`Fetching all fixtures for ${matchDateStr}${region ? ` (region: ${region})` : ''}`);
+  
+  let apiKey = getApiKey();
+  const keysSet = new Set([apiKey, ...FALLBACK_API_KEYS]);
+  const keysToTry = Array.from(keysSet);
+  
+  // List of popular UK leagues to search
+  const ukLeagues = [
+    { id: '4328', name: 'English Premier League' },
+    { id: '4329', name: 'English League Championship' },
+    { id: '4330', name: 'English League 1' },
+    { id: '4331', name: 'English League 2' },
+    { id: '4346', name: 'Scottish Premiership' },
+    { id: '4424', name: 'FA Cup' },
+    { id: '4425', name: 'EFL Cup' },
+    { id: '4480', name: 'UEFA Champions League' },
+    { id: '4481', name: 'UEFA Europa League' }
+  ];
+  
+  const leagues = leagueId ? [{ id: leagueId, name: 'Custom' }] : ukLeagues;
+  
+  for (const tryKey of keysToTry) {
+    try {
+      const fixtures = [];
+      
+      for (const league of leagues) {
+        try {
+          // Fetch events for the league on the given date
+          const data = await apiRequest(tryKey, `/eventsday.php?d=${matchDateStr}&l=${league.id}`);
+          
+          if (data && data.events && Array.isArray(data.events)) {
+            for (const event of data.events) {
+              // Get TV listings for this event
+              let tvStations = [];
+              if (event.idEvent) {
+                const tvListings = await getTvListings(tryKey, event.idEvent);
+                tvStations = tvListings
+                  .filter(tv => {
+                    // Filter by region if specified
+                    if (region && tv.strCountry) {
+                      const countryLower = tv.strCountry.toLowerCase();
+                      const regionLower = region.toLowerCase();
+                      if (regionLower === 'uk') {
+                        return countryLower.includes('united kingdom') || 
+                               countryLower.includes('uk') || 
+                               countryLower.includes('england') ||
+                               countryLower.includes('scotland') ||
+                               countryLower.includes('wales');
+                      }
+                      return countryLower.includes(regionLower);
+                    }
+                    return true;
+                  })
+                  .map(tv => ({
+                    region: tv.strCountry || 'Unknown',
+                    channel: tv.strChannel
+                  }))
+                  .filter(tv => tv.channel);
+              }
+              
+              // Build kickoff UTC from date and time
+              let kickoffUtc = null;
+              if (event.dateEvent && event.strTime) {
+                kickoffUtc = `${event.dateEvent}T${event.strTime}`;
+              } else if (event.strTimestamp) {
+                kickoffUtc = event.strTimestamp;
+              }
+              
+              fixtures.push({
+                home: event.strHomeTeam || '',
+                away: event.strAwayTeam || '',
+                kickoffUtc,
+                league: event.strLeague || league.name,
+                venue: event.strVenue || null,
+                tvStations,
+                eventId: event.idEvent || null
+              });
+            }
+          }
+        } catch (leagueErr) {
+          // Skip league on error, continue with others
+          continue;
+        }
+        
+        // Small delay between league requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (fixtures.length > 0) {
+        log(`Found ${fixtures.length} fixtures for ${matchDateStr}`);
+        return { fixtures };
+      }
+      
+    } catch (err) {
+      // If it's a 404, try the next API key
+      if (err.response && err.response.status === 404) {
+        continue;
+      }
+      log(`Error: ${err.message}`);
+    }
+  }
+  
+  log(`No fixtures found for ${matchDateStr}`);
+  return emptyResult;
+}
+
+/**
+ * Perform a health check on TheSportsDB API.
+ * @returns {Promise<{ok: boolean, latencyMs: number, error?: string}>}
+ */
+async function healthCheck() {
+  const startTime = Date.now();
+  
+  try {
+    const apiKey = getApiKey();
+    // Simple query to test API connectivity - try default key first
+    try {
+      await apiRequest(apiKey, '/searchteams.php?t=Arsenal');
+    } catch (firstErr) {
+      // If default key fails, try fallback keys
+      if (firstErr.response && firstErr.response.status === 404) {
+        // Try other fallback keys
+        for (const fallbackKey of FALLBACK_API_KEYS) {
+          if (fallbackKey !== apiKey) {
+            try {
+              await apiRequest(fallbackKey, '/searchteams.php?t=Arsenal');
+              break; // Success with fallback key
+            } catch (fallbackErr) {
+              continue; // Try next key
+            }
+          }
+        }
+      } else {
+        throw firstErr;
+      }
+    }
+    
+    const latencyMs = Date.now() - startTime;
+    log(`[health] OK in ${latencyMs}ms`);
+    return { ok: true, latencyMs };
+    
+  } catch (err) {
+    const latencyMs = Date.now() - startTime;
+    log(`[health] FAIL in ${latencyMs}ms: ${err.message}`);
+    return { ok: false, latencyMs, error: err.message };
+  }
+}
+
+// ---------- Module Exports ----------
+
+module.exports = {
+  fetchTSDBFixture,
+  fetchTSDBFixtures,
+  fetchTeamArtwork,
+  healthCheck,
+  // Export helpers for testing
+  searchTeam,
+  getUpcomingEvents,
+  getTvListings,
+  getTeamBadgeUrl,
+  teamArtworkSearchNames,
+  normalizeTeamName,
+  teamsMatch,
+  getApiKey,
+  BASE_URL
+};

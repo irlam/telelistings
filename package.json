@@ -1,0 +1,29 @@
+{
+  "name": "telegram-sports-bot",
+  "version": "2.0.0",
+  "description": "Free UK football TV listings, daily Telegram digests and branded fixture posters",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "node tests/run_all_tests.js",
+    "test:integration": "RUN_NETWORK_TESTS=1 node tests/run_all_tests.js",
+    "test:lstv": "node tests/lstv.test.js",
+    "test:fixtures": "node tests/fixtures_scraper.test.js",
+    "test:auto": "node tests/auto_tester.test.js",
+    "auto-test": "node scripts/run_auto_test.js",
+    "health": "node scripts/health_check.js"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.83",
+    "axios": "^1.13.2",
+    "cheerio": "^1.0.0",
+    "express": "^4.21.2",
+    "express-basic-auth": "^1.2.1",
+    "form-data": "^4.0.5",
+    "multer": "^2.0.2",
+    "ssh2": "^1.17.0"
+  }
+}

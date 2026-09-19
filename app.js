@@ -1,0 +1,3487 @@
+// app.js
+// Admin GUI + authenticated cron endpoint for the UK football TV listings bot.
+/**
+ * Telegram Sports TV Bot – Admin GUI
+ *
+ * Node.js + Express admin panel for a Telegram bot that posts football fixtures.
+ * - Reads & writes config.json (channels and settings).
+ * - Pages: /admin/channels, /admin/settings, /admin/logs, /admin/help.
+ * - Has a button to trigger /admin/post-now (calls runOnce from autopost.js).
+ * - Exposes authenticated POST /cron/run for Plesk scheduled tasks.
+ *
+ * Constraints:
+ * - No DB, config stored in config.json.
+ * - Basic auth via express-basic-auth.
+ * - Keep UI simple (vanilla HTML/CSS, no frontend framework).
+ */
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const express = require('express');
+const basicAuth = require('express-basic-auth');
+const multer = require('multer');
+const axios = require('axios');
+const { runOnce, runMessageCleanup, CONFIG_PATH, LOG_PATH } = require('./autopost');
+const postState = require('./lib/post_state');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Server log buffer - stores last 500 log entries
+const SERVER_LOG_BUFFER = [];
+const MAX_SERVER_LOG_ENTRIES = 500;
+const SERVER_LOG_PATH = path.join(__dirname, 'logs', 'server.log');
+
+// Ensure logs directory exists
+const LOGS_DIR = path.join(__dirname, 'logs');
+if (!fs.existsSync(LOGS_DIR)) {
+  fs.mkdirSync(LOGS_DIR, { recursive: true });
+}
+
+// Store original console methods before overriding
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+// Function to log to both console and file
+function serverLog(level, ...args) {
+  const timestamp = new Date().toISOString();
+  const message = args.map(arg => {
+    if (typeof arg === 'object') {
+      try {
+        return JSON.stringify(arg);
+      } catch (e) {
+        return '[Object with circular reference]';
+      }
+    }
+    return String(arg);
+  }).join(' ');
+  const logEntry = `[${timestamp}] [${level}] ${message}`;
+  
+  // Add to buffer
+  SERVER_LOG_BUFFER.push(logEntry);
+  if (SERVER_LOG_BUFFER.length > MAX_SERVER_LOG_ENTRIES) {
+    SERVER_LOG_BUFFER.shift();
+  }
+  
+  // Write to file
+  try {
+    fs.appendFileSync(SERVER_LOG_PATH, logEntry + '\n', 'utf8');
+  } catch (err) {
+    // Fallback to original console if file write fails
+    originalConsoleError('Failed to write to server log file:', err.message);
+  }
+  
+  // Also output to original console
+  if (level === 'ERROR') {
+    originalConsoleError(...args);
+  } else {
+    originalConsoleLog(...args);
+  }
+}
+
+// Override console.log and console.error to capture logs
+console.log = function(...args) {
+  serverLog('INFO', ...args);
+};
+
+console.error = function(...args) {
+  serverLog('ERROR', ...args);
+};
+
+// Configure multer for background image upload
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: function (req, file, cb) {
+    // Always save as poster-background with original extension
+    const ext = path.extname(file.originalname);
+    cb(null, 'poster-background' + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Only image files (jpg, jpeg, png, gif) are allowed'));
+  }
+});
+
+// --------- helpers ---------
+
+function loadConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    // minimal default
+    return {
+      botToken: '',
+      timezone: 'Europe/London',
+      channels: []
+    };
+  }
+  return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+}
+
+function saveConfig(cfg) {
+  delete cfg.icsUrl;
+  delete cfg.icsDaysAhead;
+  for (const channel of cfg.channels || []) {
+    delete channel.mode;
+    delete channel.useUkDailyListings;
+    delete channel.useTheFishyMulti;
+    delete channel.multiMaxTeams;
+    delete channel.multiIcsDelayMs;
+    delete channel.icsUrl;
+    delete channel.teams;
+    delete channel.daysAhead;
+  }
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8');
+}
+
+function getBackgroundImagePath() {
+  const extensions = ['jpg', 'jpeg', 'png', 'gif'];
+  for (const ext of extensions) {
+    const imgPath = path.join(UPLOADS_DIR, `poster-background.${ext}`);
+    if (fs.existsSync(imgPath)) {
+      return imgPath;
+    }
+  }
+  return null;
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Simple in-memory rate limiter for file operations
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per minute
+
+function rateLimitMiddleware(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+  
+  if (!rateLimitStore.has(ip)) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return next();
+  }
+  
+  const entry = rateLimitStore.get(ip);
+  
+  // Reset if window has passed
+  if (now > entry.resetAt) {
+    entry.count = 1;
+    entry.resetAt = now + RATE_LIMIT_WINDOW_MS;
+    return next();
+  }
+  
+  // Check if limit exceeded
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).send('Too many requests. Please wait a minute and try again.');
+  }
+  
+  entry.count++;
+  return next();
+}
+
+function renderLayout(title, bodyHtml) {
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 0 auto; padding: 20px; background:#121212; color:#f5f5f5; }
+    a { color: #80cbc4; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; background:#1e1e1e; }
+    th, td { border: 1px solid #333; padding: 6px; text-align: left; font-size:14px; }
+    th { background:#262626; }
+    input[type=text], input[type=password], input[type=number], textarea, select {
+      width: 100%;
+      padding: 6px;
+      box-sizing: border-box;
+      border-radius: 4px;
+      border: 1px solid #444;
+      background:#1b1b1b;
+      color:#f5f5f5;
+      font-size:14px;
+    }
+    textarea { min-height: 180px; font-family: monospace; }
+    button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      background:#00b894;
+      color:#000;
+      cursor:pointer;
+      font-size:14px;
+    }
+    button:hover { background:#00d6aa; }
+    .nav a { margin-right: 1rem; }
+    .muted { color:#aaa; font-size: 12px; }
+    .page-title { margin-bottom: 0.5rem; }
+    .card { background:#1b1b1b; padding: 16px; border-radius: 8px; margin-bottom: 16px; box-shadow:0 2px 8px rgba(0,0,0,0.5); }
+    code { background:#222; padding:2px 4px; border-radius:4px; }
+    pre { background:#111; padding:10px; border-radius:8px; overflow-x:auto; font-size:12px; }
+  </style>
+</head>
+<body>
+  <h1 class="page-title">Telegram Sports TV Bot</h1>
+  <p class="nav">
+    <a href="/admin/channels">Channels</a>
+    <a href="/admin/settings">Settings</a>
+    <a href="/admin/scrapers">Scrapers</a>
+    <a href="/admin/auto-test">Auto-Test</a>
+    <a href="/admin/results">Results</a>
+    <a href="/admin/vps-setup">VPS Setup</a>
+    <a href="/admin/vps-debug">VPS Debug</a>
+    <a href="/admin/environment">Environment</a>
+    <a href="/admin/logs">Logs</a>
+    <a href="/admin/help">Help</a>
+  </p>
+  ${bodyHtml}
+</body>
+</html>`;
+}
+
+// --------- middleware ---------
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+
+// Basic auth on /admin/*
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+app.use(
+  '/admin',
+  (req, res, next) => {
+    if (!ADMIN_PASSWORD) {
+      return res.status(503).send('Admin access is disabled until ADMIN_PASSWORD is configured in the server environment.');
+    }
+    next();
+  },
+  basicAuth({
+    users: { admin: ADMIN_PASSWORD },
+    challenge: true
+  })
+);
+
+app.get('/', (req, res) => {
+  res.redirect('/admin/channels');
+});
+
+// --------- Channels page ---------
+
+// Number of columns in the channels table
+const CHANNELS_TABLE_COLS = 5;
+
+app.get('/admin/channels', (req, res) => {
+  const cfg = loadConfig();
+  const channels = cfg.channels || [];
+  const defaultPosterStyle = cfg.defaultPosterStyle || false;
+
+  const rows = channels
+    .map((ch, idx) => {
+      const outputTypes = [];
+      if (ch.postDailyDigest !== false) outputTypes.push('List');
+      if (ch.posterStyle !== false) outputTypes.push('Cards');
+      const layoutStyle = outputTypes.join(' + ') || 'Paused';
+      return `<tr>
+        <td>${idx + 1}</td>
+        <td>${escapeHtml(ch.label || '')}</td>
+        <td>${escapeHtml(ch.id || '')}</td>
+        <td><span class="layout-badge">${layoutStyle}</span></td>
+        <td>
+          <a href="/admin/channels/edit?index=${idx}">Edit</a>
+          <form method="post" action="/admin/channels/delete" style="display:inline; margin-left:8px;">
+            <input type="hidden" name="index" value="${idx}">
+            <button type="submit" onclick="return confirm('Delete this channel?');">Delete</button>
+          </form>
+        </td>
+      </tr>`;
+    })
+    .join('');
+
+  const body = `
+  <style>
+    .layout-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+    .layout-poster { background: #4a90d9; color: #fff; }
+    .layout-list { background: #555; color: #fff; }
+  </style>
+  <div class="card">
+    <h2>Channels</h2>
+    <p>Each channel receives today's UK men's football TV listings.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Label</th>
+          <th>Telegram Channel ID</th>
+          <th>Layout</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${
+          rows ||
+          `<tr><td colspan="${CHANNELS_TABLE_COLS}">No channels yet. Add one below.</td></tr>`
+        }
+      </tbody>
+    </table>
+
+    <h3>Add Channel</h3>
+    <form method="post" action="/admin/channels/add">
+      <p>
+        <label>Label (e.g. "UK Football")<br>
+        <input type="text" name="label" required></label>
+      </p>
+      <p>
+        <label>Telegram Channel username / ID<br>
+        <input type="text" name="id" required value="@"></label>
+        <span class="muted">For a public channel, this is its username, e.g. <code>@FootballOnTvUK</code>.</span>
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="posterStyle" value="true" id="posterStyleAdd" ${defaultPosterStyle ? 'checked' : ''}>
+          Post individual fixture cards
+        </label>
+        <span class="muted">One branded image per fixture with TV information.</span>
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="postDailyDigest" value="true" checked>
+          Post the large daily fixture list
+        </label>
+        <span class="muted">Untick this for cards only. At least one output type will always be kept enabled.</span>
+      </p>
+      <p><button type="submit">Add Channel</button></p>
+    </form>
+  </div>
+  `;
+
+  res.send(renderLayout('Channels - Telegram Sports TV Bot', body));
+});
+
+app.get('/admin/channels/edit', (req, res) => {
+  const cfg = loadConfig();
+  const channels = cfg.channels || [];
+  const idx = parseInt(req.query.index, 10);
+
+  if (Number.isNaN(idx) || idx < 0 || idx >= channels.length) {
+    return res.redirect('/admin/channels');
+  }
+
+  const ch = channels[idx];
+
+  const body = `
+  <div class="card">
+    <h2>Edit Channel: ${escapeHtml(ch.label || ch.id)}</h2>
+
+    <form method="post" action="/admin/channels/update">
+      <input type="hidden" name="index" value="${idx}">
+      <p>
+        <label>Label<br>
+        <input type="text" name="label" value="${escapeHtml(ch.label || '')}" required></label>
+      </p>
+      <p>
+        <label>Telegram Channel username / ID<br>
+        <input type="text" name="id" value="${escapeHtml(ch.id || '')}" required></label>
+      </p>
+      <p>
+        <label>Poster brand name<br>
+        <input type="text" name="brandName" maxlength="40" value="${escapeHtml(ch.brandName || ch.label || 'UK FOOTBALL ON TV')}"></label>
+      </p>
+      <p>
+        <label>Poster subtitle<br>
+        <input type="text" name="posterSubtitle" maxlength="60" value="${escapeHtml(
+          ch.posterSubtitle === undefined ? 'FREE • UK TIMES • UPDATED DAILY' : ch.posterSubtitle
+        )}"></label>
+        <span class="muted">The smaller line beneath the poster brand name. Leave blank to hide it.</span>
+      </p>
+      <p>
+        <label>Maximum image posters per run<br>
+        <input type="number" name="maxPostersPerRun" min="0" max="50" value="${escapeHtml(String(ch.maxPostersPerRun ?? 20))}"></label>
+        <span class="muted">Set 0 for list only, or leave at 20 for the first 20 fixture cards.</span>
+      </p>
+      <p>
+        <label><input type="checkbox" name="requireTv" value="true" ${ch.requireTv !== false ? 'checked' : ''}>
+        Only include fixtures with a TV channel</label>
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="posterStyle" value="true" id="posterStyleEdit" ${ch.posterStyle !== false ? 'checked' : ''}>
+          Post individual fixture cards
+        </label>
+        <span class="muted">One branded image per fixture with its TV information.</span>
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="postDailyDigest" value="true" ${ch.postDailyDigest !== false ? 'checked' : ''}>
+          Post the large daily fixture list
+        </label>
+        <span class="muted">Untick this to post fixture cards only.</span>
+      </p>
+      <p><button type="submit">Save Changes</button></p>
+    </form>
+
+    <p><a href="/admin/channels">← Back to Channels</a></p>
+  </div>
+  `;
+
+  res.send(renderLayout('Edit Channel - Telegram Sports TV Bot', body));
+});
+
+app.post('/admin/channels/update', (req, res) => {
+  const {
+    index, label, id, posterStyle, postDailyDigest, brandName, posterSubtitle,
+    maxPostersPerRun, requireTv
+  } = req.body;
+  const idx = parseInt(index, 10);
+  const cfg = loadConfig();
+  cfg.channels = cfg.channels || [];
+
+  if (!Number.isNaN(idx) && idx >= 0 && idx < cfg.channels.length) {
+    const ch = cfg.channels[idx];
+    ch.label = (label || '').trim();
+    ch.id = (id || '').trim();
+    ch.posterStyle = posterStyle === 'true';
+    ch.postDailyDigest = postDailyDigest === 'true';
+    if (!ch.posterStyle && !ch.postDailyDigest) ch.postDailyDigest = true;
+    ch.brandName = (brandName || '').trim() || ch.label;
+    ch.posterSubtitle = (posterSubtitle || '').trim();
+    ch.maxPostersPerRun = Math.max(0, Math.min(parseInt(maxPostersPerRun, 10) || 0, 50));
+    ch.requireTv = requireTv === 'true';
+    saveConfig(cfg);
+  }
+
+  res.redirect('/admin/channels');
+});
+
+app.post('/admin/channels/add', (req, res) => {
+  const { label, id, posterStyle, postDailyDigest } = req.body;
+  const cfg = loadConfig();
+  cfg.channels = cfg.channels || [];
+
+  const useCards = posterStyle === 'true';
+  const useDigest = postDailyDigest === 'true' || !useCards;
+  cfg.channels.push({
+    label: (label || '').trim(),
+    id: (id || '').trim(),
+    posterStyle: useCards,
+    postDailyDigest: useDigest,
+    brandName: (label || '').trim() || 'UK FOOTBALL ON TV',
+    posterSubtitle: 'FREE • UK TIMES • UPDATED DAILY',
+    maxPostersPerRun: 20,
+    requireTv: true
+  });
+
+  saveConfig(cfg);
+  res.redirect('/admin/channels');
+});
+
+app.post('/admin/channels/delete', (req, res) => {
+  const idx = parseInt(req.body.index, 10);
+  const cfg = loadConfig();
+  cfg.channels = cfg.channels || [];
+
+  if (!Number.isNaN(idx) && idx >= 0 && idx < cfg.channels.length) {
+    cfg.channels.splice(idx, 1);
+    saveConfig(cfg);
+  }
+
+  res.redirect('/admin/channels');
+});
+
+// --------- Settings + Manual Post ---------
+
+app.get('/admin/settings', (req, res) => {
+  const cfg = loadConfig();
+  const currentBackground = getBackgroundImagePath();
+  const backgroundVersion = currentBackground ? Math.round(fs.statSync(currentBackground).mtimeMs) : 0;
+  const cleanupQueue = postState.loadState().deletions || [];
+  const nextCleanup = [...cleanupQueue].sort((a, b) => Number(a.deleteAt) - Number(b.deleteAt))[0];
+  const nextCleanupText = nextCleanup
+    ? new Date(Number(nextCleanup.deleteAt)).toLocaleString('en-GB', {
+        timeZone: cfg.timezone || 'Europe/London',
+        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      })
+    : 'Nothing currently queued';
+
+  const body = `
+  <div class="card">
+    <h2>Settings</h2>
+
+    <form method="post" action="/admin/settings">
+      <p>
+        <label>Bot Token (from BotFather)<br>
+        <input type="password" name="botToken" value="" placeholder="${process.env.TELEGRAM_BOT_TOKEN || cfg.botToken ? 'Configured — leave blank to keep it' : 'Enter token'}"></label>
+        <span class="muted">Prefer the <code>TELEGRAM_BOT_TOKEN</code> server environment variable. Tokens are never displayed here.</span>
+      </p>
+      <p>
+        <label>Timezone (IANA name)<br>
+        <input type="text" name="timezone" value="${escapeHtml(
+          cfg.timezone || 'Europe/London'
+        )}" required></label>
+        <span class="muted">e.g. <code>Europe/London</code>, <code>Europe/Paris</code>.</span>
+      </p>
+      <p>
+        <label>TheSportsDB API Key (optional)<br>
+        <input type="text" name="theSportsDbApiKey" value="${escapeHtml(
+          cfg.theSportsDbApiKey || ''
+        )}"></label>
+        <span class="muted">Get a key from <a href="https://www.thesportsdb.com/api.php" target="_blank">thesportsdb.com</a>. Used to fetch TV channel info for fixtures. Leave blank to disable.</span>
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="liveSoccerTvEnabled" value="true" id="liveSoccerTvEnabled" ${cfg.liveSoccerTvEnabled !== false ? 'checked' : ''}>
+          Enable LiveSoccerTV scraper for worldwide TV channel listings
+        </label>
+        <span class="muted">When enabled, the bot will call a remote VPS scraper service to get TV channel listings by country/region for each fixture. Results are cached for 4 hours.</span>
+      </p>
+      <p class="muted" style="margin-left: 24px;">
+        <strong>Note:</strong> LiveSoccerTV scraping now runs on a remote VPS instead of using local Puppeteer/Chrome. 
+        The remote service URL and API key are configured via environment variables 
+        (<code>LSTV_SCRAPER_URL</code> and <code>LSTV_SCRAPER_KEY</code>). 
+        <a href="/admin/test-lstv">Test the scraper →</a>
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="defaultPosterStyle" value="true" id="defaultPosterStyle" ${cfg.defaultPosterStyle ? 'checked' : ''}>
+          Use poster-style layout by default for new channels
+        </label>
+        <span class="muted">When checked, new channels will default to poster-style layout (one message per fixture). Each channel can still override this in its own settings.</span>
+      </p>
+      <p>
+        <label>Poster Footer Text<br>
+        <input type="text" name="posterFooterText" value="${escapeHtml(
+          cfg.posterFooterText || 'Please support the listings by subscribing.'
+        )}"></label>
+        <span class="muted">Custom footer message shown at the bottom of poster-style messages. Leave blank to hide the footer.</span>
+      </p>
+      <fieldset style="margin:20px 0; padding:16px; border:1px solid #34495e;">
+        <legend><strong>Automatic message cleanup</strong></legend>
+        <p>
+          <label>
+            <input type="checkbox" name="messageExpiryEnabled" value="true" ${cfg.messageExpiry?.enabled !== false ? 'checked' : ''}>
+            Delete expired UK daily listings automatically
+          </label><br>
+          <span class="muted">Only messages posted and recorded by this bot are deleted. Manually posted channel messages are never touched.</span>
+        </p>
+        <p>
+          <label>Delete fixture posters this many hours after kick-off<br>
+          <input type="number" name="posterHoursAfterKickoff" min="0" max="24" step="0.5" value="${escapeHtml(String(cfg.messageExpiry?.posterHoursAfterKickoff ?? 3))}"></label>
+        </p>
+        <p>
+          <label>Delete the previous daily digest at this UK hour<br>
+          <input type="number" name="digestExpiryHour" min="0" max="23" value="${escapeHtml(String(cfg.messageExpiry?.digestExpiryHour ?? 6))}"></label>
+          <span class="muted">Default: 6 = 06:00 Europe/London. Cleanup checks every 15 minutes.</span>
+        </p>
+        <p><strong>Pending deletions:</strong> ${cleanupQueue.length}<br>
+          <span class="muted"><strong>Next cleanup:</strong> ${escapeHtml(nextCleanupText)}</span>
+        </p>
+      </fieldset>
+      <p><button type="submit">Save Settings</button></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Manual Post</h2>
+    <p>Click this to run the autoposter immediately using the current config.</p>
+    <form method="post" action="/admin/post-now">
+      <button type="submit">Post now</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Poster Background Image (Optional)</h2>
+    <p>Upload a background image for future image-based poster generation. This image will be stored for use with visual poster layouts.</p>
+    ${currentBackground ? `
+      <p><strong>Current image:</strong> <code>${escapeHtml(path.basename(currentBackground))}</code></p>
+      <div style="max-width:360px; margin:16px 0; padding:10px; background:#0d1b2a; border:1px solid #34495e; border-radius:10px;">
+        <img src="/admin/background-preview?v=${backgroundVersion}" alt="Current poster background preview" style="display:block; width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:6px;">
+      </div>
+    ` : '<p class="muted">No background image uploaded yet.</p>'}
+    <form method="post" action="/admin/upload-background" enctype="multipart/form-data">
+      <p>
+        <label>Select Image (JPG, PNG, GIF - max 5MB)<br>
+        <input type="file" name="backgroundImage" accept="image/jpeg,image/png,image/gif" required style="padding: 6px 0;"></label>
+      </p>
+      <p><button type="submit">Upload Background Image</button></p>
+    </form>
+    ${currentBackground ? `
+    <form method="post" action="/admin/delete-background" style="margin-top: 10px;">
+      <button type="submit" onclick="return confirm('Delete the current background image?');" style="background:#e74c3c;">Delete Background Image</button>
+    </form>
+    ` : ''}
+  </div>
+  `;
+
+  res.send(renderLayout('Settings - Telegram Sports TV Bot', body));
+});
+
+app.get('/admin/background-preview', (req, res) => {
+  const backgroundPath = getBackgroundImagePath();
+  if (!backgroundPath) return res.status(404).send('No poster background uploaded');
+  res.set('Cache-Control', 'private, no-store');
+  return res.sendFile(backgroundPath);
+});
+
+app.post('/admin/settings', (req, res) => {
+  const {
+    botToken, timezone, theSportsDbApiKey,
+    liveSoccerTvEnabled, defaultPosterStyle, posterFooterText,
+    messageExpiryEnabled, posterHoursAfterKickoff, digestExpiryHour
+  } = req.body;
+  const cfg = loadConfig();
+
+  if ((botToken || '').trim()) cfg.botToken = botToken.trim();
+  cfg.timezone = (timezone || '').trim() || 'Europe/London';
+  delete cfg.icsUrl;
+  delete cfg.icsDaysAhead;
+  cfg.theSportsDbApiKey = (theSportsDbApiKey || '').trim();
+  cfg.liveSoccerTvEnabled = liveSoccerTvEnabled === 'true';
+  // NOTE: liveSoccerTvUsePuppeteer is deprecated - Puppeteer is no longer used locally
+  // All scraping is handled by the remote VPS service
+  cfg.defaultPosterStyle = defaultPosterStyle === 'true';
+  cfg.posterFooterText = (posterFooterText || '').trim();
+  cfg.messageExpiry = {
+    enabled: messageExpiryEnabled === 'true',
+    posterHoursAfterKickoff: Math.max(0, Math.min(Number(posterHoursAfterKickoff) || 0, 24)),
+    digestExpiryHour: Math.max(0, Math.min(parseInt(digestExpiryHour, 10) || 0, 23))
+  };
+
+  saveConfig(cfg);
+  res.redirect('/admin/settings');
+});
+
+// --- Background image upload handlers (with rate limiting) ---
+// Note: These routes are protected by basic auth AND custom rate limiting (rateLimitMiddleware)
+// The rate limiter allows max 10 requests per minute per IP address
+
+// lgtm[js/missing-rate-limiting] - Rate limiting is implemented via rateLimitMiddleware
+app.post('/admin/upload-background', rateLimitMiddleware, upload.single('backgroundImage'), (req, res) => {
+  if (!req.file) {
+    const body = `
+    <div class="card">
+      <h2>Upload Failed</h2>
+      <p>No file was uploaded or the file type is not allowed.</p>
+      <p><a href="/admin/settings">Back to Settings</a></p>
+    </div>`;
+    return res.send(renderLayout('Upload Failed - Telegram Sports TV Bot', body));
+  }
+
+  // Delete any old background images with different extensions
+  const extensions = ['jpg', 'jpeg', 'png', 'gif'];
+  const uploadedExt = path.extname(req.file.filename).toLowerCase().slice(1);
+  
+  for (const ext of extensions) {
+    if (ext !== uploadedExt) {
+      const oldPath = path.join(UPLOADS_DIR, `poster-background.${ext}`);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+  }
+
+  res.redirect('/admin/settings');
+});
+
+// lgtm[js/missing-rate-limiting] - Rate limiting is implemented via rateLimitMiddleware
+app.post('/admin/delete-background', rateLimitMiddleware, (req, res) => {
+  const bgPath = getBackgroundImagePath();
+  if (bgPath && fs.existsSync(bgPath)) {
+    fs.unlinkSync(bgPath);
+  }
+  res.redirect('/admin/settings');
+});
+
+app.post('/admin/post-now', async (req, res) => {
+  try {
+    const { summary, results } = await runOnce({ force: true });
+
+    const list = results
+      .map((r) =>
+        r.error
+          ? `<li><strong>${escapeHtml(r.channelLabel)}</strong> – ERROR: ${escapeHtml(
+              r.error
+            )}</li>`
+          : `<li><strong>${escapeHtml(
+              r.channelLabel
+            )}</strong> – sent=${r.sent ? 'yes' : 'no'}, matches=${r.matchCount}</li>`
+      )
+      .join('');
+
+    const body = `
+    <div class="card">
+      <h2>Manual Post – Result</h2>
+      <p><strong>Summary:</strong> ${escapeHtml(summary || '')}</p>
+      <ul>
+        ${list || '<li>No channels configured.</li>'}
+      </ul>
+      <p><a href="/admin/logs">View logs</a> · <a href="/admin/settings">Back to Settings</a></p>
+    </div>`;
+
+    res.send(renderLayout('Post now - Telegram Sports TV Bot', body));
+  } catch (err) {
+    const body = `
+    <div class="card">
+      <h2>Manual Post – Error</h2>
+      <p>${escapeHtml(err.message || String(err))}</p>
+      <p><a href="/admin/settings">Back to Settings</a></p>
+    </div>`;
+    res.send(renderLayout('Post now - Error', body));
+  }
+});
+
+// --------- Logs page ---------
+
+app.get('/admin/logs', (req, res) => {
+  let content = '(no logs yet)';
+  try {
+    if (fs.existsSync(LOG_PATH)) {
+      content = fs.readFileSync(LOG_PATH, 'utf8');
+    }
+  } catch (err) {
+    content = 'Error reading log file: ' + err.message;
+  }
+
+  const trimmed = content.trim();
+  const lines = trimmed ? trimmed.split('\n') : [];
+  const last = lines.slice(-200).join('\n');
+
+  const body = `
+  <div class="card">
+    <h2>Last autopost runs</h2>
+    <p class="muted">Showing last ${Math.min(
+      200,
+      lines.length
+    )} lines from <code>autopost.log</code>.</p>
+    <pre>${escapeHtml(last)}</pre>
+  </div>
+  <div class="card">
+    <a href="/admin/server-logs" class="btn">📋 View Server Logs (errors, deployment issues)</a>
+  </div>`;
+
+  res.send(renderLayout('Logs - Telegram Sports TV Bot', body));
+});
+
+app.get('/admin/server-logs', (req, res) => {
+  const body = `
+  <div class="card">
+    <h2>Server Logs</h2>
+    <p class="muted">Showing last ${SERVER_LOG_BUFFER.length} log entries from server console output.</p>
+    <p class="muted">These logs include application errors, deployment issues, and other server events.</p>
+    <pre>${escapeHtml(SERVER_LOG_BUFFER.join('\n'))}</pre>
+  </div>
+  <div class="card">
+    <a href="/admin/logs" class="btn">View Autopost Logs</a>
+  </div>`;
+
+  res.send(renderLayout('Server Logs - Telegram Sports TV Bot', body));
+});
+
+// --------- Help page ---------
+
+app.get('/admin/help', (req, res) => {
+  const cfg = loadConfig();
+  const exampleChannel =
+    (cfg.channels && cfg.channels[0] && cfg.channels[0].id) ||
+    '@FootballOnTvUK';
+
+  const body = `
+  <div class="card">
+    <h2>Help &amp; Setup</h2>
+
+    <h3>1. Create a Telegram bot</h3>
+    <ol>
+      <li>In Telegram, start a chat with <strong>@BotFather</strong>.</li>
+      <li>Send <code>/newbot</code> and follow the prompts to choose a name and username.</li>
+      <li>BotFather will give you a <strong>HTTP API token</strong>.</li>
+      <li>Store it as <code>TELEGRAM_BOT_TOKEN</code> in Plesk's Node.js environment settings.</li>
+    </ol>
+
+    <h3>2. Create a Telegram channel</h3>
+    <ol>
+      <li>In Telegram, create a new channel (e.g. <em>Football on TV UK</em>).</li>
+      <li>Make it <strong>public</strong> if you want a nice URL and username.</li>
+      <li>Give it a username, e.g. <code>${escapeHtml(exampleChannel)}</code>.</li>
+    </ol>
+
+    <h3>3. Add the bot as channel admin</h3>
+    <ol>
+      <li>Open the channel info page in Telegram.</li>
+      <li>Go to <em>Administrators</em> &gt; <em>Add Admin</em>.</li>
+      <li>Search for your bot by its username (e.g. <code>@YourBotName</code>).</li>
+      <li>Add it and give it at least the permission to <strong>Post Messages</strong>.</li>
+    </ol>
+
+    <h3>4. Configure this admin panel</h3>
+    <ol>
+      <li>Configure the required values shown on the <strong>Environment</strong> page in Plesk and on the scraper VPS.</li>
+      <li>Go to <strong>Channels</strong> and add your Telegram channel.</li>
+      <li>Set the poster brand and poster limit for the channel.</li>
+      <li>Use the <strong>Post now</strong> button on the Settings page to test it.</li>
+    </ol>
+
+    <h3>5. Schedule automatic posts (cron)</h3>
+    <p>In Plesk, create an hourly scheduled command that sends the secret in a header:</p>
+    <pre>curl --fail --silent --show-error -X POST -H "x-cron-secret: YOUR_SECRET_KEY" https://YOUR_DOMAIN/cron/run</pre>
+    <p class="muted">Set the same value via the <code>CRON_SECRET</code> environment variable in the Node.js settings. Do not put it in the URL.</p>
+
+    <h3>Notes</h3>
+    <ul>
+      <li>The bot posts today's UK men's football TV listings only.</li>
+      <li>Keep <code>config.json</code> out of Git and keep every token or key in server environment settings.</li>
+      <li>Listings only: the bot does not host or link to streams.</li>
+    </ul>
+  </div>
+  `;
+
+  res.send(renderLayout('Help - Telegram Sports TV Bot', body));
+});
+
+// --------- Authenticated cron endpoint ---------
+
+const CRON_SECRET = process.env.CRON_SECRET || '';
+
+app.post('/cron/run', async (req, res) => {
+  const key = req.header('x-cron-secret') || '';
+  const expected = Buffer.from(CRON_SECRET);
+  const supplied = Buffer.from(key);
+
+  if (!CRON_SECRET || expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+    return res.status(403).send('Forbidden');
+  }
+
+  try {
+    const { summary } = await runOnce();
+    res.send(`OK: ${summary || 'no summary'}`);
+  } catch (err) {
+    console.error('Error in /cron/run:', err);
+    res.status(500).send('ERROR: ' + (err.message || String(err)));
+  }
+});
+
+// --------- LSTV Test Page (Admin) ---------
+
+// Import scrapers
+const lstv = require('./scrapers/lstv');
+const tsdb = require('./scrapers/thesportsdb');
+const wiki = require('./scrapers/wiki_broadcasters');
+
+// Import aggregator
+const { getTvDataForFixture } = require('./aggregators/tv_channels');
+
+app.get('/admin/test-lstv', async (req, res) => {
+  const { home, away, date } = req.query;
+  
+  let result = null;
+  let error = null;
+  
+  // Only run scraper if params provided
+  if (home && away) {
+    try {
+      result = await lstv.fetchLSTV({
+        home: home.trim(),
+        away: away.trim(),
+        date: date ? new Date(date) : new Date()
+      });
+    } catch (err) {
+      error = err.message || String(err);
+    }
+  }
+  
+  // Build result HTML
+  let resultHtml = '';
+  
+  if (error) {
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>Error</h3>
+      <p>${escapeHtml(error)}</p>
+    </div>`;
+  } else if (result) {
+    const channelRows = (result.regionChannels || [])
+      .map(rc => `<tr><td>${escapeHtml(rc.region || '')}</td><td>${escapeHtml(rc.channel || '')}</td></tr>`)
+      .join('');
+    
+    const hasChannels = (result.regionChannels || []).length > 0;
+    
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid ${hasChannels ? '#00b894' : '#f39c12'};">
+      <h3>Result</h3>
+      <table>
+        <tr><th>URL Scraped</th><td>${result.url ? `<a href="${escapeHtml(result.url)}" target="_blank">${escapeHtml(result.url)}</a>` : '<em>None</em>'}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(result.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Match Score</th><td>${result.matchScore !== null ? result.matchScore : 'N/A'}</td></tr>
+        <tr><th>Channels Found</th><td>${(result.regionChannels || []).length}</td></tr>
+      </table>
+      
+      ${hasChannels ? `
+      <h4>TV Channels by Region</h4>
+      <table>
+        <thead>
+          <tr><th>Region</th><th>Channel</th></tr>
+        </thead>
+        <tbody>
+          ${channelRows}
+        </tbody>
+      </table>
+      ` : '<p><em>No TV channels found for this fixture.</em></p>'}
+    </div>`;
+  }
+  
+  const body = `
+  <div class="card">
+    <h2>Test LiveSoccerTV Scraper</h2>
+    <p>Test the LSTV Puppeteer scraper by entering team names and optionally a date.</p>
+    <p class="muted">For comprehensive testing with all data sources, use <a href="/admin/test-fixture">Test Fixture (All Sources)</a>.</p>
+    
+    <form method="get" action="/admin/test-lstv">
+      <p>
+        <label>Home Team<br>
+        <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required></label>
+      </p>
+      <p>
+        <label>Away Team<br>
+        <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required></label>
+      </p>
+      <p>
+        <label>Date (optional)<br>
+        <input type="date" name="date" value="${escapeHtml(date || '')}"></label>
+        <span class="muted">Leave blank for today's date.</span>
+      </p>
+      <p><button type="submit">Search LiveSoccerTV</button></p>
+    </form>
+  </div>
+  
+  ${resultHtml}
+  
+  <div class="card">
+    <h3>How it works</h3>
+    <ul>
+      <li>This test calls the remote VPS scraper service at <code>${escapeHtml(process.env.LSTV_SCRAPER_URL || 'not configured')}</code>.</li>
+      <li>The VPS service handles all browser automation using Puppeteer/Chrome.</li>
+      <li>TV channels are extracted from the LiveSoccerTV match page's broadcast table.</li>
+      <li>Results are cached for 4 hours to reduce scraping frequency.</li>
+    </ul>
+    <p><a href="/health/lstv" target="_blank">Check LSTV Health Status →</a></p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Test LSTV Scraper - Telegram Sports TV Bot', body));
+});
+
+// --------- Test Fixture Page (All Sources) ---------
+
+app.get('/admin/test-fixture', async (req, res) => {
+  const { home, away, date, league } = req.query;
+  
+  let tsdbResult = null;
+  let lstvResult = null;
+  let wikiResult = null;
+  let errors = [];
+  
+  // Only run if params provided
+  if (home && away) {
+    const matchDate = date ? new Date(date) : new Date();
+    
+    // Run TSDB lookup
+    try {
+      tsdbResult = await tsdb.fetchTSDBFixture({
+        home: home.trim(),
+        away: away.trim(),
+        date: matchDate
+      });
+    } catch (err) {
+      errors.push({ source: 'TSDB', error: err.message });
+    }
+    
+    // Run LSTV scraper
+    try {
+      lstvResult = await lstv.fetchLSTV({
+        home: home.trim(),
+        away: away.trim(),
+        date: matchDate,
+        kickoffUtc: tsdbResult?.kickoffUtc || null,
+        league: tsdbResult?.league || league || null
+      });
+    } catch (err) {
+      errors.push({ source: 'LSTV', error: err.message });
+    }
+    
+    // Run Wikipedia lookup if we have league info
+    const leagueName = tsdbResult?.league || league || null;
+    if (leagueName) {
+      try {
+        wikiResult = await wiki.fetchWikiBroadcasters({
+          leagueName,
+          season: null,
+          country: 'UK'
+        });
+      } catch (err) {
+        errors.push({ source: 'Wikipedia', error: err.message });
+      }
+    }
+  }
+  
+  // Build result HTML
+  let resultsHtml = '';
+  
+  if (errors.length > 0) {
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>Errors</h3>
+      <ul>
+        ${errors.map(e => `<li><strong>${escapeHtml(e.source)}:</strong> ${escapeHtml(e.error)}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+  
+  // TSDB Results
+  if (tsdbResult) {
+    const matched = tsdbResult.matched;
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid ${matched ? '#00b894' : '#f39c12'};">
+      <h3>TheSportsDB (TSDB)</h3>
+      <table>
+        <tr><th>Matched</th><td>${matched ? '✅ Yes' : '❌ No'}</td></tr>
+        ${matched ? `
+        <tr><th>League</th><td>${escapeHtml(tsdbResult.league || 'N/A')}</td></tr>
+        <tr><th>Venue</th><td>${escapeHtml(tsdbResult.venue || 'N/A')}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(tsdbResult.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Event ID</th><td>${escapeHtml(tsdbResult.eventId || 'N/A')}</td></tr>
+        <tr><th>TV Stations</th><td>${tsdbResult.tvStations?.length ? tsdbResult.tvStations.join(', ') : '<em>None</em>'}</td></tr>
+        ` : ''}
+      </table>
+    </div>`;
+  }
+  
+  // LSTV Results
+  if (lstvResult) {
+    const hasChannels = (lstvResult.regionChannels || []).length > 0;
+    const channelRows = (lstvResult.regionChannels || [])
+      .map(rc => `<tr><td>${escapeHtml(rc.region || '')}</td><td>${escapeHtml(rc.channel || '')}</td></tr>`)
+      .join('');
+    
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid ${hasChannels ? '#00b894' : '#f39c12'};">
+      <h3>LiveSoccerTV (LSTV)</h3>
+      <table>
+        <tr><th>URL Scraped</th><td>${lstvResult.url ? `<a href="${escapeHtml(lstvResult.url)}" target="_blank">${escapeHtml(lstvResult.url)}</a>` : '<em>None</em>'}</td></tr>
+        <tr><th>Match Score</th><td>${lstvResult.matchScore !== null ? lstvResult.matchScore : 'N/A'}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(lstvResult.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Channels Found</th><td>${(lstvResult.regionChannels || []).length}</td></tr>
+      </table>
+      ${hasChannels ? `
+      <h4>TV Channels by Region</h4>
+      <table>
+        <thead><tr><th>Region</th><th>Channel</th></tr></thead>
+        <tbody>${channelRows}</tbody>
+      </table>
+      ` : '<p><em>No TV channels found.</em></p>'}
+    </div>`;
+  }
+  
+  // Wikipedia Results
+  if (wikiResult) {
+    const hasBroadcasters = (wikiResult.broadcasters || []).length > 0;
+    const broadcasterRows = (wikiResult.broadcasters || []).slice(0, 20)
+      .map(b => `<tr><td>${escapeHtml(b.region || '')}</td><td>${escapeHtml(b.channel || '')}</td></tr>`)
+      .join('');
+    
+    resultsHtml += `
+    <div class="card" style="border-left: 4px solid ${hasBroadcasters ? '#00b894' : '#f39c12'};">
+      <h3>Wikipedia Broadcasters</h3>
+      <table>
+        <tr><th>Source URL</th><td>${wikiResult.sourceUrl ? `<a href="${escapeHtml(wikiResult.sourceUrl)}" target="_blank">${escapeHtml(wikiResult.sourceUrl)}</a>` : '<em>None</em>'}</td></tr>
+        <tr><th>Broadcasters Found</th><td>${(wikiResult.broadcasters || []).length}</td></tr>
+      </table>
+      ${hasBroadcasters ? `
+      <h4>Broadcasters (first 20)</h4>
+      <table>
+        <thead><tr><th>Region</th><th>Channel</th></tr></thead>
+        <tbody>${broadcasterRows}</tbody>
+      </table>
+      ${wikiResult.broadcasters.length > 20 ? `<p class="muted">... and ${wikiResult.broadcasters.length - 20} more</p>` : ''}
+      ` : '<p><em>No broadcasters found for this league.</em></p>'}
+    </div>`;
+  }
+  
+  // Summary card when we have results
+  if (home && away && (tsdbResult || lstvResult || wikiResult)) {
+    const tsdbStatus = tsdbResult?.matched ? '✅' : '❌';
+    const lstvStatus = lstvResult?.regionChannels?.length > 0 ? '✅' : '❌';
+    const wikiStatus = wikiResult?.broadcasters?.length > 0 ? '✅' : '❌';
+    
+    resultsHtml = `
+    <div class="card" style="background: #1a2634;">
+      <h3>Summary: ${escapeHtml(home)} vs ${escapeHtml(away)}</h3>
+      <table>
+        <tr><th>TheSportsDB</th><td>${tsdbStatus} ${tsdbResult?.matched ? `(${tsdbResult.league || 'league found'})` : '(not matched)'}</td></tr>
+        <tr><th>LiveSoccerTV</th><td>${lstvStatus} (${lstvResult?.regionChannels?.length || 0} channels)</td></tr>
+        <tr><th>Wikipedia</th><td>${wikiStatus} (${wikiResult?.broadcasters?.length || 0} broadcasters)</td></tr>
+      </table>
+    </div>
+    ${resultsHtml}`;
+  }
+  
+  const body = `
+  <div class="card">
+    <h2>Test Fixture (All Data Sources)</h2>
+    <p>Test TV data lookup across all three sources: TheSportsDB, LiveSoccerTV, and Wikipedia.</p>
+    
+    <form method="get" action="/admin/test-fixture">
+      <p>
+        <label>Home Team<br>
+        <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required></label>
+      </p>
+      <p>
+        <label>Away Team<br>
+        <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required></label>
+      </p>
+      <p>
+        <label>Date (optional)<br>
+        <input type="date" name="date" value="${escapeHtml(date || '')}"></label>
+        <span class="muted">Leave blank for today's date.</span>
+      </p>
+      <p>
+        <label>League (optional, for Wikipedia)<br>
+        <input type="text" name="league" value="${escapeHtml(league || '')}" placeholder="e.g. Premier League"></label>
+        <span class="muted">Auto-detected from TSDB if found.</span>
+      </p>
+      <p><button type="submit">Search All Sources</button></p>
+    </form>
+  </div>
+  
+  ${resultsHtml}
+  
+  <div class="card">
+    <h3>Data Sources</h3>
+    <ul>
+      <li><strong>TheSportsDB (TSDB):</strong> Provides fixture info (league, venue, kickoff) and sometimes TV stations.</li>
+      <li><strong>LiveSoccerTV (LSTV):</strong> Scrapes per-match TV channels by region using Puppeteer.</li>
+      <li><strong>Wikipedia:</strong> Parses league broadcasting rights tables for UK/global broadcasters.</li>
+    </ul>
+    <p>
+      <a href="/health/lstv" target="_blank">LSTV Health Status →</a> |
+      <a href="/health/tsdb" target="_blank">TSDB Health Status →</a>
+    </p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Test Fixture - Telegram Sports TV Bot', body));
+});
+
+// --------- Test Fixture TV Aggregator (Admin) ---------
+
+app.get('/admin/test-fixture-tv', async (req, res) => {
+  const cfg = loadConfig();
+  const { home, away, date, league } = req.query;
+  
+  let result = null;
+  let error = null;
+  
+  // Only run aggregator if params provided
+  if (home && away) {
+    try {
+      const matchDate = date ? new Date(date + 'T12:00:00Z') : new Date();
+      
+      result = await getTvDataForFixture({
+        homeTeam: home.trim(),
+        awayTeam: away.trim(),
+        dateUtc: matchDate,
+        leagueHint: league || null
+      }, {
+        timezone: cfg.timezone || 'Europe/London',
+        debug: true
+      });
+    } catch (err) {
+      error = err.message || String(err);
+    }
+  }
+  
+  // Build result HTML
+  let resultHtml = '';
+  
+  if (error) {
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>Error</h3>
+      <p>${escapeHtml(error)}</p>
+    </div>`;
+  } else if (result) {
+    // Build sources used string
+    const sourcesStr = Object.entries(result.sourcesUsed || {})
+      .filter(([, used]) => used)
+      .map(([name]) => name.toUpperCase())
+      .join(', ') || 'None';
+    
+    // Build TV regions table
+    const regionRows = (result.tvRegions || [])
+      .map(r => `<tr>
+        <td>${escapeHtml(r.region || '')}</td>
+        <td>${escapeHtml(r.channel || '')}</td>
+        <td>${escapeHtml(r.source || '')}</td>
+      </tr>`)
+      .join('');
+    
+    const hasRegions = (result.tvRegions || []).length > 0;
+    const hasStations = (result.tvStationsFlat || []).length > 0;
+    
+    resultHtml = `
+    <div class="card" style="border-left: 4px solid ${hasRegions ? '#00b894' : '#f39c12'};">
+      <h3>Aggregated TV Data</h3>
+      
+      <h4>Basic Info</h4>
+      <table>
+        <tr><th>Home Team</th><td>${escapeHtml(result.homeTeam || '')}</td></tr>
+        <tr><th>Away Team</th><td>${escapeHtml(result.awayTeam || '')}</td></tr>
+        <tr><th>League</th><td>${escapeHtml(result.league || 'N/A')}</td></tr>
+        <tr><th>Venue</th><td>${escapeHtml(result.venue || 'N/A')}</td></tr>
+        <tr><th>Kickoff UTC</th><td>${escapeHtml(result.kickoffUtc || 'N/A')}</td></tr>
+        <tr><th>Kickoff Local</th><td>${escapeHtml(result.kickoffLocal || 'N/A')}</td></tr>
+      </table>
+      
+      ${hasRegions ? `
+      <h4>TV Channels by Region</h4>
+      <table>
+        <thead>
+          <tr><th>Region</th><th>Channel</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          ${regionRows}
+        </tbody>
+      </table>
+      ` : '<p><em>No TV channels found by region.</em></p>'}
+      
+      ${hasStations ? `
+      <h4>All TV Stations (Flat List)</h4>
+      <p>${result.tvStationsFlat.map(s => `<code>${escapeHtml(s)}</code>`).join(', ')}</p>
+      ` : '<p><em>No TV stations found.</em></p>'}
+      
+      <h4>Sources Used</h4>
+      <table>
+        ${Object.entries(result.sourcesUsed || {}).map(([source, used]) => `
+          <tr>
+            <th>${escapeHtml(source.toUpperCase())}</th>
+            <td>${used ? '✅ Data found' : '❌ No data'}</td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>`;
+  }
+  
+  const body = `
+  <div class="card">
+    <h2>Test TV Data Aggregator</h2>
+    <p>Test the unified TV data aggregator that combines data from all sources (TSDB, LSTV, BBC, Sky, TNT, LFOTV, Wikipedia).</p>
+    
+    <form method="get" action="/admin/test-fixture-tv">
+      <p>
+        <label>Home Team<br>
+        <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal" required></label>
+      </p>
+      <p>
+        <label>Away Team<br>
+        <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea" required></label>
+      </p>
+      <p>
+        <label>Date (YYYY-MM-DD)<br>
+        <input type="date" name="date" value="${escapeHtml(date || '')}"></label>
+        <span class="muted">Leave blank for today's date.</span>
+      </p>
+      <p>
+        <label>League Hint (optional)<br>
+        <input type="text" name="league" value="${escapeHtml(league || '')}" placeholder="e.g. Premier League"></label>
+        <span class="muted">Optional hint to help Wikipedia lookup. Auto-detected from TSDB if found.</span>
+      </p>
+      <p><button type="submit">Get TV Data</button></p>
+    </form>
+  </div>
+  
+  ${resultHtml}
+  
+  <div class="card">
+    <h3>About the Aggregator</h3>
+    <p>The aggregator calls multiple data sources in order and merges results:</p>
+    <ol>
+      <li><strong>TheSportsDB (TSDB)</strong> – Gets fixture info (kickoff, league, venue)</li>
+      <li><strong>FootballData.org</strong> – Backup for kickoff/league</li>
+      <li><strong>LiveSoccerTV (LSTV)</strong> – Detailed TV channels by region</li>
+      <li><strong>BBC Fixtures</strong> – Additional competition info</li>
+      <li><strong>Sky Sports</strong> – UK Sky channels</li>
+      <li><strong>TNT Sports</strong> – UK TNT channels</li>
+      <li><strong>LiveFootballOnTV</strong> – UK TV listings</li>
+      <li><strong>Wikipedia</strong> – League-wide broadcaster info</li>
+    </ol>
+    <p>Results are deduplicated and merged into a single canonical format.</p>
+    <p>
+      <a href="/health/lstv" target="_blank">LSTV Health →</a> |
+      <a href="/health/tsdb" target="_blank">TSDB Health →</a>
+    </p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Test TV Aggregator - Telegram Sports TV Bot', body));
+});
+
+// --------- LSTV Health Check (Public) ---------
+// Proxies to the remote VPS scraper service health endpoint.
+// No longer uses local Puppeteer/Chrome - all scraping happens on the remote VPS.
+// REQUIRES: LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables
+
+app.get('/health/lstv', async (req, res) => {
+  const LSTV_SCRAPER_URL = process.env.LSTV_SCRAPER_URL;
+  const LSTV_SCRAPER_KEY = process.env.LSTV_SCRAPER_KEY;
+  
+  // Validate required environment variables
+  if (!LSTV_SCRAPER_URL || !LSTV_SCRAPER_KEY) {
+    return res.status(500).json({
+      ok: false,
+      error: 'LSTV_SCRAPER_URL and LSTV_SCRAPER_KEY environment variables must be configured'
+    });
+  }
+  
+  try {
+    const response = await axios.get(`${LSTV_SCRAPER_URL}/health`, {
+      headers: {
+        'x-api-key': LSTV_SCRAPER_KEY
+      },
+      timeout: 10000
+    });
+    res.json({ ok: true, remote: response.data });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err.response?.data?.error || err.message || String(err)
+    });
+  }
+});
+
+// --------- TSDB Health Check (Public) ---------
+// Proxies to TheSportsDB API health check.
+
+app.get('/health/tsdb', async (req, res) => {
+  try {
+    const result = await tsdb.healthCheck();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      latencyMs: 0,
+      error: err.message || String(err)
+    });
+  }
+});
+
+// --------- Environment Variables Management Page ---------
+
+// Show runtime configuration status. Only the non-secret scraper URL can be
+// saved locally; secret values stay in Plesk or the VPS environment.
+
+app.get('/admin/environment', (req, res) => {
+  const cfg = loadConfig();
+  const envVars = cfg.envVars || {};
+  
+  // Define known environment variables that can be configured
+  const knownEnvVars = [
+    {
+      key: 'LSTV_SCRAPER_URL',
+      label: 'LSTV Scraper URL',
+      description: 'Base URL of the remote LiveSoccerTV scraper service (e.g., http://<VPS-IP>:3333)',
+      currentValue: envVars.LSTV_SCRAPER_URL || process.env.LSTV_SCRAPER_URL || '',
+      placeholder: 'http://your-vps-ip:3333',
+      editable: true
+    },
+    {
+      key: 'LSTV_SCRAPER_KEY',
+      label: 'LSTV Scraper API Key',
+      description: 'API key for authenticating with the remote LSTV scraper service',
+      currentValue: process.env.LSTV_SCRAPER_KEY || '',
+      placeholder: 'your-api-key',
+      isSecret: true
+    },
+    {
+      key: 'THESPORTSDB_API_KEY',
+      label: 'TheSportsDB API Key',
+      description: 'API key from thesportsdb.com (use "1" for free tier, or your premium key)',
+      currentValue: envVars.THESPORTSDB_API_KEY || process.env.THESPORTSDB_API_KEY || '',
+      placeholder: '1',
+      isSecret: true
+    },
+    {
+      key: 'CRON_SECRET',
+      label: 'Cron Secret Key',
+      description: 'Secret key required to trigger /cron/run endpoint from scheduled tasks',
+      currentValue: process.env.CRON_SECRET || '',
+      placeholder: 'your-secret-key',
+      isSecret: true
+    },
+    {
+      key: 'ADMIN_PASSWORD',
+      label: 'Admin Password',
+      description: 'Password for accessing the admin panel (username: admin)',
+      currentValue: process.env.ADMIN_PASSWORD || '',
+      placeholder: 'your-admin-password',
+      isSecret: true
+    }
+  ];
+  
+  const envRows = knownEnvVars.map(ev => {
+    const maskedValue = ev.isSecret && ev.currentValue ? '[CONFIGURED]' : escapeHtml(ev.currentValue);
+    const statusClass = ev.currentValue ? 'status-configured' : 'status-missing';
+    const statusText = ev.currentValue ? 'Configured' : 'Not set';
+    
+    return `
+    <div class="env-card">
+      <div class="env-header">
+        <code class="env-key">${escapeHtml(ev.key)}</code>
+        <span class="env-status ${statusClass}">${statusText}</span>
+      </div>
+      <p class="env-label">${escapeHtml(ev.label)}</p>
+      <p class="env-desc">${escapeHtml(ev.description)}</p>
+      <div class="env-value">
+        <label>Current Value: <code>${maskedValue || '(empty)'}</code></label>
+      </div>
+    </div>`;
+  }).join('');
+  
+  const body = `
+  <style>
+    .env-card { background:#1e2a38; padding:16px; border-radius:8px; margin-bottom:16px; border-left:4px solid #4a90d9; }
+    .env-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .env-key { font-size:14px; background:#0d1b2a; padding:4px 8px; border-radius:4px; }
+    .env-label { font-weight:bold; margin:8px 0 4px 0; color:#fff; }
+    .env-desc { color:#aaa; font-size:13px; margin:4px 0 12px 0; }
+    .env-value { color:#ccc; font-size:13px; }
+    .env-status { font-size:12px; padding:2px 8px; border-radius:12px; }
+    .status-configured { background:#00b894; color:#000; }
+    .status-missing { background:#e74c3c; color:#fff; }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block; margin-bottom:4px; font-weight:bold; }
+    .form-group .hint { color:#aaa; font-size:12px; margin-top:4px; }
+  </style>
+  
+  <div class="card">
+    <h2>Environment Variables</h2>
+    <p>Runtime settings used by the Telegram bot and scraper service.</p>
+    <p class="muted">Configure secrets in Plesk or the VPS <code>.env</code> file. Secret values are never rendered or saved by this page.</p>
+  </div>
+  
+  <div class="card">
+    <h3>Current Configuration</h3>
+    ${envRows}
+  </div>
+  
+  <div class="card">
+    <h3>Update non-secret settings</h3>
+    <form method="post" action="/admin/environment">
+      ${knownEnvVars.filter(ev => ev.editable).map(ev => `
+      <div class="form-group">
+        <label>${escapeHtml(ev.label)} (<code>${escapeHtml(ev.key)}</code>)</label>
+        <input type="text" name="${escapeHtml(ev.key)}" value="${escapeHtml(ev.currentValue)}" placeholder="${escapeHtml(ev.placeholder)}">
+        <p class="hint">${escapeHtml(ev.description)}</p>
+      </div>
+      `).join('')}
+      <p><button type="submit">Save Environment Variables</button></p>
+    </form>
+  </div>
+  
+  <div class="card">
+    <h3>Where to set secrets</h3>
+    <p>Set <code>TELEGRAM_BOT_TOKEN</code>, <code>ADMIN_PASSWORD</code>, <code>CRON_SECRET</code> and <code>LSTV_SCRAPER_KEY</code> in Plesk's Node.js environment settings. Put the same scraper key in <code>/opt/vps-scrapers/.env</code>.</p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Environment Variables - Telegram Sports TV Bot', body));
+});
+
+app.post('/admin/environment', (req, res) => {
+  const cfg = loadConfig();
+  cfg.envVars = cfg.envVars || {};
+  
+  // Define known environment variable keys (derived from knownEnvVars pattern)
+  // Only non-secret values may be written to config.json. Secrets belong in
+  // Plesk/VPS environment variables and are deliberately ignored here.
+  const knownKeys = ['LSTV_SCRAPER_URL'];
+  
+  for (const key of knownKeys) {
+    if (req.body[key] !== undefined) {
+      cfg.envVars[key] = (req.body[key] || '').trim();
+    }
+  }
+  
+  saveConfig(cfg);
+  res.redirect('/admin/environment');
+});
+
+// --------- Scrapers Dashboard Page ---------
+
+// Import all scrapers for the dashboard
+const bbcFixtures = require('./scrapers/bbc_fixtures');
+const livefootballontv = require('./scrapers/livefootballontv');
+const fixturesScraper = require('./scrapers/fixtures_scraper');
+
+// VPS Scraper configuration
+// Note: The VPS URL is configurable via LSTV_SCRAPER_URL environment variable.
+// The URL may be supplied by Plesk or the local non-secret config fallback.
+const VPS_SCRAPER_URL = () => {
+  // URL is not secret, so a local config fallback is supported.
+  if (process.env.LSTV_SCRAPER_URL) return process.env.LSTV_SCRAPER_URL;
+  try {
+    const cfg = loadConfig();
+    if (cfg.envVars?.LSTV_SCRAPER_URL) return cfg.envVars.LSTV_SCRAPER_URL;
+  } catch (e) { /* ignore */ }
+  return '';
+};
+const VPS_SCRAPER_KEY = () => {
+  // Authentication keys must be supplied by the runtime environment.
+  if (process.env.LSTV_SCRAPER_KEY) return process.env.LSTV_SCRAPER_KEY;
+  return '';
+};
+
+// Timeout configuration for VPS scrapers (in milliseconds)
+const VPS_TIMEOUTS = {
+  HEALTH_CHECK: 45000,   // Browser-backed source checks can take 20–30 seconds
+  SCRAPE_REQUEST: 60000  // 60 seconds for full scrape operations
+};
+
+/**
+ * Create a VPS scraper health check function that calls the remote VPS endpoint.
+ * @param {string} scraperId - The scraper ID (e.g., 'bbc', 'skysports')
+ * @returns {Function} Health check function
+ */
+function createVpsHealthCheck(scraperId) {
+  return async function healthCheck() {
+    const startTime = Date.now();
+    const scraperUrl = VPS_SCRAPER_URL();
+    const scraperKey = VPS_SCRAPER_KEY();
+    
+    if (!scraperUrl) {
+      return {
+        ok: false,
+        latencyMs: 0,
+        error: 'VPS_SCRAPER_URL not configured'
+      };
+    }
+    
+    try {
+      const response = await axios.get(
+        `${scraperUrl}/health/${scraperId}`,
+        {
+          headers: scraperKey ? { 'x-api-key': scraperKey } : {},
+          timeout: VPS_TIMEOUTS.HEALTH_CHECK
+        }
+      );
+      
+      const latencyMs = Date.now() - startTime;
+      return {
+        ok: response.data.ok !== false,
+        latencyMs,
+        remote: response.data
+      };
+    } catch (err) {
+      const latencyMs = Date.now() - startTime;
+      return {
+        ok: false,
+        latencyMs,
+        error: err.response?.data?.error || err.response?.data?.message || err.message || String(err)
+      };
+    }
+  };
+}
+
+/**
+ * Create a VPS scraper module wrapper that can be used for testing.
+ * @param {string} scraperId - The scraper ID
+ * @param {string} path - The API path (e.g., '/scrape/bbc')
+ * @returns {Object} Module-like object with healthCheck and fetch functions
+ */
+function createVpsScraperModule(scraperId, path) {
+  return {
+    healthCheck: createVpsHealthCheck(scraperId),
+    fetch: async (params = {}) => {
+      const scraperUrl = VPS_SCRAPER_URL();
+      const scraperKey = VPS_SCRAPER_KEY();
+      
+      if (!scraperUrl) {
+        return { fixtures: [], error: 'VPS_SCRAPER_URL not configured' };
+      }
+      
+      try {
+        const response = await axios.post(
+          `${scraperUrl}${path}`,
+          params,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(scraperKey ? { 'x-api-key': scraperKey } : {})
+            },
+            timeout: VPS_TIMEOUTS.SCRAPE_REQUEST
+          }
+        );
+        return response.data;
+      } catch (err) {
+        return { fixtures: [], error: err.message };
+      }
+    }
+  };
+}
+
+// Create VPS scraper modules
+const vpsScrapers = {
+  'vps-liveonsat': createVpsScraperModule('liveonsat', '/scrape/liveonsat'),
+  'vps-lstv': createVpsScraperModule('lstv', '/scrape/lstv'),
+  'vps-skysports': createVpsScraperModule('skysports', '/scrape/skysports'),
+  'vps-premiersports': createVpsScraperModule('premiersports', '/scrape/premiersports')
+};
+
+function getScraperDefinitions() {
+  const localScrapers = [
+    {
+      id: 'tsdb',
+      name: 'TheSportsDB (TSDB)',
+      description: 'Uses the TheSportsDB API to fetch fixture information including kickoff times, venues, and sometimes TV stations. A reliable primary source for match data.',
+      source: 'https://www.thesportsdb.com',
+      dataProvided: ['Fixture details', 'League/competition', 'Venue', 'TV stations'],
+      method: 'REST API (no scraping)',
+      cacheTime: 'Per request',
+      icon: '⚽',
+      color: '#3498db',
+      module: tsdb,
+      hasHealthCheck: true,
+      isVps: false
+    },
+    {
+      id: 'wiki',
+      name: 'Wikipedia Broadcasters',
+      description: 'Parses Wikipedia articles for football leagues to extract broadcasting rights information. Provides league-wide broadcaster data by region/country.',
+      source: 'https://en.wikipedia.org',
+      dataProvided: ['League broadcasters by region', 'Broadcasting rights'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: '1 hour',
+      icon: '📖',
+      color: '#9b59b6',
+      module: wiki,
+      hasHealthCheck: false,
+      isVps: false
+    },
+    {
+      id: 'bbc',
+      name: 'BBC Sport Fixtures',
+      description: 'Scrapes the BBC Sport website for fixture information and competition details. Useful for UK-based matches and FA Cup fixtures.',
+      source: 'https://www.bbc.co.uk/sport/football',
+      dataProvided: ['Fixture list', 'Competition names', 'Kickoff times'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: 'Per request',
+      icon: '🇬🇧',
+      color: '#2ecc71',
+      module: bbcFixtures,
+      hasHealthCheck: true,
+      isVps: false
+    },
+    {
+      id: 'lfotv',
+      name: 'LiveFootballOnTV',
+      description: 'Scrapes the LiveFootballOnTV website for UK TV listings. Aggregates information from multiple UK broadcasters in one place.',
+      source: 'https://www.live-footballontv.com',
+      dataProvided: ['UK TV channels', 'Match schedule'],
+      method: 'HTTP + Cheerio HTML parsing',
+      cacheTime: 'Per request',
+      icon: '📡',
+      color: '#f39c12',
+      module: livefootballontv,
+      hasHealthCheck: true,
+      isVps: false
+    }
+  ];
+
+  // VPS Scrapers - running on remote VPS at configured URL
+  const vpsScraperDefs = [
+    {
+      id: 'vps-liveonsat',
+      name: 'LiveOnSat (VPS)',
+      description: 'VPS-hosted LiveOnSat UK Football scraper. Provides daily TV listings for UK/England football matches.',
+      source: 'https://liveonsat.com',
+      dataProvided: ['UK TV channels', 'Match schedule', 'Competition info'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#16a085',
+      module: vpsScrapers['vps-liveonsat'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/liveonsat'
+    },
+    {
+      id: 'vps-lstv',
+      name: 'LiveSoccerTV (VPS)',
+      description: 'VPS-hosted LiveSoccerTV scraper with Puppeteer. Provides worldwide TV channel data by region.',
+      source: 'https://www.livesoccertv.com',
+      dataProvided: ['TV channels by region', 'Match kickoff times', 'League information'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: '4 hours',
+      icon: '🖥️',
+      color: '#e74c3c',
+      module: vpsScrapers['vps-lstv'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/lstv'
+    },
+    {
+      id: 'vps-skysports',
+      name: 'Sky Sports (VPS)',
+      description: 'VPS-hosted Sky Sports scraper using Puppeteer. Provides Sky Sports channel assignments.',
+      source: 'https://www.skysports.com',
+      dataProvided: ['Sky Sports fixtures', 'Sky channel assignments'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#e67e22',
+      module: vpsScrapers['vps-skysports'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/skysports'
+    },
+    {
+      id: 'vps-premiersports',
+      name: 'Premier Sports (VPS)',
+      description: 'Official Premier Sports TV guide scraper for live football carried on Premier Sports channels.',
+      source: 'https://www.premiersports.com/gb/tv-guide',
+      dataProvided: ['Premier Sports fixtures', 'Channel assignments', 'Live/replay classification'],
+      method: 'VPS Puppeteer scraper',
+      cacheTime: 'Per request',
+      icon: '🖥️',
+      color: '#8e44ad',
+      module: vpsScrapers['vps-premiersports'],
+      hasHealthCheck: true,
+      isVps: true,
+      vpsEndpoint: '/scrape/premiersports'
+    }
+  ];
+
+  return [...localScrapers, ...vpsScraperDefs];
+}
+
+app.get('/admin/scrapers', async (req, res) => {
+  const scrapers = getScraperDefinitions();
+  const cfg = loadConfig();
+  
+  // Run health checks for all scrapers in parallel with timeout
+  const healthResults = {};
+  
+  // Helper to wrap health check with timeout
+  async function healthCheckWithTimeout(scraper) {
+    if (!scraper.hasHealthCheck || !scraper.module || typeof scraper.module.healthCheck !== 'function') {
+      return { scraperId: scraper.id, result: null };
+    }
+    
+    try {
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Health check timeout')), VPS_TIMEOUTS.HEALTH_CHECK)
+      );
+      const result = await Promise.race([
+        scraper.module.healthCheck(),
+        timeoutPromise
+      ]);
+      return { scraperId: scraper.id, result };
+    } catch (err) {
+      return { scraperId: scraper.id, result: { ok: false, error: err.message } };
+    }
+  }
+  
+  // Run all health checks in parallel
+  const healthCheckPromises = scrapers.map(healthCheckWithTimeout);
+  const healthCheckResults = await Promise.all(healthCheckPromises);
+  
+  // Populate healthResults object
+  for (const { scraperId, result } of healthCheckResults) {
+    if (result) {
+      healthResults[scraperId] = result;
+    }
+  }
+  
+  // Build scraper card HTML
+  function buildScraperCard(scraper) {
+    const health = healthResults[scraper.id];
+    let healthHtml = '';
+    
+    if (health) {
+      const statusClass = health.ok ? 'health-ok' : 'health-error';
+      const statusIcon = health.ok ? '✅' : '❌';
+      const latency = health.latencyMs ? `${health.latencyMs}ms` : 'N/A';
+      healthHtml = `
+      <div class="health-status ${statusClass}">
+        <span class="health-icon">${statusIcon}</span>
+        <span class="health-text">${health.ok ? 'Healthy' : 'Error'}</span>
+        <span class="health-latency">${latency}</span>
+        ${health.error ? `<div class="health-error-msg">${escapeHtml(health.error)}</div>` : ''}
+      </div>`;
+    } else {
+      healthHtml = `<div class="health-status health-unknown">⚪ No health check available</div>`;
+    }
+    
+    const dataTags = scraper.dataProvided.map(d => `<span class="data-tag">${escapeHtml(d)}</span>`).join('');
+    const vpsBadge = scraper.isVps ? '<span class="vps-badge">VPS</span>' : '';
+    
+    return `
+    <div class="scraper-card ${scraper.isVps ? 'vps-scraper' : ''}" style="border-left-color: ${scraper.color};">
+      <div class="scraper-header">
+        <span class="scraper-icon">${scraper.icon}</span>
+        <h3 class="scraper-name">${escapeHtml(scraper.name)}</h3>
+        ${vpsBadge}
+      </div>
+      
+      <p class="scraper-desc">${escapeHtml(scraper.description)}</p>
+      
+      <div class="scraper-meta">
+        <div class="meta-row">
+          <span class="meta-label">Source:</span>
+          <a href="${escapeHtml(scraper.source)}" target="_blank">${escapeHtml(scraper.source)}</a>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Method:</span>
+          <span>${escapeHtml(scraper.method)}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Cache:</span>
+          <span>${escapeHtml(scraper.cacheTime)}</span>
+        </div>
+        ${scraper.vpsEndpoint ? `
+        <div class="meta-row">
+          <span class="meta-label">API Path:</span>
+          <code>${escapeHtml(scraper.vpsEndpoint)}</code>
+        </div>
+        ` : ''}
+      </div>
+      
+      <div class="scraper-data">
+        <span class="data-label">Data Provided:</span>
+        <div class="data-tags">${dataTags}</div>
+      </div>
+      
+      ${healthHtml}
+      
+      <div class="scraper-actions">
+        <a href="/admin/scraper/${scraper.id}?auto=1" class="btn-auto">🚀 Auto Test</a>
+        <a href="/admin/scraper/${scraper.id}" class="btn-view">View Details →</a>
+      </div>
+    </div>`;
+  }
+  
+  // Separate local and VPS scrapers
+  const localScrapers = scrapers.filter(s => !s.isVps);
+  const vpsScrapersList = scrapers.filter(s => s.isVps);
+  
+  const localScraperCards = localScrapers.map(buildScraperCard).join('');
+  const vpsScraperCards = vpsScrapersList.map(buildScraperCard).join('');
+  
+  // Calculate health statistics
+  const healthyCount = Object.values(healthResults).filter(h => h && h.ok).length;
+  const totalHealthChecks = Object.keys(healthResults).length;
+  const allHealthy = healthyCount === totalHealthChecks;
+  const httpScraperCount = scrapers.filter(s => s.method.includes('HTTP')).length;
+  const apiScraperCount = scrapers.filter(s => s.method.includes('API')).length;
+  const vpsScraperCount = vpsScrapersList.length;
+  
+  // Get VPS URL for display
+  const vpsUrl = VPS_SCRAPER_URL();
+  
+  const body = `
+  <style>
+    .scraper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-top: 20px; }
+    .scraper-card { background:#1e2a38; padding:20px; border-radius:12px; border-left:5px solid #4a90d9; }
+    .scraper-card.vps-scraper { background:#1a2535; }
+    .scraper-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+    .scraper-icon { font-size:28px; }
+    .scraper-name { margin:0; font-size:18px; color:#fff; }
+    .scraper-desc { color:#bbb; font-size:13px; line-height:1.5; margin-bottom:16px; }
+    .scraper-meta { background:#0d1b2a; padding:12px; border-radius:8px; margin-bottom:16px; }
+    .meta-row { display:flex; margin-bottom:6px; font-size:13px; }
+    .meta-row:last-child { margin-bottom:0; }
+    .meta-label { color:#888; width:70px; flex-shrink:0; }
+    .meta-row a { color:#80cbc4; }
+    .meta-row code { background:#1e2a38; padding:2px 6px; border-radius:4px; font-size:12px; }
+    .scraper-data { margin-bottom:16px; }
+    .data-label { color:#888; font-size:12px; display:block; margin-bottom:8px; }
+    .data-tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .data-tag { background:#2d4a6a; color:#8eb5e0; padding:3px 8px; border-radius:4px; font-size:11px; }
+    .health-status { padding:10px; border-radius:6px; display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+    .health-ok { background:#1d4a3a; }
+    .health-error { background:#4a1d1d; }
+    .health-unknown { background:#3a3a1d; }
+    .health-icon { font-size:16px; }
+    .health-text { font-weight:bold; font-size:13px; }
+    .health-latency { color:#888; font-size:12px; margin-left:auto; }
+    .health-error-msg { color:#e74c3c; font-size:11px; width:100%; margin-top:6px; word-break:break-word; }
+    .scraper-actions { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
+    .btn-auto { display:inline-block; background:#00b894; color:#000; padding:8px 16px; border-radius:6px; text-decoration:none; font-size:13px; font-weight:bold; }
+    .btn-auto:hover { background:#00d6aa; text-decoration:none; }
+    .btn-view { display:inline-block; background:#4a90d9; color:#fff; padding:8px 16px; border-radius:6px; text-decoration:none; font-size:13px; }
+    .btn-view:hover { background:#5da0e9; text-decoration:none; }
+    .summary-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:12px; margin-top:16px; }
+    .summary-stat { background:#1e2a38; padding:16px; border-radius:8px; text-align:center; }
+    .stat-value { font-size:28px; font-weight:bold; color:#00b894; }
+    .stat-label { color:#888; font-size:12px; margin-top:4px; }
+    .vps-badge { background:#9b59b6; color:#fff; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:bold; }
+    .section-header { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+    .section-icon { font-size:24px; }
+    .vps-info { background:#2d1a4a; padding:12px 16px; border-radius:8px; margin-top:12px; }
+    .vps-info code { background:#1a0d2e; padding:2px 8px; border-radius:4px; }
+  </style>
+  
+  <div class="card">
+    <h2>Scraper Dashboard</h2>
+    <p>Monitor and manage all data scrapers used by the TV listings bot. Each scraper fetches TV channel information from different sources.</p>
+    
+    <div class="summary-grid">
+      <div class="summary-stat">
+        <div class="stat-value">${scrapers.length}</div>
+        <div class="stat-label">Total Scrapers</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value" style="color: ${allHealthy ? '#00b894' : '#e74c3c'};">${healthyCount}/${totalHealthChecks}</div>
+        <div class="stat-label">Healthy</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value">${localScrapers.length}</div>
+        <div class="stat-label">Local Scrapers</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value">${vpsScraperCount}</div>
+        <div class="stat-label">VPS Scrapers</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value">${httpScraperCount}</div>
+        <div class="stat-label">HTTP Based</div>
+      </div>
+      <div class="summary-stat">
+        <div class="stat-value">${apiScraperCount}</div>
+        <div class="stat-label">API Clients</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <div class="section-header">
+      <span class="section-icon">🏠</span>
+      <h3>Local Scrapers</h3>
+    </div>
+    <p class="muted">Scrapers running on the Plesk server using HTTP/Cheerio or direct API calls.</p>
+  </div>
+  
+  <div class="scraper-grid">
+    ${localScraperCards}
+  </div>
+  
+  <div class="card" style="margin-top:24px;">
+    <div class="section-header">
+      <span class="section-icon">🖥️</span>
+      <h3>VPS Scrapers</h3>
+    </div>
+    <p class="muted">Scrapers running on the remote VPS server using Puppeteer for dynamic content scraping.</p>
+    <div class="vps-info">
+      <strong>VPS Server URL:</strong> <code>${escapeHtml(vpsUrl)}</code>
+      <br><strong>Installation Path:</strong> <code>/opt/vps-scrapers/</code>
+      <br><span class="muted" style="font-size:12px;">Configure the VPS URL via <a href="/admin/environment">Environment Variables</a> (LSTV_SCRAPER_URL). API paths like <code>/scrape/livefootballontv</code> are appended to this base URL.</span>
+    </div>
+  </div>
+  
+  <div class="scraper-grid">
+    ${vpsScraperCards}
+  </div>
+  
+  <div class="card" style="margin-top:24px;">
+    <h3>Adding New Scrapers</h3>
+    <p>To add a new scraper to this dashboard:</p>
+    <ol>
+      <li>Create the scraper module in <code>scrapers/</code> directory (local) or <code>/opt/vps-scrapers/scrapers/</code> (VPS)</li>
+      <li>Export a <code>healthCheck()</code> function that returns <code>{ok: boolean, latencyMs: number, error?: string}</code></li>
+      <li>Add the scraper definition to <code>getScraperDefinitions()</code> in <code>app.js</code></li>
+      <li>The scraper will automatically appear on this dashboard</li>
+    </ol>
+    <p class="muted">VPS scrapers use the same base URL configured via LSTV_SCRAPER_URL environment variable.</p>
+  </div>
+  `;
+  
+  res.send(renderLayout('Scraper Dashboard - Telegram Sports TV Bot', body));
+});
+
+// --------- Individual Scraper Detail Pages ---------
+
+app.get('/admin/scraper/:id', async (req, res) => {
+  const scraperId = req.params.id;
+  const scrapers = getScraperDefinitions();
+  const scraper = scrapers.find(s => s.id === scraperId);
+  
+  if (!scraper) {
+    return res.redirect('/admin/scrapers');
+  }
+  
+  // Run health check
+  let health = null;
+  if (scraper.hasHealthCheck && scraper.module && typeof scraper.module.healthCheck === 'function') {
+    try {
+      health = await scraper.module.healthCheck();
+    } catch (err) {
+      health = { ok: false, error: err.message };
+    }
+  }
+  
+  // Get test parameters from query string
+  const { home, away, date, teamName, auto } = req.query;
+  let testResult = null;
+  let testError = null;
+  let autoTestMode = auto === '1' || auto === 'true';
+  let autoTestInfo = null; // Info about auto-selected fixture
+  
+  // Helper function to get a fixture from LFOTV for auto-test mode (used for TSDB)
+  async function getAutoTestFixture() {
+    const lfotvData = await livefootballontv.fetchLFOTVFixtures({});
+    if (lfotvData.fixtures && lfotvData.fixtures.length > 0) {
+      const fixture = lfotvData.fixtures[0];
+      return { home: fixture.home, away: fixture.away };
+    }
+    return null;
+  }
+  
+  // Run test if parameters provided OR auto mode is enabled
+  if ((home && away) || teamName || autoTestMode) {
+    try {
+      const matchDate = date ? new Date(date) : new Date();
+      
+      switch (scraperId) {
+        case 'lstv':
+          // For LSTV, we can fetch all fixtures for a region
+          if (autoTestMode && !home && !away) {
+            autoTestInfo = 'Auto-test: Fetching all LiveSoccerTV fixtures for today (UK region)';
+            testResult = await lstv.fetchLSTVFixtures({ region: 'UK', date: matchDate });
+          } else {
+            const homeTeam = home?.trim() || '';
+            const awayTeam = away?.trim() || '';
+            testResult = await lstv.fetchLSTV({ home: homeTeam, away: awayTeam, date: matchDate });
+          }
+          break;
+        case 'tsdb':
+          // For TSDB in auto mode, first get a fixture from LFOTV to use as test data
+          if (autoTestMode && !home && !away) {
+            const autoFixture = await getAutoTestFixture();
+            if (autoFixture) {
+              autoTestInfo = `Auto-test: Using today's fixture ${autoFixture.home} vs ${autoFixture.away}`;
+              testResult = await tsdb.fetchTSDBFixture({
+                home: autoFixture.home,
+                away: autoFixture.away,
+                date: matchDate
+              });
+            } else {
+              testError = 'No fixtures found for auto-test. Please enter team names manually.';
+            }
+          } else {
+            const homeTeam = home?.trim() || '';
+            const awayTeam = away?.trim() || '';
+            testResult = await tsdb.fetchTSDBFixture({ home: homeTeam, away: awayTeam, date: matchDate });
+          }
+          break;
+        case 'wiki':
+          // Wiki can use Premier League as default
+          testResult = await wiki.fetchWikiBroadcasters({
+            leagueName: teamName?.trim() || 'Premier League',
+            season: null,
+            country: 'UK'
+          });
+          if (autoTestMode && !teamName) {
+            autoTestInfo = 'Auto-selected: Premier League';
+          }
+          break;
+        case 'bbc':
+          // BBC can fetch all fixtures without a team filter (today's listings)
+          if (autoTestMode && !teamName && !home) {
+            autoTestInfo = 'Auto-test: Fetching all BBC Sport fixtures for today';
+          }
+          testResult = await bbcFixtures.fetchBBCFixtures({
+            teamName: teamName?.trim() || home?.trim() || undefined
+          });
+          break;
+        case 'lfotv':
+          // LFOTV can fetch all fixtures without a team filter
+          if (autoTestMode && !teamName && !home) {
+            autoTestInfo = 'Auto-test: Fetching all LiveFootballOnTV fixtures for today';
+          }
+          testResult = await livefootballontv.fetchLFOTVFixtures({
+            teamName: teamName?.trim() || home?.trim() || undefined
+          });
+          break;
+        default:
+          // Handle VPS scrapers
+          if (scraperId.startsWith('vps-')) {
+            const vpsModule = vpsScrapers[scraperId];
+            if (vpsModule && vpsModule.fetch) {
+              if (autoTestMode) {
+                const scraperName = scraperId.replace('vps-', '');
+                autoTestInfo = `Auto-test: Fetching today's fixtures from VPS ${scraperName} scraper`;
+              }
+              // Build parameters based on scraper type (fetch today's listings with no filters)
+              const params = {};
+              if (home) params.home = home.trim();
+              if (away) params.away = away.trim();
+              if (teamName) params.teamName = teamName.trim();
+              if (date) params.date = date;
+              // Always include debug info in auto-test mode to help diagnose issues
+              if (autoTestMode) params.debug = true;
+              
+              testResult = await vpsModule.fetch(params);
+              
+              // Check if result has an error
+              if (testResult && testResult.error) {
+                testError = testResult.error;
+                testResult = null;
+              }
+            } else {
+              const vpsUrl = VPS_SCRAPER_URL();
+              testError = `VPS scraper module not found for ${scraperId}. VPS URL: ${vpsUrl || 'not configured'}. Check if the VPS scraper service is running at this URL.`;
+            }
+          } else {
+            testError = `Unknown scraper: ${scraperId}`;
+          }
+          break;
+      }
+    } catch (err) {
+      testError = err.message || String(err);
+    }
+  }
+  
+  // Build test result HTML
+  let testResultHtml = '';
+  if (testError) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h4>❌ Test Error</h4>
+      <p>${escapeHtml(testError)}</p>
+    </div>`;
+  } else if (testResult) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #00b894;">
+      <h4>✅ Test Results</h4>
+      ${autoTestInfo ? `<p class="muted" style="margin-bottom:12px;"><em>${escapeHtml(autoTestInfo)}</em></p>` : ''}
+      <pre>${escapeHtml(JSON.stringify(testResult, null, 2))}</pre>
+    </div>`;
+  }
+  
+  // Build health status HTML
+  let healthHtml = '';
+  if (health) {
+    const statusClass = health.ok ? 'health-ok' : 'health-error';
+    const statusIcon = health.ok ? '✅' : '❌';
+    healthHtml = `
+    <div class="health-banner ${statusClass}">
+      <span class="health-icon">${statusIcon}</span>
+      <div class="health-info">
+        <strong>${health.ok ? 'Service Healthy' : 'Service Error'}</strong>
+        <span>Latency: ${health.latencyMs || 0}ms</span>
+        ${health.error ? `<p class="error-detail">${escapeHtml(health.error)}</p>` : ''}
+      </div>
+    </div>`;
+  }
+  
+  // Build test form based on scraper type
+  let testFormHtml = '';
+  if (['lstv', 'tsdb'].includes(scraperId) || scraperId === 'vps-lstv') {
+    testFormHtml = `
+    <div class="auto-test-section" style="margin-bottom:16px;">
+      <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Today's Fixtures)</a>
+      <span class="muted" style="margin-left:8px;">Automatically fetches a fixture from today's schedule</span>
+    </div>
+    <p style="margin:12px 0; color:#888;">— OR enter specific teams below —</p>
+    <form method="get" action="/admin/scraper/${scraperId}">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Home Team</label>
+          <input type="text" name="home" value="${escapeHtml(home || '')}" placeholder="e.g. Arsenal">
+        </div>
+        <div class="form-group">
+          <label>Away Team</label>
+          <input type="text" name="away" value="${escapeHtml(away || '')}" placeholder="e.g. Chelsea">
+        </div>
+        <div class="form-group">
+          <label>Date (optional)</label>
+          <input type="date" name="date" value="${escapeHtml(date || '')}">
+        </div>
+      </div>
+      <p><button type="submit">Test Scraper</button></p>
+    </form>`;
+  } else if (scraperId === 'wiki') {
+    testFormHtml = `
+    <div class="auto-test-section" style="margin-bottom:16px;">
+      <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Premier League)</a>
+      <span class="muted" style="margin-left:8px;">Fetches broadcasters for Premier League</span>
+    </div>
+    <p style="margin:12px 0; color:#888;">— OR enter a specific league below —</p>
+    <form method="get" action="/admin/scraper/${scraperId}">
+      <div class="form-group">
+        <label>League Name</label>
+        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Premier League">
+      </div>
+      <p><button type="submit">Test Scraper</button></p>
+    </form>`;
+  } else {
+    // Default form for other scrapers (including VPS scrapers)
+    const isVpsScraper = scraperId.startsWith('vps-');
+    testFormHtml = `
+    <div class="auto-test-section" style="margin-bottom:16px;">
+      <a href="/admin/scraper/${scraperId}?auto=1" class="btn-auto-test">🚀 Auto Test (Today's Fixtures)</a>
+      <span class="muted" style="margin-left:8px;">Fetches all fixtures for the current day${isVpsScraper ? ' from VPS' : ''}</span>
+    </div>
+    <p style="margin:12px 0; color:#888;">— OR filter by team name below —</p>
+    <form method="get" action="/admin/scraper/${scraperId}">
+      <div class="form-group">
+        <label>Team Name (optional)</label>
+        <input type="text" name="teamName" value="${escapeHtml(teamName || '')}" placeholder="e.g. Arsenal">
+      </div>
+      <p><button type="submit">Test Scraper</button></p>
+    </form>`;
+  }
+  
+  const dataTags = scraper.dataProvided.map(d => `<span class="data-tag">${escapeHtml(d)}</span>`).join('');
+  const vpsBadge = scraper.isVps ? '<span class="vps-badge">VPS</span>' : '';
+  
+  const body = `
+  <style>
+    .scraper-detail { margin-bottom:24px; }
+    .scraper-banner { background:#1e2a38; padding:24px; border-radius:12px; border-left:5px solid ${scraper.color}; margin-bottom:24px; }
+    .banner-header { display:flex; align-items:center; gap:16px; margin-bottom:16px; }
+    .banner-icon { font-size:48px; }
+    .banner-title { margin:0; font-size:28px; color:#fff; }
+    .banner-desc { color:#bbb; font-size:14px; line-height:1.6; }
+    .info-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:16px; margin:24px 0; }
+    .info-item { background:#0d1b2a; padding:16px; border-radius:8px; }
+    .info-label { color:#888; font-size:12px; margin-bottom:4px; }
+    .info-value { color:#fff; font-size:14px; }
+    .info-value a { color:#80cbc4; }
+    .data-tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    .data-tag { background:#2d4a6a; color:#8eb5e0; padding:6px 12px; border-radius:6px; font-size:12px; }
+    .health-banner { padding:16px; border-radius:8px; display:flex; align-items:center; gap:16px; margin-bottom:24px; }
+    .health-ok { background:#1d4a3a; }
+    .health-error { background:#4a1d1d; }
+    .health-icon { font-size:32px; }
+    .health-info strong { display:block; font-size:16px; color:#fff; }
+    .health-info span { color:#aaa; font-size:13px; }
+    .health-info .error-detail { color:#e74c3c; font-size:12px; margin-top:8px; }
+    .form-row { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px; }
+    .form-group { margin-bottom:12px; }
+    .form-group label { display:block; margin-bottom:4px; font-size:13px; color:#aaa; }
+    .btn-auto-test { display:inline-block; background:#00b894; color:#000; padding:12px 24px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:bold; }
+    .btn-auto-test:hover { background:#00d6aa; text-decoration:none; }
+    .auto-test-section { padding:16px; background:#1a2634; border-radius:8px; }
+    .vps-badge { background:#9b59b6; color:#fff; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:12px; }
+    .vps-info-box { background:#2d1a4a; padding:12px 16px; border-radius:8px; margin-top:16px; }
+    .vps-info-box code { background:#1a0d2e; padding:2px 8px; border-radius:4px; }
+  </style>
+  
+  <div class="scraper-banner">
+    <div class="banner-header">
+      <span class="banner-icon">${scraper.icon}</span>
+      <h2 class="banner-title">${escapeHtml(scraper.name)}</h2>
+      ${vpsBadge}
+    </div>
+    <p class="banner-desc">${escapeHtml(scraper.description)}</p>
+    
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Source URL</div>
+        <div class="info-value"><a href="${escapeHtml(scraper.source)}" target="_blank">${escapeHtml(scraper.source)}</a></div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Method</div>
+        <div class="info-value">${escapeHtml(scraper.method)}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Cache Duration</div>
+        <div class="info-value">${escapeHtml(scraper.cacheTime)}</div>
+      </div>
+      ${scraper.vpsEndpoint ? `
+      <div class="info-item">
+        <div class="info-label">API Path</div>
+        <div class="info-value"><code>${escapeHtml(scraper.vpsEndpoint)}</code></div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Full URL</div>
+        <div class="info-value"><code>${escapeHtml(VPS_SCRAPER_URL() + scraper.vpsEndpoint)}</code></div>
+      </div>
+      ` : ''}
+    </div>
+    
+    ${scraper.isVps ? `
+    <div class="vps-info-box">
+      <strong>VPS Server:</strong> <code>${escapeHtml(VPS_SCRAPER_URL())}</code>
+      <br><span class="muted" style="font-size:12px;">This scraper runs on the remote VPS at <code>/opt/vps-scrapers/</code>. Configure the VPS URL via <a href="/admin/environment">Environment Variables</a> (LSTV_SCRAPER_URL).</span>
+    </div>
+    ` : ''}
+    
+    <div class="data-tags">
+      <span class="info-label" style="width:100%;margin-bottom:8px;">Data Provided:</span>
+      ${dataTags}
+    </div>
+  </div>
+  
+  ${healthHtml}
+  
+  <div class="card">
+    <h3>Test ${escapeHtml(scraper.name)}</h3>
+    <p class="muted">Click "Auto Test" to quickly fetch today's fixtures, or enter specific parameters below.</p>
+    ${testFormHtml}
+  </div>
+  
+  ${testResultHtml}
+  
+  <div class="card">
+    <h3>How ${escapeHtml(scraper.name)} Works</h3>
+    <ol>
+      ${scraperId === 'lstv' ? `
+        <li>The bot sends a request to the remote VPS scraper service</li>
+        <li>The VPS uses Puppeteer to navigate to LiveSoccerTV.com</li>
+        <li>It searches for the match using team names and date</li>
+        <li>TV channel data is extracted from the broadcast table</li>
+        <li>Results are returned with region/channel pairs</li>
+      ` : ''}
+      ${scraperId === 'tsdb' ? `
+        <li>The bot queries TheSportsDB API for the team</li>
+        <li>It fetches upcoming events for that team</li>
+        <li>Matches are filtered by date and opponent</li>
+        <li>Fixture details including kickoff, venue, and league are returned</li>
+        <li>TV listings are fetched separately if available</li>
+      ` : ''}
+      ${scraperId === 'wiki' ? `
+        <li>The bot constructs a Wikipedia article URL for the league/season</li>
+        <li>It fetches the HTML page using HTTP</li>
+        <li>Broadcasting tables are parsed using Cheerio</li>
+        <li>Region/broadcaster pairs are extracted and deduplicated</li>
+        <li>Results are cached for 1 hour</li>
+      ` : ''}
+      ${scraperId === 'bbc' ? `
+        <li>The bot constructs a BBC Sport team fixtures URL</li>
+        <li>It fetches the HTML page using HTTP</li>
+        <li>Fixture cards are parsed using Cheerio</li>
+        <li>Match details including kickoff and competition are extracted</li>
+      ` : ''}
+      ${scraperId === 'sky' ? `
+        <li>The bot fetches the Sky Sports fixtures page</li>
+        <li>Fixture elements are parsed using Cheerio</li>
+        <li>Sky Sports channel information is extracted from text</li>
+        <li>Results are filtered by team if specified</li>
+      ` : ''}
+      ${scraperId === 'tnt' ? `
+        <li>The bot fetches the TNT Sports schedule page</li>
+        <li>Football fixtures are identified and parsed</li>
+        <li>TNT Sports channel assignments are extracted</li>
+        <li>BT Sport references are converted to TNT Sports</li>
+      ` : ''}
+      ${scraperId === 'lfotv' ? `
+        <li>The bot fetches the LiveFootballOnTV homepage</li>
+        <li>Match rows are parsed from the fixture table</li>
+        <li>UK TV channel names are extracted from text</li>
+        <li>Results are filtered by team if specified</li>
+      ` : ''}
+      ${scraperId.startsWith('vps-') ? `
+        <li>The Plesk app sends an HTTP POST request to the VPS scraper service at <code>${escapeHtml(VPS_SCRAPER_URL())}</code></li>
+        <li>The VPS service launches a Puppeteer browser instance</li>
+        <li>Puppeteer navigates to the target website and waits for dynamic content to load</li>
+        <li>Page content is parsed and TV channel data is extracted</li>
+        <li>Results are returned to the Plesk app in JSON format</li>
+        <li>The VPS endpoint used is: <code>${escapeHtml(scraper.vpsEndpoint || '')}</code></li>
+      ` : ''}
+    </ol>
+  </div>
+  
+  <p><a href="/admin/scrapers">← Back to Scrapers Dashboard</a></p>
+  `;
+  
+  res.send(renderLayout(`${scraper.name} - Telegram Sports TV Bot`, body));
+});
+
+// --------- Scrape Results Storage Page ---------
+
+// Import storage and auto-tester modules
+const scrapeStore = require('./lib/scrape_store');
+const autoTester = require('./lib/auto_tester');
+
+app.get('/admin/results', (req, res) => {
+  const scrapers = scrapeStore.listStoredScrapers();
+  const { scraperId } = req.query;
+  
+  let selectedResults = null;
+  let selectedScraper = null;
+  
+  if (scraperId) {
+    selectedResults = scrapeStore.getResultHistory(scraperId, 10);
+    selectedScraper = scraperId;
+  }
+  
+  // Build scraper list
+  const scraperList = scrapers.map(s => {
+    const isSelected = s.scraperId === selectedScraper;
+    const timestamp = s.latestTimestamp ? new Date(s.latestTimestamp).toLocaleString() : 'N/A';
+    return `
+    <tr class="${isSelected ? 'selected' : ''}">
+      <td><a href="/admin/results?scraperId=${encodeURIComponent(s.scraperId)}">${escapeHtml(s.scraperId)}</a></td>
+      <td>${timestamp}</td>
+      <td>${s.resultCount}</td>
+    </tr>`;
+  }).join('');
+  
+  // Build results display
+  let resultsHtml = '';
+  if (selectedResults && selectedResults.length > 0) {
+    resultsHtml = selectedResults.map((r, idx) => {
+      const timestamp = new Date(r.timestamp).toLocaleString();
+      const fixtureCount = r.metadata?.fixtureCount || 0;
+      const duration = r.metadata?.duration_ms ? `${r.metadata.duration_ms}ms` : 'N/A';
+      const resultsJson = JSON.stringify(r.results, null, 2);
+      
+      return `
+      <div class="result-card">
+        <div class="result-header">
+          <span class="result-time">${timestamp}</span>
+          <span class="result-meta">Fixtures: ${fixtureCount} | Duration: ${duration}</span>
+        </div>
+        <details ${idx === 0 ? 'open' : ''}>
+          <summary>View Results</summary>
+          <pre class="result-json">${escapeHtml(resultsJson)}</pre>
+        </details>
+      </div>`;
+    }).join('');
+  } else if (selectedScraper) {
+    resultsHtml = '<p>No results stored for this scraper yet.</p>';
+  }
+  
+  const body = `
+  <style>
+    .selected { background: #2a3f5f !important; }
+    .result-card { background:#1e2a38; padding:16px; border-radius:8px; margin-bottom:16px; border-left:4px solid #4a90d9; }
+    .result-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .result-time { font-weight:bold; color:#fff; }
+    .result-meta { color:#888; font-size:12px; }
+    .result-json { max-height:400px; overflow:auto; font-size:11px; background:#0d1b2a; padding:12px; border-radius:4px; }
+    details summary { cursor:pointer; color:#80cbc4; margin-bottom:8px; }
+  </style>
+  
+  <div class="card">
+    <h2>Stored Scrape Results</h2>
+    <p>View historical results from each scraper. Results are stored after each auto-test run and can be used for debugging or integration with the autoposter.</p>
+  </div>
+  
+  <div class="card">
+    <h3>Available Scrapers</h3>
+    ${scrapers.length > 0 ? `
+    <table>
+      <thead>
+        <tr>
+          <th>Scraper ID</th>
+          <th>Last Result</th>
+          <th>Results Stored</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${scraperList}
+      </tbody>
+    </table>
+    ` : '<p>No scraped results stored yet. Run an auto-test to populate data.</p>'}
+    
+    <p style="margin-top:16px;">
+      <a href="/admin/auto-test" class="btn-action">Run Auto-Test Now →</a>
+    </p>
+  </div>
+  
+  ${selectedScraper ? `
+  <div class="card">
+    <h3>Results for ${escapeHtml(selectedScraper)}</h3>
+    ${resultsHtml}
+  </div>
+  ` : ''}
+  `;
+  
+  res.send(renderLayout('Stored Results - Telegram Sports TV Bot', body));
+});
+
+// --------- Auto-Test Runner Page ---------
+
+app.get('/admin/auto-test', async (req, res) => {
+  const scrapers = autoTester.listScrapers();
+  const activeScraperIds = new Set(scrapers.map((scraper) => scraper.id));
+  const autoTestResults = scrapeStore.getAllAutoTestResults(7)
+    .filter((result) => activeScraperIds.has(result.scraperId));
+  
+  // Check if we should run a test
+  const { run, scraperId } = req.query;
+  let testResult = null;
+  
+  if (run === '1') {
+    if (scraperId) {
+      // Run single scraper test
+      testResult = await autoTester.runScraperTest(scraperId, { storeResults: true });
+    } else {
+      // Run all tests
+      testResult = await autoTester.runAllTests({ storeResults: true });
+    }
+  }
+  
+  // Build scraper cards
+  const scraperCards = scrapers.map(s => {
+    // Find latest test result for this scraper
+    const latestTest = autoTestResults.find(r => r.scraperId === s.id);
+    const lastStatus = latestTest?.success ? '✅ Pass' : (latestTest ? '❌ Fail' : '○ Not tested');
+    const lastTime = latestTest?.timestamp ? new Date(latestTest.timestamp).toLocaleString() : 'Never';
+    
+    return `
+    <div class="scraper-mini-card">
+      <div class="mini-header">
+        <span class="mini-name">${escapeHtml(s.name)}</span>
+        <span class="mini-status">${lastStatus}</span>
+      </div>
+      <div class="mini-meta">
+        <span>Last tested: ${lastTime}</span>
+        <span>${s.requiresVPS ? '🖥️ VPS' : '☁️ HTTP'}</span>
+      </div>
+      <div class="mini-actions">
+        <a href="/admin/auto-test?run=1&scraperId=${encodeURIComponent(s.id)}">Run Test</a>
+        <a href="/admin/scraper/${encodeURIComponent(s.id)}">Details</a>
+      </div>
+    </div>`;
+  }).join('');
+  
+  // Build test result display
+  let testResultHtml = '';
+  if (testResult) {
+    if (testResult.results) {
+      // All tests result
+      const passCount = testResult.passed || 0;
+      const failCount = testResult.failed || 0;
+      const statusColor = testResult.allPassed ? '#00b894' : '#e74c3c';
+      
+      testResultHtml = `
+      <div class="card" style="border-left: 4px solid ${statusColor};">
+        <h3>${testResult.allPassed ? '✅ All Tests Passed' : '❌ Some Tests Failed'}</h3>
+        <p>Passed: ${passCount} | Failed: ${failCount} | Duration: ${testResult.totalDurationMs}ms</p>
+        <table>
+          <thead><tr><th>Scraper</th><th>Status</th><th>Duration</th></tr></thead>
+          <tbody>
+            ${testResult.results.map(r => `
+              <tr>
+                <td>${escapeHtml(r.name)}</td>
+                <td>${r.success ? '✅ Pass' : '❌ Fail'}</td>
+                <td>${r.totalDurationMs}ms</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    } else {
+      // Single test result
+      const statusColor = testResult.success ? '#00b894' : '#e74c3c';
+      testResultHtml = `
+      <div class="card" style="border-left: 4px solid ${statusColor};">
+        <h3>${testResult.success ? '✅' : '❌'} ${escapeHtml(testResult.name)} Test Result</h3>
+        <p>Duration: ${testResult.totalDurationMs}ms</p>
+        <table>
+          <tr><th>Health Check</th><td>${testResult.health?.ok ? '✅ OK' : '❌ Fail'} ${testResult.health?.latencyMs ? `(${testResult.health.latencyMs}ms)` : ''}</td></tr>
+          <tr><th>Functional Test</th><td>${testResult.functional?.success ? '✅ OK' : '❌ Fail'} ${testResult.functional?.durationMs ? `(${testResult.functional.durationMs}ms)` : ''}</td></tr>
+        </table>
+        ${testResult.functional?.error ? `<p class="error-msg">Error: ${escapeHtml(testResult.functional.error)}</p>` : ''}
+      </div>`;
+    }
+  }
+  
+  const body = `
+  <style>
+    .scraper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin: 20px 0; }
+    .scraper-mini-card { background:#1e2a38; padding:16px; border-radius:8px; border-left:3px solid #4a90d9; }
+    .mini-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .mini-name { font-weight:bold; color:#fff; }
+    .mini-status { font-size:12px; }
+    .mini-meta { color:#888; font-size:11px; display:flex; justify-content:space-between; margin-bottom:12px; }
+    .mini-actions { display:flex; gap:12px; }
+    .mini-actions a { color:#80cbc4; font-size:13px; }
+    .btn-action { display:inline-block; background:#00b894; color:#000; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold; }
+    .btn-action:hover { background:#00d6aa; text-decoration:none; }
+    .error-msg { color:#e74c3c; font-size:13px; margin-top:12px; }
+  </style>
+  
+  <div class="card">
+    <h2>Automated Scraper Testing</h2>
+    <p>Run automated tests on all scrapers to verify they're working correctly. Test results are stored for later analysis.</p>
+    
+    <div style="margin-top:16px;">
+      <a href="/admin/auto-test?run=1" class="btn-action">🚀 Run All Tests</a>
+      <a href="/admin/results" style="margin-left:16px; color:#80cbc4;">View Stored Results →</a>
+    </div>
+  </div>
+  
+  ${testResultHtml}
+  
+  <div class="card">
+    <h3>Individual Scrapers</h3>
+    <p class="muted">Click "Run Test" to test a specific scraper, or "Details" for more information.</p>
+    
+    <div class="scraper-grid">
+      ${scraperCards}
+    </div>
+  </div>
+  
+  <div class="card">
+    <h3>Recent Test History</h3>
+    ${autoTestResults.length > 0 ? `
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Scraper</th>
+          <th>Status</th>
+          <th>Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${autoTestResults.slice(0, 20).map(r => `
+          <tr>
+            <td>${new Date(r.timestamp).toLocaleString()}</td>
+            <td>${escapeHtml(r.scraperId)}</td>
+            <td>${r.success ? '✅ Pass' : '❌ Fail'}</td>
+            <td>${r.totalDurationMs || 0}ms</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    ` : '<p>No test history yet. Run some tests to see results here.</p>'}
+  </div>
+  `;
+  
+  res.send(renderLayout('Auto-Test - Telegram Sports TV Bot', body));
+});
+
+// --------- Health Endpoints ---------
+
+// Unified health endpoint for all scrapers
+app.get('/health', async (req, res) => {
+  const status = await autoTester.getHealthStatus();
+  res.status(status.allHealthy ? 200 : 503).json(status);
+});
+
+// Individual scraper health endpoints
+app.get('/health/:scraperId', async (req, res) => {
+  const { scraperId } = req.params;
+  const result = await autoTester.runHealthCheck(scraperId);
+  res.status(result.ok ? 200 : 503).json({
+    scraperId,
+    ...result
+  });
+});
+
+// --------- VPS Debug Page ---------
+
+app.get('/admin/vps-debug', async (req, res) => {
+  const vpsUrl = VPS_SCRAPER_URL();
+  const vpsKey = VPS_SCRAPER_KEY();
+  
+  let vpsHealth = null;
+  let vpsSources = null;
+  let vpsDebug = null;
+  let testResult = null;
+  let testError = null;
+  
+  // Always try to fetch VPS status
+  try {
+    // Fetch main health status
+    const healthResponse = await axios.get(`${vpsUrl}/health`, {
+      headers: vpsKey ? { 'x-api-key': vpsKey } : {},
+      timeout: 15000
+    });
+    vpsHealth = healthResponse.data;
+  } catch (err) {
+    vpsHealth = { ok: false, error: err.message, statusCode: err.response?.status };
+  }
+  
+  // Try to fetch sources/debug info (no auth required for these)
+  try {
+    const sourcesResponse = await axios.get(`${vpsUrl}/sources`, { timeout: 10000 });
+    vpsSources = sourcesResponse.data;
+  } catch (err) {
+    vpsSources = { error: err.message, statusCode: err.response?.status };
+  }
+  
+  try {
+    const debugResponse = await axios.get(`${vpsUrl}/debug/routes`, { timeout: 10000 });
+    vpsDebug = debugResponse.data;
+  } catch (err) {
+    vpsDebug = { error: err.message, statusCode: err.response?.status };
+  }
+  
+  // Handle manual test request
+  const { endpoint, method } = req.query;
+  if (endpoint) {
+    const testMethod = method === 'GET' ? 'get' : 'post';
+    const fullUrl = `${vpsUrl}${endpoint}`;
+    
+    try {
+      const config = {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(vpsKey ? { 'x-api-key': vpsKey } : {})
+        },
+        timeout: 60000
+      };
+      
+      const testResponse = testMethod === 'get' 
+        ? await axios.get(fullUrl, config)
+        : await axios.post(fullUrl, {}, config);
+      
+      testResult = {
+        url: fullUrl,
+        method: testMethod.toUpperCase(),
+        status: testResponse.status,
+        data: testResponse.data
+      };
+    } catch (err) {
+      testError = {
+        url: fullUrl,
+        method: testMethod.toUpperCase(),
+        status: err.response?.status || 'N/A',
+        error: err.response?.data?.error || err.message
+      };
+    }
+  }
+  
+  // Build test result HTML
+  let testResultHtml = '';
+  if (testResult) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #00b894;">
+      <h3>✅ Test Successful</h3>
+      <table>
+        <tr><th>URL</th><td><code>${escapeHtml(testResult.url)}</code></td></tr>
+        <tr><th>Method</th><td>${testResult.method}</td></tr>
+        <tr><th>Status</th><td>${testResult.status}</td></tr>
+      </table>
+      <h4>Response Data:</h4>
+      <pre style="max-height:400px; overflow:auto;">${escapeHtml(JSON.stringify(testResult.data, null, 2))}</pre>
+    </div>`;
+  } else if (testError) {
+    testResultHtml = `
+    <div class="card" style="border-left: 4px solid #e74c3c;">
+      <h3>❌ Test Failed</h3>
+      <table>
+        <tr><th>URL</th><td><code>${escapeHtml(testError.url)}</code></td></tr>
+        <tr><th>Method</th><td>${testError.method}</td></tr>
+        <tr><th>Status</th><td>${testError.status}</td></tr>
+        <tr><th>Error</th><td>${escapeHtml(testError.error)}</td></tr>
+      </table>
+    </div>`;
+  }
+  
+  // Build sources table
+  let sourcesTableHtml = '';
+  if (vpsSources && vpsSources.sources) {
+    const rows = vpsSources.sources.map(s => `
+      <tr>
+        <td>${escapeHtml(s.name)}</td>
+        <td><code>${escapeHtml(s.path)}</code></td>
+        <td>${escapeHtml(s.description || '')}</td>
+        <td>
+          <a href="/admin/vps-debug?endpoint=${encodeURIComponent(s.path)}&method=POST">Test POST</a>
+        </td>
+      </tr>
+    `).join('');
+    sourcesTableHtml = `
+    <h4>Supported Sources (from VPS)</h4>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Path</th><th>Description</th><th>Action</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+    
+    // Show registered vs failed routes if available
+    if (vpsSources.registered && vpsSources.registered.length > 0) {
+      sourcesTableHtml += `
+      <h4>Registered Routes (${vpsSources.registered.length})</h4>
+      <pre>${escapeHtml(JSON.stringify(vpsSources.registered, null, 2))}</pre>`;
+    }
+    
+    if (vpsSources.failed && vpsSources.failed.length > 0) {
+      sourcesTableHtml += `
+      <div style="border-left: 4px solid #e74c3c; padding-left: 12px; margin: 12px 0;">
+        <h4>⚠️ Failed Routes (${vpsSources.failed.length})</h4>
+        <p class="muted">These modules failed to load on the VPS server:</p>
+        <pre>${escapeHtml(JSON.stringify(vpsSources.failed, null, 2))}</pre>
+      </div>`;
+    }
+  } else if (vpsSources && vpsSources.error) {
+    sourcesTableHtml = `<p class="error-msg">Failed to fetch sources: ${escapeHtml(vpsSources.error)}</p>`;
+  }
+  
+  // Build health status
+  const healthStatusHtml = vpsHealth ? `
+    <div class="health-banner ${vpsHealth.ok ? 'health-ok' : 'health-error'}">
+      <span class="health-icon">${vpsHealth.ok ? '✅' : '❌'}</span>
+      <div class="health-info">
+        <strong>${vpsHealth.ok ? 'VPS Server Healthy' : 'VPS Server Error'}</strong>
+        <span>Latency: ${vpsHealth.latencyMs || 0}ms</span>
+        ${vpsHealth.error ? `<p class="error-detail">${escapeHtml(vpsHealth.error)}</p>` : ''}
+        ${vpsHealth.statusCode ? `<p class="error-detail">HTTP Status: ${vpsHealth.statusCode}</p>` : ''}
+      </div>
+    </div>
+  ` : '';
+  
+  const body = `
+  <style>
+    .health-banner { padding:16px; border-radius:8px; display:flex; align-items:center; gap:16px; margin-bottom:24px; }
+    .health-ok { background:#1d4a3a; }
+    .health-error { background:#4a1d1d; }
+    .health-icon { font-size:32px; }
+    .health-info strong { display:block; font-size:16px; color:#fff; }
+    .health-info span { color:#aaa; font-size:13px; }
+    .health-info .error-detail { color:#e74c3c; font-size:12px; margin-top:8px; }
+    .error-msg { color:#e74c3c; }
+    .quick-test { display:inline-block; background:#4a90d9; color:#fff; padding:6px 12px; border-radius:4px; text-decoration:none; margin-right:8px; margin-bottom:8px; font-size:13px; }
+    .quick-test:hover { background:#5da0e9; text-decoration:none; }
+  </style>
+  
+  <div class="card">
+    <h2>VPS Debug Console</h2>
+    <p>Use this page to diagnose issues with the VPS scraper service. You can manually test endpoints and view server status.</p>
+    
+    <table>
+      <tr><th>VPS URL</th><td><code>${escapeHtml(vpsUrl)}</code></td></tr>
+      <tr><th>API Key</th><td><code>${vpsKey ? vpsKey.substring(0, 4) + '***' : '(not set)'}</code></td></tr>
+    </table>
+    
+    <div style="margin-top:16px;">
+      <strong>Quick Tests:</strong><br>
+      <a href="/admin/vps-debug?endpoint=/health&method=GET" class="quick-test">GET /health</a>
+      <a href="/admin/vps-debug?endpoint=/sources&method=GET" class="quick-test">GET /sources</a>
+      <a href="/admin/vps-debug?endpoint=/debug/routes&method=GET" class="quick-test">GET /debug/routes</a>
+      <a href="/admin/vps-debug?endpoint=/health/liveonsat&method=GET" class="quick-test">GET /health/liveonsat</a>
+      <a href="/admin/vps-debug?endpoint=/scrape/liveonsat&method=POST" class="quick-test">POST /scrape/liveonsat</a>
+    </div>
+  </div>
+  
+  ${healthStatusHtml}
+  
+  ${testResultHtml}
+  
+  <div class="card">
+    <h3>Manual Endpoint Test</h3>
+    <form method="get" action="/admin/vps-debug">
+      <p>
+        <label>Endpoint Path<br>
+        <input type="text" name="endpoint" value="${escapeHtml(endpoint || '')}" placeholder="/scrape/liveonsat" required></label>
+      </p>
+      <p>
+        <label>Method<br>
+        <select name="method">
+          <option value="POST" ${method === 'POST' ? 'selected' : ''}>POST</option>
+          <option value="GET" ${method === 'GET' ? 'selected' : ''}>GET</option>
+        </select></label>
+      </p>
+      <p><button type="submit">Test Endpoint</button></p>
+    </form>
+  </div>
+  
+  <div class="card">
+    <h3>VPS Server Information</h3>
+    ${sourcesTableHtml}
+    
+    ${vpsDebug && !vpsDebug.error ? `
+    <h4>Server Debug Info</h4>
+    <pre>${escapeHtml(JSON.stringify(vpsDebug, null, 2))}</pre>
+    ` : ''}
+  </div>
+  
+  <div class="card">
+    <h3>Troubleshooting</h3>
+    <p>If you see a 404 error when testing endpoints:</p>
+    <ol>
+      <li><strong>Check if VPS is running:</strong> Test the <code>/health</code> endpoint first.</li>
+      <li><strong>Check registered routes:</strong> Use <code>/debug/routes</code> to see which routes are registered.</li>
+      <li><strong>Check failed modules:</strong> The <code>/sources</code> endpoint now shows failed module loads.</li>
+      <li><strong>Redeploy the VPS:</strong> If routes are missing, the VPS may need to be redeployed with the latest code from this repository's <code>vps-scrapers/</code> directory.</li>
+    </ol>
+    
+    <h4>VPS Deployment Instructions</h4>
+    <pre>
+# SSH to VPS (replace with your VPS IP from LSTV_SCRAPER_URL)
+ssh user@YOUR_VPS_IP
+
+# Navigate to scraper directory
+cd /opt/vps-scrapers
+
+# Pull latest code
+git pull origin main
+
+# Install dependencies
+npm install
+
+# Restart service
+pm2 restart vps-scrapers
+# OR if using systemd:
+sudo systemctl restart vps-scrapers
+    </pre>
+  </div>
+  `;
+  
+  res.send(renderLayout('VPS Debug - Telegram Sports TV Bot', body));
+});
+
+// --------- VPS Setup & Deployment ---------
+
+app.get('/admin/vps-setup', (req, res) => {
+  const cfg = loadConfig();
+  const vpsConfig = cfg.vpsConfig || {};
+  
+  // Show masked credentials
+  const maskedConfig = {
+    host: vpsConfig.host || '',
+    port: vpsConfig.port || '22',
+    username: vpsConfig.username || '',
+    authType: vpsConfig.authType || 'key',
+    hasPassword: !!(vpsConfig.password),
+    privateKeyPath: vpsConfig.privateKeyPath || '',
+    vpsDirectory: vpsConfig.vpsDirectory || '/opt/vps-scrapers'
+  };
+  
+  const body = `
+  <style>
+    .config-section { background: #1b1b1b; padding: 20px; border-radius: 8px; margin: 16px 0; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; }
+    .inline-group { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    .btn-primary { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-success { background: #00b894; color: #000; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-warning { background: #f39c12; color: #000; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-group { display: flex; gap: 12px; margin-top: 16px; }
+    .status-box { padding: 16px; border-radius: 8px; margin: 16px 0; }
+    .status-success { background: #1d4a3a; border-left: 4px solid #00b894; }
+    .status-error { background: #4a1d1d; border-left: 4px solid #e74c3c; }
+    .status-info { background: #1d3a4a; border-left: 4px solid #3498db; }
+    .status-warning { background: #4a3d1d; border-left: 4px solid #f39c12; color: #f9e79f; }
+    .help-text { color: #aaa; font-size: 13px; margin-top: 4px; }
+    #deployment-log { background: #111; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; display: none; }
+  </style>
+  
+  <script>
+    // Helper function to detect Cloudflare error pages
+    function isCloudflareErrorPage(responseText) {
+      const lowerResponseText = responseText.toLowerCase();
+      return (
+        (lowerResponseText.includes('cloudflare') && (lowerResponseText.includes('504') || lowerResponseText.includes('524') || lowerResponseText.includes('522'))) ||
+        (lowerResponseText.includes('cloudflare') && lowerResponseText.includes('gateway') && (lowerResponseText.includes('timeout') || lowerResponseText.includes('timed out') || lowerResponseText.includes('time-out'))) ||
+        lowerResponseText.includes('cloudflare ray id') ||
+        lowerResponseText.includes('cf-ray')
+      );
+    }
+    
+    function toggleAuthFields() {
+      const authType = document.getElementById('authType').value;
+      document.getElementById('keyAuthFields').style.display = authType === 'key' ? 'block' : 'none';
+      document.getElementById('passwordAuthFields').style.display = authType === 'password' ? 'block' : 'none';
+    }
+    
+    // VPS deployment functions - defined globally so they're always available
+    async function testConnection() {
+      const statusEl = document.getElementById('status-message');
+      if (!statusEl) {
+        console.error('testConnection: status-message element not found');
+        return;
+      }
+      statusEl.innerHTML = '<div class="status-box status-info">⏳ Testing SSH connection...</div>';
+      
+      try {
+        const response = await fetch('/admin/vps-setup/test', { method: 'POST' });
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const responseText = await response.text();
+          
+          // Check if it's a Cloudflare error page
+          if (isCloudflareErrorPage(responseText)) {
+            statusEl.innerHTML = '<div class="status-box status-error">❌ Cloudflare Gateway Timeout Error Detected<br><br>' +
+              '<strong>What this means:</strong> The HTTP request from your browser was intercepted and terminated by Cloudflare before completing.<br><br>' +
+              '<strong>Common causes:</strong><br>' +
+              '• This admin panel is accessed through a Cloudflare-proxied domain (e.g., telegram.defecttracker.uk)<br>' +
+              '• The operation is taking longer than Cloudflare\\'s 100-second timeout<br>' +
+              '• OR the VPS hostname below is using a Cloudflare-proxied DNS record<br><br>' +
+              '<strong>Solutions:</strong><br>' +
+              '1. <strong>Use SSH tunnel (RECOMMENDED):</strong><br>' +
+              '   <code>ssh -L 3000:localhost:3000 user@&lt;PLESK-IP&gt;</code><br>' +
+              '   Then access <code>http://localhost:3000/admin/vps-setup</code><br>' +
+              '   This bypasses Cloudflare securely and works even if raw IP access is blocked.<br><br>' +
+              '2. <strong>Access admin panel via raw IP:</strong> Try <code>http://&lt;PLESK-IP&gt;:3000/admin/vps-setup</code><br>' +
+              '   ⚠️ If you get ERR_CONNECTION_REFUSED, the app may be configured for localhost-only access.<br>' +
+              '   In that case, use the SSH tunnel method above instead.<br><br>' +
+              '3. <strong>Speed up deployment:</strong> Pre-install Chrome and Node.js on your VPS to reduce deployment time<br>' +
+              '4. <strong>Use command-line:</strong> Run manual deployment from terminal (see docs/CLOUDFLARE_DNS_GUIDE.md)<br>' +
+              '5. <strong>Check VPS hostname:</strong> Ensure the VPS Host field below uses a DNS-only (gray cloud) hostname or raw IP<br><br>' +
+              'See the <a href="https://github.com/irlam/telelistings/blob/main/docs/CLOUDFLARE_DNS_GUIDE.md" target="_blank">Cloudflare DNS Guide</a> for detailed troubleshooting.</div>';
+            return;
+          }
+          
+          const escapedText = responseText.substring(0, 500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          statusEl.innerHTML = '<div class="status-box status-error">❌ Server returned non-JSON response. <a href="/admin/server-logs">Check server logs</a> for details.<br><br>Response:<pre>' + escapedText + '</pre></div>';
+          return;
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          statusEl.innerHTML = '<div class="status-box status-success">✅ ' + result.message + '</div>';
+        } else {
+          statusEl.innerHTML = '<div class="status-box status-error">❌ ' + result.message + '</div>';
+        }
+      } catch (error) {
+        statusEl.innerHTML = '<div class="status-box status-error">❌ Error: ' + error.message + '</div>';
+      }
+    }
+    
+    async function deployVPS() {
+      const statusEl = document.getElementById('status-message');
+      const logEl = document.getElementById('deployment-log');
+      
+      if (!statusEl || !logEl) {
+        const missing = [];
+        if (!statusEl) missing.push('status-message');
+        if (!logEl) missing.push('deployment-log');
+        console.error('deployVPS: Required elements not found: ' + missing.join(', '));
+        return;
+      }
+      
+      if (!confirm('This will deploy the VPS scrapers to your VPS and install all dependencies. This may take several minutes. Continue?')) {
+        return;
+      }
+      
+      statusEl.innerHTML = '<div class="status-box status-info">⏳ Deploying to VPS... This may take several minutes.</div>';
+      logEl.style.display = 'block';
+      logEl.textContent = 'Starting deployment...\\n';
+      
+      try {
+        const response = await fetch('/admin/vps-setup/deploy', { 
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          // Try to get the actual response body for debugging
+          const responseText = await response.text();
+          
+          // Check if it's a Cloudflare error page
+          if (isCloudflareErrorPage(responseText)) {
+            logEl.textContent += '\\n\\nCloudflare Gateway Timeout Error Detected\\n';
+            logEl.textContent += '\\nThis error came from Cloudflare, NOT from your VPS.\\n';
+            logEl.textContent += 'The HTTP request was terminated by Cloudflare before the deployment could complete.\\n';
+            throw new Error('Cloudflare intercepted the deployment request. Common causes:\\n' +
+              '• You are accessing this admin panel through a Cloudflare-proxied domain\\n' +
+              '• The deployment is taking longer than Cloudflare\\'s 100-second timeout\\n' +
+              '• OR the VPS hostname is using a Cloudflare-proxied DNS record\\n\\n' +
+              'Solutions (in order of recommendation):\\n' +
+              '1. Use SSH tunnel (WORKS BEST): ssh -L 3000:localhost:3000 user@<PLESK-IP>\\n' +
+              '   Then access http://localhost:3000/admin/vps-setup in your browser\\n' +
+              '2. Access admin panel via raw IP (e.g., http://<PLESK-IP>:3000)\\n' +
+              '   Note: If you get ERR_CONNECTION_REFUSED, use SSH tunnel instead\\n' +
+              '3. Pre-install Chrome and Node.js on VPS to speed up deployment\\n' +
+              '4. Use manual command-line deployment (see docs/CLOUDFLARE_DNS_GUIDE.md)\\n' +
+              '4. Ensure VPS Host uses a DNS-only (gray cloud) hostname or raw IP\\n\\n' +
+              'See docs/CLOUDFLARE_DNS_GUIDE.md for detailed troubleshooting.');
+          }
+          
+          // Truncate very long responses
+          const truncatedText = responseText.length > 1000 
+            ? responseText.substring(0, 1000) + '\\n\\n... (response truncated)'
+            : responseText;
+          logEl.textContent += '\\n\\nServer Response (Non-JSON):\\n' + truncatedText;
+          throw new Error('Server returned non-JSON response. This may indicate a server error or timeout. Check the deployment log above for details.');
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          logEl.textContent += '\\n' + result.log;
+          statusEl.innerHTML = '<div class="status-box status-success">✅ Deployment successful!<br><br>' + 
+            'Next steps:<br>' +
+            '1. VPS scrapers are installed at: ' + result.vpsDirectory + '<br>' +
+            '2. Configure environment: Edit .env file on VPS<br>' +
+            '3. Start service: sudo systemctl start vps-scrapers<br>' +
+            '4. Enable auto-start: sudo systemctl enable vps-scrapers</div>';
+        } else {
+          logEl.textContent += '\\n' + (result.log || '');
+          statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed: ' + result.message + '</div>';
+        }
+      } catch (error) {
+        logEl.textContent += '\\nError: ' + error.message;
+        statusEl.innerHTML = '<div class="status-box status-error">❌ Deployment failed. See log above for details.</div>';
+      }
+    }
+  </script>
+  
+  <div class="card">
+    <h2>🚀 VPS Setup & Deployment</h2>
+    <p>Configure your VPS connection details and deploy the scrapers remotely with one click.</p>
+    
+    <div class="status-box status-info">
+      <strong>📋 What this does:</strong>
+      <ul>
+        <li>Connects to your VPS via SSH</li>
+        <li>Transfers all VPS scraper files to the configured directory</li>
+        <li>Installs Node.js, Chrome/Chromium, and all dependencies</li>
+        <li>Configures and starts the scraper service</li>
+      </ul>
+    </div>
+    
+    <div class="status-box status-warning">
+      <strong>⚠️ Getting Cloudflare Timeout Errors?</strong>
+      <p>If you see Cloudflare timeout errors when using this page, you have several options:</p>
+      <ul>
+        <li><strong>🔧 Use SSH Tunnel (RECOMMENDED):</strong> Most reliable method that works in all scenarios:
+          <pre style="background: #000; padding: 8px; margin: 8px 0; border-radius: 4px;">ssh -L 3000:localhost:3000 user@&lt;PLESK-IP&gt;</pre>
+          Then access: <code>http://localhost:3000/admin/vps-setup</code><br>
+          This bypasses Cloudflare completely and works even if direct IP access is blocked.
+        </li>
+        <li><strong>🌐 Try Raw IP Access:</strong> Access this page via <code>http://&lt;PLESK-IP&gt;:3000/admin/vps-setup</code>
+          <br>⚠️ <em>If you get ERR_CONNECTION_REFUSED, your server may be configured for localhost-only access. Use SSH tunnel instead.</em>
+        </li>
+        <li><strong>⚡ Speed up deployment:</strong> Pre-install Node.js and Chrome on your VPS to complete under 100 seconds</li>
+        <li><strong>💻 Use command line:</strong> Run deployment manually from terminal (see <code>docs/CLOUDFLARE_DNS_GUIDE.md</code>)</li>
+      </ul>
+    </div>
+    
+    <div class="status-box status-warning">
+      <strong>⚠️ Important Configuration Notes:</strong>
+      <ul>
+        <li><strong>VPS Host:</strong> Use the direct IP address or SSH hostname of your VPS, NOT a web URL or domain proxied through Cloudflare</li>
+        <li><strong>Cloudflare DNS:</strong> If your DNS page shows all orange clouds (proxied), click the cloud for your deploy host (e.g., <code>deploy.defecttracker.uk</code>) until it turns gray. A proxied deploy host will still hit Cloudflare and cause the timeout banner.</li>
+        <li><strong>SSH Access:</strong> Ensure SSH is enabled and accessible on your VPS (port 22 by default)</li>
+        <li><strong>Network:</strong> The VPS must be reachable from this server's network</li>
+        <li><strong>Authentication:</strong> SSH key authentication is more secure and recommended over password auth</li>
+        <li><strong>Timeout:</strong> Connection timeout is 20 seconds - if it fails, check your VPS is online and SSH is running</li>
+      </ul>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h3>VPS Connection Settings</h3>
+    <form method="post" action="/admin/vps-setup/save">
+      <div class="config-section">
+        <div class="inline-group">
+          <div class="form-group">
+            <label>VPS Host (IP or Domain)<br>
+            <input type="text" name="host" value="${escapeHtml(maskedConfig.host)}" placeholder="&lt;VPS-IP&gt;" required></label>
+            <div class="help-text">IP address or domain name of your VPS. ⚠️ Use the direct IP address or SSH hostname, NOT a web URL (http://...). If your public site is on a different Cloudflare-proxied host (e.g., https://telegram.defecttracker.uk/ on &lt;PLESK-IP&gt;), still point this field at the VPS origin (&lt;VPS-IP&gt; or DNS-only deploy.defecttracker.uk).</div>
+          </div>
+          
+          <div class="form-group">
+            <label>SSH Port<br>
+            <input type="number" name="port" value="${escapeHtml(maskedConfig.port)}" placeholder="22" required></label>
+            <div class="help-text">Usually 22</div>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Username<br>
+          <input type="text" name="username" value="${escapeHtml(maskedConfig.username)}" placeholder="root" required></label>
+          <div class="help-text">SSH user (e.g., root, ubuntu, admin)</div>
+        </div>
+        
+        <div class="form-group">
+          <label>VPS Directory<br>
+          <input type="text" name="vpsDirectory" value="${escapeHtml(maskedConfig.vpsDirectory)}" placeholder="/opt/vps-scrapers" required></label>
+          <div class="help-text">Installation directory on VPS (default: /opt/vps-scrapers)</div>
+        </div>
+        
+        <div class="form-group">
+          <label>Authentication Method<br>
+          <select name="authType" id="authType" onchange="toggleAuthFields()">
+            <option value="key" ${maskedConfig.authType === 'key' ? 'selected' : ''}>SSH Key (Recommended)</option>
+            <option value="password" ${maskedConfig.authType === 'password' ? 'selected' : ''}>Password</option>
+          </select></label>
+        </div>
+        
+        <div id="keyAuthFields" style="display: ${maskedConfig.authType === 'key' ? 'block' : 'none'};">
+          <div class="form-group">
+            <label>SSH Private Key Path<br>
+            <input type="text" name="privateKeyPath" value="${escapeHtml(maskedConfig.privateKeyPath)}" placeholder="/home/user/.ssh/id_rsa"></label>
+            <div class="help-text">Full path to your SSH private key file</div>
+          </div>
+        </div>
+        
+        <div id="passwordAuthFields" style="display: ${maskedConfig.authType === 'password' ? 'block' : 'none'};">
+          <div class="form-group">
+            <label>SSH Password<br>
+            <input type="password" name="password" value="" placeholder="${maskedConfig.hasPassword ? '••••••••' : 'Enter password'}" autocomplete="current-password"></label>
+            <div class="help-text">Leave blank to keep existing password. <strong>⚠️ SSH key authentication is more secure.</strong></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="btn-group">
+        <button type="submit" class="btn-primary">💾 Save Configuration</button>
+      </div>
+    </form>
+  </div>
+  
+  ${vpsConfig.host ? `
+  <div class="card">
+    <h3>Deployment Actions</h3>
+    
+    <div class="btn-group">
+      <button onclick="testConnection()" class="btn-primary">🔌 Test Connection</button>
+      <button onclick="deployVPS()" class="btn-success">🚀 Deploy to VPS</button>
+    </div>
+    
+    <div id="status-message" style="margin-top: 16px;"></div>
+    <div id="deployment-log"></div>
+  </div>
+  ` : `
+  <div class="card">
+    <div class="status-box status-info">
+      ℹ️ Save your VPS configuration above to enable deployment actions.
+    </div>
+  </div>
+  `}
+  
+  <div class="card">
+    <h3>📖 Manual Deployment (Alternative)</h3>
+    <p>If you prefer to deploy manually or the automatic deployment doesn't work:</p>
+    
+    <h4>1. Copy files to VPS</h4>
+    <pre>cd /path/to/telelistings
+rsync -avz --exclude 'node_modules' vps-scrapers/ user@vps-ip:/opt/vps-scrapers/</pre>
+    
+    <h4>2. SSH to VPS and run installation</h4>
+    <pre>ssh user@vps-ip
+cd /opt/vps-scrapers
+chmod +x scripts/*.sh
+sudo bash scripts/install-dependencies.sh</pre>
+    
+    <h4>3. Configure and start service</h4>
+    <pre>nano .env  # Edit configuration
+sudo systemctl start vps-scrapers
+sudo systemctl enable vps-scrapers</pre>
+  </div>
+  `;
+  
+  res.send(renderLayout('VPS Setup - Telegram Sports TV Bot', body));
+});
+
+app.post('/admin/vps-setup/save', (req, res) => {
+  const cfg = loadConfig();
+  
+  // Save VPS configuration
+  const vpsConfig = {
+    host: req.body.host,
+    port: parseInt(req.body.port) || 22,
+    username: req.body.username,
+    authType: req.body.authType,
+    vpsDirectory: req.body.vpsDirectory || '/opt/vps-scrapers'
+  };
+  
+  if (req.body.authType === 'key') {
+    vpsConfig.privateKeyPath = req.body.privateKeyPath;
+  } else if (req.body.authType === 'password' && req.body.password) {
+    // Only update password if provided
+    vpsConfig.password = req.body.password;
+  } else if (req.body.authType === 'password' && cfg.vpsConfig && cfg.vpsConfig.password) {
+    // Keep existing password if not provided
+    vpsConfig.password = cfg.vpsConfig.password;
+  }
+  
+  cfg.vpsConfig = vpsConfig;
+  saveConfig(cfg);
+  
+  res.redirect('/admin/vps-setup?saved=true');
+});
+
+app.post('/admin/vps-setup/test', async (req, res) => {
+  // Explicitly set Content-Type to ensure JSON response
+  res.setHeader('Content-Type', 'application/json');
+  
+  const cfg = loadConfig();
+  const vpsConfig = cfg.vpsConfig;
+  
+  if (!vpsConfig || !vpsConfig.host) {
+    return res.json({ success: false, message: 'VPS configuration not found. Please save your settings first.' });
+  }
+  
+  try {
+    const SSHClient = require('./lib/ssh-client');
+    const client = new SSHClient(vpsConfig);
+    const result = await client.testConnection();
+    res.json(result);
+  } catch (error) {
+    res.json({ success: false, message: error.message });
+  }
+});
+
+app.post('/admin/vps-setup/deploy', async (req, res) => {
+  // Explicitly set Content-Type to ensure JSON response
+  res.setHeader('Content-Type', 'application/json');
+  
+  // Ensure we always return JSON, even if there's an unexpected error
+  let logOutput = '';
+  
+  try {
+    const cfg = loadConfig();
+    const vpsConfig = cfg.vpsConfig;
+    
+    if (!vpsConfig || !vpsConfig.host) {
+      return res.json({ success: false, message: 'VPS configuration not found. Please save your settings first.' });
+    }
+    
+    const SSHClient = require('./lib/ssh-client');
+    const path = require('path');
+    const client = new SSHClient(vpsConfig);
+    
+    logOutput += 'Connecting to VPS...\n';
+    await client.connect();
+    logOutput += `Connected to ${vpsConfig.host}\n\n`;
+    
+    // Create remote directory
+    logOutput += `Creating directory ${vpsConfig.vpsDirectory}...\n`;
+    await client.executeCommand(`mkdir -p ${vpsConfig.vpsDirectory}`);
+    logOutput += 'Directory created\n\n';
+    
+    // Upload vps-scrapers directory
+    logOutput += 'Uploading files to VPS...\n';
+    const localVpsDir = path.join(__dirname, 'vps-scrapers');
+    const uploadResult = await client.uploadDirectory(localVpsDir, vpsConfig.vpsDirectory);
+    logOutput += `Uploaded ${uploadResult.uploaded} files\n`;
+    if (uploadResult.failed > 0) {
+      logOutput += `Failed to upload ${uploadResult.failed} files\n`;
+      uploadResult.errors.forEach(err => {
+        logOutput += `  - ${err.file}: ${err.error}\n`;
+      });
+    }
+    logOutput += '\n';
+    
+    // Make scripts executable
+    logOutput += 'Making scripts executable...\n';
+    await client.executeCommand(`chmod +x ${vpsConfig.vpsDirectory}/scripts/*.sh`);
+    logOutput += 'Scripts are now executable\n\n';
+    
+    // Run installation script
+    logOutput += 'Running installation script...\n';
+    const installResult = await client.executeCommand(
+      `cd ${vpsConfig.vpsDirectory} && VPS_DIR=${vpsConfig.vpsDirectory} bash scripts/install-dependencies.sh`,
+      { pty: true }
+    );
+    
+    logOutput += installResult.stdout;
+    if (installResult.stderr) {
+      logOutput += '\nStderr:\n' + installResult.stderr;
+    }
+    
+    await client.disconnect();
+    
+    if (installResult.exitCode === 0) {
+      res.json({ 
+        success: true, 
+        message: 'Deployment completed successfully',
+        log: logOutput,
+        vpsDirectory: vpsConfig.vpsDirectory
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        message: `Installation script exited with code ${installResult.exitCode}`,
+        log: logOutput
+      });
+    }
+  } catch (error) {
+    // Always ensure we return JSON, never HTML
+    logOutput += '\n\nError: ' + error.message + '\n';
+    if (error.stack) {
+      logOutput += '\nStack trace:\n' + error.stack;
+    }
+    
+    // Make sure we haven't already sent headers
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'An unexpected error occurred during deployment',
+        log: logOutput
+      });
+    }
+  }
+});
+
+// Error handler middleware for API endpoints - ensures JSON responses
+app.use((err, req, res, next) => {
+  // Log the error
+  console.error('Unhandled error:', err);
+  
+  // For API endpoints that should return JSON (VPS setup, test, and deploy endpoints)
+  if (req.path.startsWith('/admin/vps-setup/deploy') || 
+      req.path.startsWith('/admin/vps-setup/test') ||
+      req.path.startsWith('/api/')) {
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: err.message || 'Internal server error',
+        log: err.stack
+      });
+    }
+  } else {
+    // For regular pages, send error page
+    if (!res.headersSent) {
+      res.status(500).send(renderLayout('Error', `
+        <div class="card">
+          <h2>Error</h2>
+          <p>${escapeHtml(err.message)}</p>
+          <pre>${escapeHtml(err.stack)}</pre>
+        </div>
+      `));
+    }
+  }
+});
+
+// --------- start server ---------
+
+app.listen(PORT, () => {
+  console.log(`Admin GUI listening on port ${PORT}`);
+});
+
+let cleanupRunning = false;
+async function scheduledMessageCleanup() {
+  if (cleanupRunning) return;
+  cleanupRunning = true;
+  try {
+    const result = await runMessageCleanup();
+    if (result.deleted) console.log(`[CLEANUP] Scheduled cleanup deleted ${result.deleted} message(s)`);
+  } catch (error) {
+    console.error(`[CLEANUP] Scheduled cleanup failed: ${error.message || String(error)}`);
+  } finally {
+    cleanupRunning = false;
+  }
+}
+
+setTimeout(scheduledMessageCleanup, 15000).unref();
+setInterval(scheduledMessageCleanup, 15 * 60 * 1000).unref();

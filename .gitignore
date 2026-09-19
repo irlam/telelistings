@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Cache directory
+cache/
+
+# Temporary files (generated posters, etc.)
+tmp/
+
+# Logs (optional - keep if you want to track logs)
+autopost.log
+logs/
+
+# Environment files
+.env
+config.json
+
+# IDE/Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Uploaded files
+uploads/
+
+# Storage directory contents (keep .gitkeep)
+storage/scrapes/
+storage/latest/
+storage/auto_tests/
+storage/daily-listings/
+storage/images/
+storage/post-state.json
+!storage/.gitkeep

@@ -1,0 +1,30 @@
+[Unit]
+Description=VPS Scrapers Service for Telelistings
+Documentation=https://github.com/irlam/telelistings
+After=network.target
+
+[Service]
+Type=simple
+User=vps-scrapers
+Group=vps-scrapers
+WorkingDirectory=/opt/vps-scrapers
+EnvironmentFile=/opt/vps-scrapers/.env
+# Uses /usr/bin/env to find node in PATH
+ExecStart=/usr/bin/env node server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/vps-scrapers
+
+# Increase resource limits for Puppeteer
+LimitNOFILE=65536
+LimitNPROC=65536
+
+[Install]
+WantedBy=multi-user.target
