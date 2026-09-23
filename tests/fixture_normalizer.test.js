@@ -106,6 +106,37 @@ test('does not mistake men\'s club names for women\'s markers', () => {
   assert.strictEqual(normalizer.isWomensFixture(fixture), false);
 });
 
+test('excludes under-21 fixtures across team, competition and age-group labels', () => {
+  const cases = [
+    { home: 'Liverpool U-21', away: 'Brighton U-21', competition: 'Premier League 2' },
+    { home: 'Tottenham U21', away: 'Manchester City U21', competition: 'English Football' },
+    { home: 'Arsenal Under 21', away: 'Chelsea Under-21', competition: 'Premier League Cup' },
+    { home: 'Bolton Wanderers', away: 'Wigan Athletic', competition: 'Youth fixture', ageGroup: 'U21' },
+    { home: 'England', away: 'France', competition: 'International', strAgeGroup: '21' },
+    { home: 'Liverpool', away: 'Brighton', competition: 'Premier League 2' },
+    { home: 'Charlton Athletic', away: 'Millwall', competition: 'Professional Development League' }
+  ];
+
+  for (const fixture of cases) {
+    assert.strictEqual(
+      normalizer.normalizeFixture({ ...fixture, kickoffUtc: '2026-09-23T18:00:00Z' }, 'liveonsat', '2026-09-23'),
+      null
+    );
+  }
+});
+
+test('does not mistake senior teams containing 21 for under-21 fixtures', () => {
+  const fixture = normalizer.normalizeFixture({
+    home: 'Club 21 United',
+    away: 'Bolton Wanderers',
+    kickoffUtc: '2026-09-23T18:00:00Z',
+    competition: 'Senior Friendly'
+  }, 'liveonsat', '2026-09-23');
+
+  assert(fixture);
+  assert.strictEqual(normalizer.isUnder21Fixture(fixture), false);
+});
+
 test('UK channels and competitions are considered relevant', () => {
   const covered = normalizer.normalizeFixture({ home: 'A', away: 'B', kickoffUtc: '2026-08-30T12:00:00Z', channels: ['BBC One'] }, 'bbc', '2026-08-30');
   const competition = normalizer.normalizeFixture({ home: 'A', away: 'B', kickoffUtc: '2026-08-30T12:00:00Z', competition: 'Scottish Premiership' }, 'premiersports', '2026-08-30');
