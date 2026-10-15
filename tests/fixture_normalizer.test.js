@@ -183,5 +183,41 @@ test('converts UK local kick-off time to UTC during summer time', () => {
   assert.strictEqual(date.toISOString(), '2026-08-30T15:30:00.000Z');
 });
 
+test('treats timezone-less kickoffUtc values as UTC', () => {
+  const fixture = normalizer.normalizeFixture({
+    home: 'Arsenal', away: 'Chelsea', kickoffUtc: '2026-08-30T15:30:00'
+  }, 'bbc', '2026-08-30');
+  assert.strictEqual(fixture.start.toISOString(), '2026-08-30T15:30:00.000Z');
+});
+
+test('converts timezone-less start values from UK local time during BST', () => {
+  const fixture = normalizer.normalizeFixture({
+    home: 'Arsenal', away: 'Chelsea', start: '2026-08-30T16:30:00'
+  }, 'skysports', '2026-08-30');
+  assert.strictEqual(fixture.start.toISOString(), '2026-08-30T15:30:00.000Z');
+});
+
+test('combines a bare fixture date with its UK kick-off time', () => {
+  const fixture = normalizer.normalizeFixture({
+    home: 'Arsenal', away: 'Chelsea', date: '2026-08-30', startTime: '16:30'
+  }, 'skysports', '2026-08-30');
+  assert.strictEqual(fixture.start.toISOString(), '2026-08-30T15:30:00.000Z');
+});
+
+test('parses a UK-formatted local kick-off using the embedded date', () => {
+  const fixture = normalizer.normalizeFixture({
+    home: 'Arsenal', away: 'Chelsea', kickoffLocal: '30/08/2026 16:30'
+  }, 'liveonsat', '2026-08-29');
+  assert.strictEqual(fixture.start.toISOString(), '2026-08-30T15:30:00.000Z');
+});
+
+test('keeps UK winter kick-off times on GMT', () => {
+  const fixture = normalizer.normalizeFixture({
+    home: 'Arsenal', away: 'Chelsea', date: '2026-12-12', time: '15:00'
+  }, 'skysports', '2026-12-12');
+  assert.strictEqual(fixture.start.toISOString(), '2026-12-12T15:00:00.000Z');
+});
+
 console.log(`\nTotal: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`);
 process.exitCode = failed ? 1 : 0;
+

@@ -379,12 +379,13 @@ async function fetchTSDBFixture({ home, away, date }) {
     
       log(`Found fixture: ${bestMatch.strEvent} (ID: ${bestMatch.idEvent})`);
     
-      // Build kickoff UTC from date and time
+      // TheSportsDB's timestamp is explicit and therefore preferred. strTime
+      // is UTC too, but some responses omit the trailing timezone marker.
       let kickoffUtc = null;
-      if (bestMatch.dateEvent && bestMatch.strTime) {
-        kickoffUtc = `${bestMatch.dateEvent}T${bestMatch.strTime}`;
-      } else if (bestMatch.strTimestamp) {
+      if (bestMatch.strTimestamp) {
         kickoffUtc = bestMatch.strTimestamp;
+      } else if (bestMatch.dateEvent && bestMatch.strTime) {
+        kickoffUtc = `${bestMatch.dateEvent}T${bestMatch.strTime.replace(/Z$/i, '')}Z`;
       }
     
       // Try to get TV listings
@@ -502,12 +503,12 @@ async function fetchTSDBFixtures({ date, region, leagueId } = {}) {
                   .filter(tv => tv.channel);
               }
               
-              // Build kickoff UTC from date and time
+              // Prefer the explicit timestamp; otherwise mark strTime as UTC.
               let kickoffUtc = null;
-              if (event.dateEvent && event.strTime) {
-                kickoffUtc = `${event.dateEvent}T${event.strTime}`;
-              } else if (event.strTimestamp) {
+              if (event.strTimestamp) {
                 kickoffUtc = event.strTimestamp;
+              } else if (event.dateEvent && event.strTime) {
+                kickoffUtc = `${event.dateEvent}T${event.strTime.replace(/Z$/i, '')}Z`;
               }
               
               fixtures.push({
@@ -608,3 +609,4 @@ module.exports = {
   getApiKey,
   BASE_URL
 };
+

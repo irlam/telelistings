@@ -32,6 +32,8 @@ test('full date including year is included', () => {
   assert.strictEqual(fixture.dateUk, 'Sunday 30 August 2026');
   const text = autopost.formatFixturePoster(fixture);
   assert(text.includes('Sunday 30 August 2026'));
+  assert(text.includes('4:30pm UK'));
+  assert(!text.includes(' ET'));
 });
 
 test('photo caption contains date, UK time and channel', () => {
@@ -119,3 +121,4 @@ test('daily digest expires at six the following UK morning', () => {
 });
 
 process.exitCode = failed ? 1 : 0;
+

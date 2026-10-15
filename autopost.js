@@ -637,8 +637,7 @@ async function buildPosterImageForFixture(fixture, options = {}) {
     drawAutoScaledText(ctx, (fixture.dateUk || 'DATE TBC').toUpperCase(), canvasWidth / 2, 235, 860, {
       fontStyle: 'bold', fontSize: 42, fontFamily, fillStyle: '#ffd166', textAlign: 'center'
     });
-    const timeLine = [fixture.timeUk ? `${fixture.timeUk} UK` : '', fixture.timeEt ? `${fixture.timeEt} ET` : '']
-      .filter(Boolean).join('  •  ');
+    const timeLine = fixture.timeUk ? `${fixture.timeUk} UK` : '';
     drawAutoScaledText(ctx, timeLine || 'KICK-OFF TBC', canvasWidth / 2, 287, 800, {
       fontStyle: 'bold', fontSize: 34, fontFamily, fillStyle: '#ffffff', textAlign: 'center'
     });
@@ -846,7 +845,7 @@ function parseTeamsFromSummary(summary) {
 
 /**
  * Adapt a basic fixture object to the poster data model.
- * Adds/updates timeUk, timeEt, homeTeam, awayTeam, matchTitle fields.
+ * Adds/updates UK time, homeTeam, awayTeam and matchTitle fields.
  * Also sets competition, venue, and tvByRegion if not already present.
  * 
  * @param {Object} fixture - Basic fixture object with start, summary and TV information.
@@ -855,10 +854,10 @@ function parseTeamsFromSummary(summary) {
 function adaptFixtureForPoster(fixture) {
   const start = fixture.start instanceof Date ? fixture.start : new Date(fixture.start);
   
-  // Format date and times in UK and US Eastern timezones
+  // Telegram listings are UK-only. Always render Europe/London so the value
+  // automatically follows GMT/BST for the fixture date.
   const dateUk = formatDateInZone(start, 'Europe/London');
   const timeUk = formatTimeInZone(start, 'Europe/London');
-  const timeEt = formatTimeInZone(start, 'America/New_York');
   
   // Parse home and away teams from "Home v Away" style summaries.
   let homeTeam = fixture.homeTeam || '';
@@ -891,7 +890,6 @@ function adaptFixtureForPoster(fixture) {
     date: start,
     dateUk,
     timeUk,
-    timeEt,
     homeTeam,
     awayTeam,
     matchTitle,
@@ -909,7 +907,7 @@ function adaptFixtureForPoster(fixture) {
  * SPORTS LISTINGS ON TV
  * ═══════════════════════════
  * 
- * 3:00pm UK    10:00am ET
+ * 3:00pm UK
  * 
  * BRENTFORD v BURNLEY
  * Premier League
@@ -946,14 +944,10 @@ function formatFixturePoster(fixture, options = {}) {
     lines.push('');
   }
   
-  // Times in two zones
+  // UK kick-off time only
   const timeUk = fixture.timeUk || '';
-  const timeEt = fixture.timeEt || '';
-  if (timeUk || timeEt) {
-    const timeLine = [];
-    if (timeUk) timeLine.push(`${timeUk} UK`);
-    if (timeEt) timeLine.push(`${timeEt} ET`);
-    lines.push(timeLine.join('    '));
+  if (timeUk) {
+    lines.push(`${timeUk} UK`);
     lines.push('');
   }
   
@@ -1855,3 +1849,4 @@ module.exports = {
   CONFIG_PATH,
   LOG_PATH
 };
+
