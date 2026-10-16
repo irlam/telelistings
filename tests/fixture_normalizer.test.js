@@ -218,6 +218,20 @@ test('keeps UK winter kick-off times on GMT', () => {
   assert.strictEqual(fixture.start.toISOString(), '2026-12-12T15:00:00.000Z');
 });
 
+test('prefers the explicit UK-local time when a feed mislabels it as UTC', () => {
+  const fixture = normalizer.normalizeFixture({
+    home: 'Arsenal',
+    away: 'Chelsea',
+    kickoffLocal: '16/10/2026 19:45',
+    kickoffUtc: '2026-10-16T19:45:00Z'
+  }, 'liveonsat', '2026-10-16');
+  assert.strictEqual(fixture.start.toISOString(), '2026-10-16T18:45:00.000Z');
+  const ukTime = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit'
+  }).format(fixture.start);
+  assert.strictEqual(ukTime, '19:45');
+});
+
 console.log(`\nTotal: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`);
 process.exitCode = failed ? 1 : 0;
 
