@@ -115,6 +115,21 @@ test('getScraperConfig: returns config for VPS scraper', () => {
   assert.strictEqual(config.requiresVPS, true);
 });
 
+test('Premier Sports accepts a valid empty daily football schedule', () => {
+  const config = autoTester.getScraperConfig('vps-premiersports');
+  const verdict = autoTester.evaluateVpsFunctionalResult({ fixtures: [] }, config);
+  assert.strictEqual(config.allowEmptyFixtures, true);
+  assert.strictEqual(verdict.success, true);
+  assert.strictEqual(verdict.empty, true);
+  assert(verdict.note.includes('valid empty schedule'));
+});
+
+test('other VPS scrapers still reject an unexpected empty result', () => {
+  const config = autoTester.getScraperConfig('vps-skysports');
+  const verdict = autoTester.evaluateVpsFunctionalResult({ fixtures: [] }, config);
+  assert.strictEqual(verdict.success, false);
+});
+
 test('listScrapers: includes VPS scrapers', () => {
   const scrapers = autoTester.listScrapers();
   const vpsScrapers = scrapers.filter(s => s.id.startsWith('vps-'));
@@ -241,3 +256,4 @@ integrationRun.then(() => {
   console.error('Test runner error:', err);
   process.exitCode = 1;
 });
+
