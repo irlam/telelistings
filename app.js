@@ -267,6 +267,9 @@ function renderLayout(title, bodyHtml) {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({ limit: '1mb' }));
 
+// The app feed exposes only explicitly enabled, successfully published listings.
+require('./lib/malri_feed').registerRoutes(app, loadConfig);
+
 // Basic auth on /admin/*
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 app.use(
@@ -439,6 +442,11 @@ app.get('/admin/channels/edit', (req, res) => {
         </label>
         <span class="muted">Untick this to post fixture cards only.</span>
       </p>
+      <p>
+        <label><input type="checkbox" name="malriFeed" value="true" ${ch.malriFeed === true ? 'checked' : ''}>
+        Show published posts in MALRI Player</label>
+        <span class="muted">Shares this channel&#39;s future match posters and digests in the read-only TV Listings feed. Does not send a Telegram message.</span>
+      </p>
       <p><button type="submit">Save Changes</button></p>
     </form>
 
@@ -469,6 +477,7 @@ app.post('/admin/channels/update', (req, res) => {
     ch.posterSubtitle = (posterSubtitle || '').trim();
     ch.maxPostersPerRun = Math.max(0, Math.min(parseInt(maxPostersPerRun, 10) || 0, 50));
     ch.requireTv = requireTv === 'true';
+    ch.malriFeed = req.body.malriFeed === 'true';
     saveConfig(cfg);
   }
 
@@ -3485,3 +3494,4 @@ async function scheduledMessageCleanup() {
 
 setTimeout(scheduledMessageCleanup, 15000).unref();
 setInterval(scheduledMessageCleanup, 15 * 60 * 1000).unref();
+

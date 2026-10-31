@@ -14,6 +14,7 @@ const testFiles = [
   'daily_listings.test.js',
   'image_cache.test.js',
   'post_state.test.js',
+  'malri_feed.test.js',
   'poster_format.test.js',
   'lstv.test.js',
   'fixtures_scraper.test.js',
@@ -87,3 +88,4 @@ async function runAllTests() {
 }
 
 runAllTests();
+

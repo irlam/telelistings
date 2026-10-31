@@ -26,6 +26,12 @@ const {
   sortTvRegions
 } = require('./lib/fixture_normalizer');
 const postState = require('./lib/post_state');
+const { savePost } = require('./lib/malri_feed');
+
+function archiveMalriPost(post) {
+  try { savePost(post); }
+  catch (error) { logLine(`[MALRI] Post archive unavailable: ${error.message}`); }
+}
 
 // Import the universal aggregator
 let tvAggregator = null;
@@ -1573,6 +1579,9 @@ async function runOnce(options = {}) {
                 });
               }
             }
+            archiveMalriPost({ channel, messageId: sentMessage?.message_id, kind: 'digest',
+              title: `Daily TV listings - ${(dates || []).join(', ')}`, caption: digest,
+              expiresAt: digestDeletionTimestamp(dates, expiry, cfg.timezone || 'Europe/London') });
             digestCount += 1;
             await sleep(telegramDelayMs);
           }
@@ -1664,10 +1673,14 @@ async function runOnce(options = {}) {
             );
             
             let sentMessage;
+            let publishedCaption = '';
+            let publishedImage = null;
             if (posterImagePath) {
               const caption = buildPhotoCaption(posterFixture, { isUpdate: stateResult.isUpdate });
+              publishedCaption = caption;
               try {
                 sentMessage = await sendTelegramPhoto(botToken, channel.id, posterImagePath, caption);
+                publishedImage = posterImagePath;
                 logLine(`    -> Sent as image poster`);
               } catch (photoError) {
                 logLine(`    -> Image upload rejected: ${photoError.message || String(photoError)}`);
@@ -1681,6 +1694,7 @@ async function runOnce(options = {}) {
                 showFooter: showFooter,
                 footerText: posterFooterText || DEFAULT_FOOTER_TEXT
               });
+              publishedCaption = posterText;
               sentMessage = await sendTelegramMessage(botToken, channel.id, posterText);
               logLine(`    -> Sent as text poster`);
             }
@@ -1698,6 +1712,9 @@ async function runOnce(options = {}) {
               });
             }
             
+            archiveMalriPost({ channel, messageId: sentMessage?.message_id, kind: 'fixture',
+              fixture: posterFixture, caption: publishedCaption, imagePath: publishedImage,
+              updated: stateResult.isUpdate, expiresAt: deleteAt || fixtureDeletionTimestamp(fixture, expiry) });
             postersSent++;
             if (mode === 'uk-daily') {
               postState.markFixturePosted(state, stateResult, {
@@ -1849,4 +1866,5 @@ module.exports = {
   CONFIG_PATH,
   LOG_PATH
 };
+
 
