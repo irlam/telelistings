@@ -1,6 +1,5 @@
 'use strict';
 
-const puppeteer = require('puppeteer');
 const axios = require('axios');
 const { parseTvGuideText } = require('./tv_guide_parser');
 
@@ -50,6 +49,9 @@ async function fetchHttpText() {
 
 async function getBrowser() {
   if (browser?.isConnected()) return browser;
+  // Pure guide parsing and the HTTP path also run on Plesk, where the
+  // VPS-only browser dependency is intentionally not installed.
+  const puppeteer = require('puppeteer');
   browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
@@ -121,3 +123,4 @@ async function healthCheck() {
 }
 
 module.exports = { scrape, healthCheck, fetchPageText, fetchHttpText, htmlToText, looksLikeGuide, PAGE_URL, BASE_URL };
+
