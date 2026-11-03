@@ -150,6 +150,11 @@ function teamsMatch(name1, name2) {
   return false;
 }
 
+function canonicalArtworkTeamName(name) {
+  const normalized = normalizeTeamName(name);
+  return normalizeTeamName(TEAM_ARTWORK_ALIASES.get(normalized) || normalized);
+}
+
 function teamArtworkSearchNames(teamName) {
   const original = String(teamName || '')
     .replace(/\s*(?:\(\s*(?:home|away|h|a)\s*\)|\[\s*(?:home|away|h|a)\s*\])\s*$/i, '')
@@ -211,8 +216,12 @@ async function searchTeam(apiKey, teamName) {
     return null;
   }
   
-  // Return first match
-  return data.teams[0];
+  const matches = data.teams.filter((team) =>
+    canonicalArtworkTeamName(team?.strTeam) === canonicalArtworkTeamName(teamName)
+  );
+  // The API can return similarly named clubs first. Only accept an exact
+  // canonical club-name match, preferring a matching record with artwork.
+  return matches.find((team) => getTeamBadgeUrl(team)) || matches[0] || null;
 }
 
 function getTeamBadgeUrl(team) {

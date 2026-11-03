@@ -6,6 +6,7 @@
  */
 
 const puppeteer = require('puppeteer');
+const { londonTimeToUtc } = require('./tv_guide_parser');
 
 // ---------- Configuration ----------
 
@@ -117,24 +118,23 @@ function formatUkLocal(date) {
 function parseKickoff(dateLabel, timeString) {
   if (!dateLabel || !timeString) return { kickoffUtc: null, kickoffLocal: null };
 
-  const currentYear = resolveSeasonYear(dateLabel);
+  // Treat the scraped clock time as a Europe/London wall time. Avoid manual
+  // BST offsets and server-local Date methods, which can shift fixtures by an
+  // hour when the VPS timezone or the UK DST boundary differs.
+  const explicitYear = String(dateLabel).match(/\b(20\d{2})\b/);
+  const year = explicitYear ? Number(explicitYear[1]) : resolveSeasonYear(dateLabel);
+  const cleanedDate = String(dateLabel).replace(/(\d+)(st|nd|rd|th)/i, '$1');
+  const dateText = explicitYear
+    ? `${cleanedDate} 00:00 GMT`
+    : `${cleanedDate} ${year} 00:00 GMT`;
+  const date = new Date(dateText);
+  if (Number.isNaN(date.getTime())) return { kickoffUtc: null, kickoffLocal: null };
 
-  // Remove ordinal suffixes
-  const cleanedDate = dateLabel.replace(/(\d+)(st|nd|rd|th)/i, '$1');
+  const dateKey = date.toISOString().slice(0, 10);
+  const kickoffUtc = londonTimeToUtc(dateKey, timeString);
+  if (!kickoffUtc) return { kickoffUtc: null, kickoffLocal: null };
 
-  // Parse as GMT then adjust for BST manually
-  const dateString = `${cleanedDate} ${currentYear} ${timeString} GMT`;
-  const d = new Date(dateString);
-  if (Number.isNaN(d.getTime())) return { kickoffUtc: null, kickoffLocal: null };
-
-  // If local time was BST, subtract one hour to convert to UTC
-  if (isInBST(d)) {
-    d.setHours(d.getHours() - 1);
-  }
-
-  const kickoffUtc = d.toISOString();
-  const kickoffLocal = formatUkLocal(new Date(kickoffUtc));
-  return { kickoffUtc, kickoffLocal };
+  return { kickoffUtc, kickoffLocal: formatUkLocal(new Date(kickoffUtc)) };
 }
 
 /**
